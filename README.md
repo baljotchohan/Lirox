@@ -24,10 +24,13 @@ Lirox is a modular, CLI-based AI agent system designed for multi-LLM support, ta
     ```
 
 3.  **Configure API Keys**:
-    Copy the `.env.example` to `.env` and fill in your keys:
+    You can now configure keys directly in the CLI using the interactive setup:
     ```bash
-    cp .env.example .env
+    python3 -m lirox.main
+    # Inside Lirox prompt:
+    /add-api
     ```
+    Alternatively, copy `.env.example` to `.env` and fill in your keys manually.
 
 4.  **Run Lirox**:
     ```bash
@@ -36,6 +39,7 @@ Lirox is a modular, CLI-based AI agent system designed for multi-LLM support, ta
 
 ## 🎮 Commands
 
+- `/add-api`: Launch the interactive API setup wizard (highly recommended for first-time use).
 - `/set model [provider]`: Switch between providers (e.g., `openai`, `gemini`, `nvidia`, `openrouter`).
 - `/clear`: Reset the current conversation memory.
 - `/exit`: Close the Lirox session.
