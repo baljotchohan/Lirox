@@ -1,52 +1,118 @@
-# Lirox v0.1: Your Local AI Terminal Agent
+# Lirox — Personal AI Agent OS
 
-Lirox is a modular, CLI-based AI agent system designed for multi-LLM support, task planning, and safe terminal execution.
+> Your own AI that knows you, works for you, and never forgets.
 
-## 🚀 Features
+Lirox is not a chatbot. It is a local AI agent that learns who you are,
+understands your goals, and works like a personal employee — running in
+your terminal, remembering everything, executing tasks autonomously.
 
-- **Multi-LLM Router**: Unified interface for OpenAI, Gemini, Groq, NVIDIA, DeepSeek, and OpenRouter.
-- **Task Planning**: Automatically decomposes complex goals into executable steps.
-- **Terminal Execution**: Safely executes commands with a whitelist-based safety layer.
-- **Contextual Memory**: Remembers the last 10 rounds of conversation for robust multi-turn chat.
-- **Customizable**: Built with a modular architecture for easy extension.
+## What makes Lirox different
 
-## 🛠️ Setup
+| Feature | Lirox | ChatGPT / Claude |
+|---|---|---|
+| Remembers you across sessions | ✓ | ✗ |
+| Learns your name, goals, tone | ✓ | ✗ |
+| Executes terminal commands | ✓ | ✗ |
+| Plans multi-step tasks | ✓ | ✗ |
+| Runs locally, your data stays local | ✓ | ✗ |
+| Named, personalised agent identity | ✓ | ✗ |
 
-1.  **Clone the Repository**:
-    ```bash
-    git clone [your-repo-url]
-    cd Lirox
-    ```
+## Setup (3 minutes)
 
-2.  **Install Dependencies**:
-    ```bash
-    pip install requests python-dotenv google-generativeai openai
-    ```
+### 1. Clone and install
 
-3.  **Configure API Keys**:
-    You can now configure keys directly in the CLI using the interactive setup:
-    ```bash
+    git clone https://github.com/yourname/lirox
+    cd lirox
+    pip install -r requirements.txt
+
+### 2. Run Lirox
+
     python3 -m lirox.main
-    # Inside Lirox prompt:
-    /add-api
-    ```
-    Alternatively, copy `.env.example` to `.env` and fill in your keys manually.
 
-4.  **Run Lirox**:
-    ```bash
-    python3 -m lirox.main
-    ```
+On first run, Lirox walks you through:
+- Naming your agent (call it whatever you want)
+- Entering your name, niche, and top goals
+- Adding at least one API key (Gemini is free and recommended)
 
-## 🎮 Commands
+That's it. Your agent is online.
 
-- `/add-api`: Launch the interactive API setup wizard (highly recommended for first-time use).
-- `/set model [provider]`: Switch between providers (e.g., `openai`, `gemini`, `nvidia`, `openrouter`).
-- `/clear`: Reset the current conversation memory.
-- `/exit`: Close the Lirox session.
+### 3. Get a free API key (takes 2 minutes)
 
-## 🛡️ Safety
+**Gemini (recommended)**
+1. Go to [aistudio.google.com](https://aistudio.google.com)
+2. Click "Get API key"
+3. Paste it when Lirox asks during setup
 
-Lirox includes a built-in safety filter for terminal commands. Destructive commands like `rm -rf` are blocked by default.
+**Groq (also free, very fast)**
+1. Go to [console.groq.com](https://console.groq.com)
+2. Create account → API Keys → Create key
+3. Paste it when Lirox asks
+
+## Commands
+
+    /help             Show all commands
+    /profile          View your agent profile
+    /setup            Re-run setup wizard
+    /set-goal "..."   Add a goal
+    /set-tone direct  Change agent tone (direct/friendly/formal/casual)
+    /provider auto    Switch LLM provider
+    /memory           View conversation memory
+    /clear            Clear memory (keep profile)
+    /status           System status
+    /exit             Quit
+
+## How Lirox learns you
+
+Every session, Lirox:
+1. Loads your profile (name, goals, niche, tone, background context)
+2. Injects this into every LLM call — so it always speaks as YOUR agent
+3. Extracts new facts from each conversation and updates your profile
+4. Remembers the last 20 conversation exchanges for context
+
+The longer you use it, the better it knows you.
+
+## Supported LLM providers
+
+| Provider | Model | Best for |
+|---|---|---|
+| Gemini | gemini-1.5-flash | General tasks, free |
+| Groq | llama-3.3-70b | Fast responses, coding |
+| OpenAI | gpt-4o | Complex reasoning |
+| OpenRouter | Various | Flexibility |
+| DeepSeek | deepseek-chat | Research, analysis |
+
+Set `DEFAULT_MODEL=gemini` in `.env` to change the default.
+Use `/provider auto` to let Lirox pick per request.
+
+## File structure
+
+    lirox/
+    ├── agent/
+    │   ├── core.py          Main agent brain
+    │   ├── memory.py        Conversation memory
+    │   ├── profile.py       User identity & learning
+    │   ├── planner.py       Goal → step breakdown
+    │   └── executor.py      Task + terminal execution
+    ├── tools/
+    │   └── terminal.py      Safe terminal execution
+    ├── ui/
+    │   ├── display.py       Rich terminal rendering
+    │   └── wizard.py        Setup wizard
+    ├── utils/
+    │   ├── llm.py           Multi-LLM router
+    │   └── config_helper.py API key manager
+    ├── config.py
+    └── main.py
+
+## Data & privacy
+
+Everything stays on your machine.
+- `profile.json` — your identity and goals
+- `memory.json` — conversation history
+- `.env` — your API keys
+
+None of this is sent anywhere except to the LLM API you choose.
 
 ---
-*Built with ❤️ by Baljot Chohan & Antigravity.*
+
+Built by Baljot Chohan & Antigravity.

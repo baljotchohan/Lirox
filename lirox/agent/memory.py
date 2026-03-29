@@ -26,13 +26,23 @@ class Memory:
             json.dump(self.history, f, indent=4)
 
     def get_context(self):
-        context = ""
+        """Returns formatted conversation history for injection into prompts."""
+        if not self.history:
+            return ""
+            
+        lines = ["--- Recent conversation ---"]
         for msg in self.history:
             role_name = "User" if msg["role"] == "user" else "Assistant"
-            context += f"{role_name}: {msg['content']}\n"
-        return context
+            lines.append(f"{role_name}: {msg['content']}")
+        lines.append("--- End of history ---\n")
+        return "\n".join(lines)
+
+    def get_messages_for_api(self):
+        """Returns history in OpenAI message format for providers that support it."""
+        return [{"role": m["role"], "content": m["content"]} for m in self.history]
 
     def clear(self):
         self.history = []
         if os.path.exists(self.storage_file):
             os.remove(self.storage_file)
+        print("[*] Conversation memory cleared.")
