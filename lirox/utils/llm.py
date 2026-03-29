@@ -1,19 +1,23 @@
+import os
 import requests
 import google.generativeai as genai
 import json
-from lirox.config import (
-    OPENAI_API_KEY, GEMINI_API_KEY, OPENROUTER_API_KEY, 
-    GROQ_API_KEY, DEEPSEEK_API_KEY, NVIDIA_API_KEY, SYSTEM_PROMPT
-)
+
+def get_api_key(name):
+    return os.getenv(name)
+
+def get_system_prompt():
+    return os.getenv("SYSTEM_PROMPT", "You are Lirox, a helpful and concise local AI agent.")
 
 def openai_call(prompt, model="gpt-4o"):
-    if not OPENAI_API_KEY: return "OpenAI API key missing."
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key: return "OpenAI API key missing."
     url = "https://api.openai.com/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {OPENAI_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     data = {
         "model": model, 
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt()},
             {"role": "user", "content": prompt}
         ]
     }
@@ -21,50 +25,59 @@ def openai_call(prompt, model="gpt-4o"):
     return response.json().get('choices', [{}])[0].get('message', {}).get('content', "Error in OpenAI call")
 
 def gemini_call(prompt):
-    if not GEMINI_API_KEY: return "Gemini API key missing."
-    genai.configure(api_key=GEMINI_API_KEY)
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key: return "Gemini API key missing."
+    genai.configure(api_key=api_key)
+    model = genai.GenerativeModel('gemini-1.5-flash')
     # Gemini uses a different system instruction format, but for now we prepend it
-    full_prompt = f"{SYSTEM_PROMPT}\n\nUser Question: {prompt}"
+    full_prompt = f"{get_system_prompt()}\n\nUser Question: {prompt}"
     response = model.generate_content(full_prompt)
     return response.text
 
 def openrouter_call(prompt, model="arcee-ai/trinity-large-preview:free"):
-    if not OPENROUTER_API_KEY: return "OpenRouter API key missing."
+    api_key = os.getenv("OPENROUTER_API_KEY")
+    if not api_key: return "OpenRouter API key missing."
     url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {OPENROUTER_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     data = {
         "model": model, 
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt()},
             {"role": "user", "content": prompt}
         ]
     }
     response = requests.post(url, headers=headers, json=data)
     return response.json().get('choices', [{}])[0].get('message', {}).get('content', "Error in OpenRouter call")
 
-def groq_call(prompt, model="llama3-8b-8192"):
-    if not GROQ_API_KEY: return "Groq API key missing."
+def groq_call(prompt, model="llama-3.3-70b-versatile"):
+    api_key = os.getenv("GROQ_API_KEY")
+    if not api_key: return "Groq API key missing."
     url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {GROQ_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     data = {
         "model": model, 
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt()},
             {"role": "user", "content": prompt}
         ]
     }
-    response = requests.post(url, headers=headers, json=data)
-    return response.json().get('choices', [{}])[0].get('message', {}).get('content', "Error in Groq call")
+    try:
+        response = requests.post(url, headers=headers, json=data)
+        if response.status_code != 200:
+            return f"Groq API Error ({response.status_code}): {response.text}"
+        return response.json().get('choices', [{}])[0].get('message', {}).get('content', "Error in Groq call")
+    except Exception as e:
+        return f"Groq Connection Error: {str(e)}"
 
 def deepseek_call(prompt, model="deepseek-chat"):
-    if not DEEPSEEK_API_KEY: return "DeepSeek API key missing."
+    api_key = os.getenv("DEEPSEEK_API_KEY")
+    if not api_key: return "DeepSeek API key missing."
     url = "https://api.deepseek.com/chat/completions"
-    headers = {"Authorization": f"Bearer {DEEPSEEK_API_KEY}"}
+    headers = {"Authorization": f"Bearer {api_key}"}
     data = {
         "model": model, 
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt()},
             {"role": "user", "content": prompt}
         ]
     }
@@ -72,17 +85,18 @@ def deepseek_call(prompt, model="deepseek-chat"):
     return response.json().get('choices', [{}])[0].get('message', {}).get('content', "Error in DeepSeek call")
 
 def nvidia_call(prompt, model="google/gemma-3n-e4b-it"):
-    if not NVIDIA_API_KEY: return "NVIDIA API key missing."
+    api_key = os.getenv("NVIDIA_API_KEY")
+    if not api_key: return "NVIDIA API key missing."
     url = "https://integrate.api.nvidia.com/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {NVIDIA_API_KEY}",
+        "Authorization": f"Bearer {api_key}",
         "Accept": "application/json",
         "Content-Type": "application/json"
     }
     payload = {
         "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": get_system_prompt()},
             {"role": "user", "content": prompt}
         ],
         "max_tokens": 1024,

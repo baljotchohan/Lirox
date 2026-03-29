@@ -1,11 +1,12 @@
 import sys
 from lirox.agent.core import LiroxAgent
+from lirox.utils.config_helper import run_setup_wizard
 
 def main():
     print("\n" + "=" * 50)
     print("Welcome to Lirox v0.1: Your Local AI Agent")
     print("-" * 50)
-    print("Commands: /set model [openai, gemini, groq, nvidia, openrouter, etc.], /clear, /exit\n")
+    print("Options: /add-api (setup keys), /set model [provider], /clear, /exit\n")
 
     agent = LiroxAgent()
 
@@ -21,6 +22,16 @@ def main():
         if user_input.lower() == "/exit":
             print("Goodbye!")
             break
+
+        if user_input.lower() in ["/add-api", "/setup"]:
+            is_new_default = run_setup_wizard()
+            # Reload agent if provider changed
+            if is_new_default:
+                import os
+                new_provider = os.getenv("DEFAULT_MODEL", "openai")
+                agent.set_provider(new_provider)
+                print(f"[*] Reloaded agent with new default provider: {new_provider}")
+            continue
 
         if user_input.startswith("/set model"):
             model_name = user_input.replace("/set model", "").strip(" []'\"")
