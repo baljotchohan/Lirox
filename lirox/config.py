@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 from dotenv import load_dotenv
 
 # Load .env or .env.local
@@ -20,13 +21,29 @@ DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai")
 MEMORY_LIMIT = 20  # Increased from 10
 
-# Terminal safety
+# Terminal safety — expanded allowlist
 ALLOWED_COMMANDS = [
-    "ls", "mkdir", "python", "python3", "pip", "pip3", "npm", "node",
-    "echo", "touch", "cat", "pwd", "cd", "git", "curl", "wget", "ls", "grep"
+    # Navigation & listing
+    "ls", "pwd", "find", "which", "whoami", "file", "wc", "head", "tail", "du", "df",
+    # File operations (safe)
+    "mkdir", "touch", "cat", "cp", "mv", "echo", "tee",
+    # Development tools
+    "python", "python3", "pip", "pip3", "npm", "npx", "node", "yarn",
+    "git", "cargo", "go", "rustc", "gcc", "make",
+    # Network & fetching
+    "curl", "wget",
+    # Text processing
+    "grep", "awk", "sed", "sort", "uniq", "tr", "cut", "xargs",
+    # System info
+    "uname", "date", "cal", "env", "printenv", "sleep",
+    # Archive
+    "tar", "zip", "unzip", "gzip",
 ]
+
 BLOCK_COMMANDS = [
-    "rm -rf", "shutdown", "reboot", "mv /", "rm /", "chmod 777", "sudo rm", "dd if", "mkfs"
+    "rm -rf /", "rm -rf ~", "shutdown", "reboot", "mv /", "rm /",
+    "chmod 777", "sudo rm", "dd if", "mkfs", ":(){ :|:& };:",
+    "format", "fdisk", "> /dev"
 ]
 
 # ─── v0.3 Settings ────────────────────────────────────────────────────────────
@@ -36,8 +53,17 @@ PLAN_CONFIRM = True          # Ask user before executing plans
 MAX_RETRIES = 3              # Retry limit for failed steps
 RETRY_BACKOFF = 1.0          # Backoff multiplier (seconds)
 
-# File I/O safety
-SAFE_DIRS = ["./", "./outputs/", "./data/"]
+# File I/O safety — expanded to user-accessible directories
+# Resolves ~/ to actual home path at load time
+_HOME = str(Path.home())
+SAFE_DIRS = [
+    "./",
+    "./outputs/",
+    "./data/",
+    os.path.join(_HOME, "Desktop"),
+    os.path.join(_HOME, "Documents"),
+    os.path.join(_HOME, "Downloads"),
+]
 
 # Browser
 BROWSER_TIMEOUT = 10         # Web request timeout (seconds)
