@@ -11,6 +11,7 @@ Executes structured plans step-by-step with:
 """
 
 import time
+import platform
 from lirox.tools.terminal import run_command
 from lirox.tools.browser import BrowserTool
 from lirox.tools.file_io import FileIOTool
@@ -215,13 +216,17 @@ class Executor:
 
     def _run_terminal_step(self, step, context, provider, system_prompt):
         """Extract and execute a terminal command from a step."""
+        # Detect OS dynamically instead of hardcoding macOS
+        os_name = {"Darwin": "macOS", "Linux": "Linux", "Windows": "Windows"}.get(
+            platform.system(), platform.system()
+        )
         cmd_prompt = (
             f"You are a terminal command generator. Extract the EXACT terminal command "
             f"to run from this task. Return ONLY the raw shell command on one line. "
             f"No explanation, no markdown, no backticks.\n\n"
             f"Task: {step['task']}\n"
             f"Context: {context[:500] if context else 'None'}\n"
-            f"OS: macOS\n"
+            f"OS: {os_name}\n"
             f"Important: Use absolute paths with /Users/ or ~ when paths are specified. "
             f"Only return ONE command."
         )

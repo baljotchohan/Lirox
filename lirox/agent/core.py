@@ -100,7 +100,7 @@ class LiroxAgent:
             Response string
         """
         system_prompt = self._get_system_prompt()
-        context = self.memory.get_context()
+        context = self.memory.get_relevant_context(user_input)
         agent_name = self.profile.data.get("agent_name", "Lirox")
 
         # Route to best provider

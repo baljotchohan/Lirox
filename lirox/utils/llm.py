@@ -114,6 +114,26 @@ RESEARCH_KEYWORDS = [
     "who is", "what is", "explain", "how does", "why does", "tell me about", "research", "find out"
 ]
 
+# Patterns indicating the LLM returned an error string instead of a real response
+ERROR_RESPONSE_PATTERNS = [
+    "api key missing",
+    "unknown provider",
+    "request timed out",
+    "error:",
+    " error: ",
+]
+
+
+def is_error_response(text):
+    """
+    Detect if an LLM response is actually an error string.
+    Returns True if the response looks like an error, not real content.
+    """
+    if not text:
+        return True
+    lowered = text.strip().lower()
+    return any(p in lowered for p in ERROR_RESPONSE_PATTERNS)
+
 def generate_response(prompt, provider="openai", system_prompt=None):
     """
     Central call. Always pass system_prompt from UserProfile for personalization.
@@ -145,13 +165,23 @@ def smart_router(prompt):
 
 def is_task_request(user_input, provider="groq"):
     """
-    Detects if the input requires planning/execution. Use keyword heuristic first.
+    Detects if the input requires planning/execution.
+    Uses keyword heuristic first, then falls back to LLM if ambiguous.
+    Hardened: never hangs or crashes — defaults to False on any error.
     """
     lowered = user_input.lower()
     if any(k in lowered for k in TASK_KEYWORDS):
         return True
-    
-    # Ambiguous - ask the LLM (using fast provider)
-    check_prompt = f"Does this user message require executing terminal commands or creating files? Reply ONLY with yes or no.\n\nMessage: {user_input}"
-    result = generate_response(check_prompt, "groq")
-    return "yes" in result.strip().lower()
+
+    # Ambiguous — try asking the LLM (using fast provider)
+    try:
+        check_prompt = (
+            f"Does this user message require executing terminal commands or creating files? "
+            f"Reply ONLY with yes or no.\n\nMessage: {user_input}"
+        )
+        result = generate_response(check_prompt, "groq")
+        if is_error_response(result):
+            return False  # LLM errored — default to chat mode
+        return "yes" in result.strip().lower()
+    except Exception:
+        return False  # Any failure → default to chat mode

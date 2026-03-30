@@ -26,7 +26,7 @@ ALLOWED_COMMANDS = [
     # Navigation & listing
     "ls", "pwd", "find", "which", "whoami", "file", "wc", "head", "tail", "du", "df",
     # File operations (safe)
-    "mkdir", "touch", "cat", "cp", "mv", "echo", "tee",
+    "mkdir", "touch", "cat", "cp", "mv", "rm", "echo", "tee",
     # Development tools
     "python", "python3", "pip", "pip3", "npm", "npx", "node", "yarn",
     "git", "cargo", "go", "rustc", "gcc", "make",
