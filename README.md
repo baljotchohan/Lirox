@@ -36,7 +36,16 @@ On first run, Lirox walks you through:
 
 That's it. Your agent is online.
 
-### 3. Get a free API key (takes 2 minutes)
+### 3. Updating Lirox
+
+To update to the latest version of Lirox, run:
+
+    git pull
+    pip install -r requirements.txt
+
+Then restart the agent.
+
+### 4. Get a free API key (takes 2 minutes)
 
 **Gemini (recommended)**
 1. Go to [aistudio.google.com](https://aistudio.google.com)

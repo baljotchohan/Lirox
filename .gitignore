@@ -2,6 +2,8 @@
 .env
 .env.local
 memory.json
+profile.json
+.lirox_history
 
 # Testing / Debug Scripts
 test_*.py

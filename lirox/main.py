@@ -4,7 +4,7 @@ from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style as PTStyle
 from lirox.agent.core import LiroxAgent
-from lirox.ui.display import console, print_logo, boot_animation, show_status_card, show_status_bar, agent_panel, error_panel
+from lirox.ui.display import console, print_logo, boot_animation, show_status_card, show_status_bar, agent_panel, error_panel, Panel, ROUNDED
 from lirox.ui.wizard import run_setup_wizard, check_api_keys
 
 # Prompt toolkit styles

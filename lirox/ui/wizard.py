@@ -1,5 +1,5 @@
 import os
-from lirox.ui.display import console, PanelText, ROUNDED
+from lirox.ui.display import console, Panel, ROUNDED
 from rich.prompt import Prompt, IntPrompt
 from dotenv import set_key
 
