@@ -4,17 +4,16 @@
         "goal": "Task A",
         "when": "in_5_minutes",
         "status": "failed",
-        "created_at": "2026-03-30T20:58:28.961849",
-        "scheduled_for": "2026-03-30T21:03:28.961851",
+        "created_at": "2026-03-30T21:24:28.755867",
+        "scheduled_for": "2026-03-30T21:29:28.755869",
         "error": "No execute callback registered"
     },
     {
         "id": 2,
         "goal": "Task B",
         "when": "in_10_minutes",
-        "status": "failed",
-        "created_at": "2026-03-30T20:58:28.962078",
-        "scheduled_for": "2026-03-30T21:08:28.962080",
-        "error": "No execute callback registered"
+        "status": "scheduled",
+        "created_at": "2026-03-30T21:24:28.756028",
+        "scheduled_for": "2026-03-30T21:34:28.756030"
     }
 ]
