@@ -2,7 +2,15 @@ import os
 import requests
 import google.generativeai as genai
 
-DEFAULT_SYSTEM = "You are Lirox, a helpful and concise personal AI agent."
+DEFAULT_SYSTEM = (
+    "You are Lirox, a helpful and concise personal AI agent. "
+    "Response formatting rules you must always follow: "
+    "Never use asterisks (*) or markdown bold/italic formatting. "
+    "Never use excessive bullet points. "
+    "Write in clean, plain sentences and short paragraphs. "
+    "Use numbered lists only when listing steps or options. "
+    "Keep responses structured but natural — like a smart colleague talking to you, not a formatted document."
+)
 
 def openai_call(prompt, system_prompt=None, model="gpt-4o"):
     api_key = os.getenv("OPENAI_API_KEY")

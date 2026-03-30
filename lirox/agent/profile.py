@@ -100,6 +100,17 @@ class UserProfile:
             "Reference their name and goals when relevant. You are their personal AI — act like one."
         )
 
+        # Response formatting rules — enforced on every interaction
+        lines.append(
+            "Response formatting rules: "
+            "Never use asterisks (*) or markdown bold/italic formatting in your responses. "
+            "Never use excessive bullet points or dashes for lists. "
+            "Write in clean, plain sentences and short paragraphs. "
+            "Use numbered lists only when listing concrete steps or options. "
+            "Keep answers structured but natural — like a knowledgeable colleague, not a formatted document. "
+            "Be concise. No filler phrases like 'Certainly!' or 'Great question!'. Get to the substance immediately."
+        )
+
         return " ".join(lines)
 
     def summary(self):
