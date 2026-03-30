@@ -113,7 +113,7 @@ class LiroxAgent:
                 plan = self.planner.create_plan(user_input, system_prompt=system_prompt)
 
                 # Stop spinner for interactive display
-                spinner.status.stop()
+                spinner.stop()
 
                 # Show the plan
                 plan_panel_v3(plan)

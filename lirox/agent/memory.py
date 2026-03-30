@@ -160,4 +160,4 @@ class Memory:
         self.history = []
         if os.path.exists(self.storage_file):
             os.remove(self.storage_file)
-        print("[*] Conversation memory cleared.")
+        return "Conversation memory cleared."

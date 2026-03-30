@@ -8,3 +8,7 @@ groq
 beautifulsoup4
 schedule
 lxml
+fastapi
+uvicorn
+python-multipart
+websockets

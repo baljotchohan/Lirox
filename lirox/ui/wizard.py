@@ -86,7 +86,8 @@ def check_api_keys():
         
         for k, (name, env_key, url) in provider_options.items():
             console.print(f"  [{k}] {name.ljust(12)} ({url})")
-            
+        
+        console.print("  [6] Skip / Continue (configure later)\n")
         choice = Prompt.ask("\n  Choice", choices=["1", "2", "3", "4", "5", "6"], default="1")
         
         if choice != "6":

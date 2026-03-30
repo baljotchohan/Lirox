@@ -48,6 +48,9 @@ BLOCK_COMMANDS = [
 
 # ─── v0.3 Settings ────────────────────────────────────────────────────────────
 
+# Project Root (anchored to the lirox package directory)
+PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+
 # Planning & Execution
 PLAN_CONFIRM = True          # Ask user before executing plans
 MAX_RETRIES = 3              # Retry limit for failed steps
@@ -57,9 +60,9 @@ RETRY_BACKOFF = 1.0          # Backoff multiplier (seconds)
 # Resolves ~/ to actual home path at load time
 _HOME = str(Path.home())
 SAFE_DIRS = [
-    "./",
-    "./outputs/",
-    "./data/",
+    PROJECT_ROOT,
+    os.path.join(PROJECT_ROOT, "outputs"),
+    os.path.join(PROJECT_ROOT, "data"),
     os.path.join(_HOME, "Desktop"),
     os.path.join(_HOME, "Documents"),
     os.path.join(_HOME, "Downloads"),

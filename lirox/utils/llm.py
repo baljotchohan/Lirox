@@ -159,17 +159,49 @@ def generate_response(prompt, provider="openai", system_prompt=None):
         return deepseek_call(prompt, system_prompt)
     return f"Unknown provider: {provider}. Use: openai, gemini, groq, openrouter, deepseek"
 
+def available_providers():
+    """Returns list of providers with keys present in environment."""
+    mapping = {
+        "gemini": "GEMINI_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY"
+    }
+    return [name for name, env_key in mapping.items() if os.getenv(env_key)]
+
+def pick_default_provider():
+    """
+    Choose the best default provider based on key availability.
+    Priority: gemini -> groq -> openrouter -> openai -> deepseek.
+    """
+    avail = available_providers()
+    priority = ["gemini", "groq", "openrouter", "openai", "deepseek"]
+    for p in priority:
+        if p in avail:
+            return p
+    return "openai"  # Fallback if none found (will show error on call)
+
 def smart_router(prompt):
     """
-    Heuristic-first router.
-    Groq = fast tasks/code. OpenRouter = research/knowledge. OpenAI = default.
+    Heuristic-first router with fallback based on key availability.
     """
     lowered = prompt.lower()
-    if any(k in lowered for k in TASK_KEYWORDS):
+    avail = available_providers()
+    
+    # Priority logic:
+    # 1. If task/code task → Groq
+    # 2. If research → OpenRouter
+    # 3. Else → Gemini (best free) or OpenAI
+    
+    if any(k in lowered for k in TASK_KEYWORDS) and "groq" in avail:
         return "groq"
-    if any(k in lowered for k in RESEARCH_KEYWORDS):
+    
+    if any(k in lowered for k in RESEARCH_KEYWORDS) and "openrouter" in avail:
         return "openrouter"
-    return "openai"
+    
+    # Fallback to best available
+    return pick_default_provider()
 
 def is_task_request(user_input, provider="groq"):
     """

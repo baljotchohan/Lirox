@@ -55,3 +55,8 @@ venv.bak/
 # OS
 .DS_Store
 Thumbs.db
+
+# Lirox Artifacts
+outputs/
+scheduled_tasks.json
+test_tasks.json

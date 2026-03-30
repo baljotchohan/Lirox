@@ -8,7 +8,6 @@ PROVIDERS = {
     "3": ("OpenRouter", "OPENROUTER_API_KEY"),
     "4": ("Groq", "GROQ_API_KEY"),
     "5": ("DeepSeek", "DEEPSEEK_API_KEY"),
-    "6": ("NVIDIA", "NVIDIA_API_KEY"),
 }
 
 def show_config_status():

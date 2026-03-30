@@ -207,10 +207,18 @@ def error_panel(message):
 class AgentSpinner:
     def __init__(self, agent_name="Lirox"):
         self.status = Status(f" {agent_name} is thinking...", spinner="dots", spinner_style="agent")
+        self._running = False
 
     def __enter__(self):
+        self._running = True
         self.status.start()
         return self
 
+    def stop(self):
+        """Idempotent stop."""
+        if self._running:
+            self.status.stop()
+            self._running = False
+
     def __exit__(self, exc_type, exc_val, exc_tb):
-        self.status.stop()
+        self.stop()

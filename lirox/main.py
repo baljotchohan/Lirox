@@ -186,8 +186,8 @@ def main():
             continue
 
         if lowered == "/clear":
-            agent.memory.clear()
-            console.print("[success]Conversation memory cleared.[/success]")
+            msg = agent.memory.clear()
+            console.print(f"[success]{msg}[/success]")
             continue
 
         if lowered == "/add-api":
