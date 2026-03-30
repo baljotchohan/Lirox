@@ -5,3 +5,6 @@ rich
 prompt_toolkit
 openai
 groq
+beautifulsoup4
+schedule
+lxml
