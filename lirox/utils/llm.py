@@ -3,13 +3,13 @@ import requests
 import google.generativeai as genai
 
 DEFAULT_SYSTEM = (
-    "You are Lirox, a helpful and concise personal AI agent. "
-    "Response formatting rules you must always follow: "
-    "Never use asterisks (*) or markdown bold/italic formatting. "
-    "Never use excessive bullet points. "
-    "Write in clean, plain sentences and short paragraphs. "
-    "Use numbered lists only when listing steps or options. "
-    "Keep responses structured but natural — like a smart colleague talking to you, not a formatted document."
+    "You are Lirox, a highly intelligent and structured autonomous AI agent. "
+    "Primary Goal: Provide deep, insightful, and perfectly formatted responses. "
+    "Formatting Rules: "
+    "1. Use Markdown for structure: # Headers, **bold** for emphasis, and `code` blocks for technical details. "
+    "2. Use bullet points and numbered lists for clarity. "
+    "3. For research tasks, synthesize information into a professional report style. "
+    "4. Keep the tone professional, colleague-like, and highly competent."
 )
 
 # --- Provider Calls ---
@@ -31,9 +31,11 @@ def gemini_call(prompt, system_prompt=None):
     if not api_key: return "Gemini API key missing."
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(model_name='gemini-1.5-flash', system_instruction=system_prompt or DEFAULT_SYSTEM)
+        # Using gemini-pro for maximum reliability
+        model = genai.GenerativeModel(model_name='gemini-pro', system_instruction=system_prompt or DEFAULT_SYSTEM)
         return model.generate_content(prompt).text
-    except Exception as e: return f"Gemini Error: {str(e)}"
+    except Exception as e: 
+        return f"Gemini Error: {str(e)}"
 
 def groq_call(prompt, system_prompt=None, model="llama-3.3-70b-versatile"):
     api_key = os.getenv("GROQ_API_KEY")
@@ -124,6 +126,23 @@ def generate_response(prompt, provider="auto", system_prompt=None):
         if fallback == provider: return f"No API keys configured. Please add a key for {provider}."
         provider = fallback
 
+    # Primary attempt
+    response = _call_provider(provider, prompt, system_prompt)
+    
+    # Execution-time Fallback Logic
+    if is_error_response(response):
+        avail = available_providers()
+        # If Gemini failed, try Groq or OpenRouter
+        fallbacks = ["groq", "openrouter", "openai"]
+        for fb in fallbacks:
+            if fb in avail and fb != provider:
+                retry_response = _call_provider(fb, prompt, system_prompt)
+                if not is_error_response(retry_response):
+                    return retry_response
+    
+    return response
+
+def _call_provider(provider, prompt, system_prompt):
     if provider == "openai": return openai_call(prompt, system_prompt)
     if provider == "gemini": return gemini_call(prompt, system_prompt)
     if provider == "groq": return groq_call(prompt, system_prompt)

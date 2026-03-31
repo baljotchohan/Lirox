@@ -18,6 +18,25 @@ class Reasoner:
         self.provider = provider
         self.last_reasoning = None  # Store for /reasoning command
         self.evaluations = []       # All step evaluations this session
+        self.thought_trace = ""      # Live thinking trace
+
+    def generate_thought_trace(self, goal, context=""):
+        """Produce a detailed logical breakdown (Claude-style thinking)."""
+        prompt = (
+            f"You are the reasoning core of Lirox, an autonomous AI research agent.\n"
+            f"Analyze the following goal and break down your internal logic step-by-step.\n"
+            f"Explain HOW you will approach this, WHY certain tools are needed, and what obstacles you anticipate.\n"
+            f"Format as an 'Internal Monologue'. Be logical, deep, and structured.\n\n"
+            f"Goal: {goal}\n"
+            f"Context: {context or 'None'}\n\n"
+            f"Thought Trace:"
+        )
+        try:
+            self.thought_trace = generate_response(prompt, self.provider, system_prompt="You are a brilliant, logical AI strategist. Your internal monologue should be detailed and insightful.")
+            return self.thought_trace
+        except Exception as e:
+            self.thought_trace = f"Thinking about how to resolve: {goal}..."
+            return self.thought_trace
 
     def set_provider(self, provider):
         self.provider = provider

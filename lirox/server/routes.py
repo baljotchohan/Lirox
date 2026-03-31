@@ -44,12 +44,17 @@ def chat(data: ChatRequest):
     if not is_task:
         with state.execution_lock:
             state.current_task_status = "thinking"
+            state.current_thought = f"Analyzing: {data.message[:50]}..."
             response = agent.process_input(data.message)
             state.current_task_status = "idle"
+            state.current_thought = ""
             return {"response": response, "type": "chat"}
 
-    # 2. Planning (if it's a task)
+    # 2. Planning Phase with Thinking Trace
     with state.execution_lock:
+        state.current_task_status = "thinking"
+        state.current_thought = agent.reasoner.generate_thought_trace(data.message)
+        
         state.current_task_status = "planning"
         plan = agent.planner.create_plan(data.message)
         state.last_plan = plan
@@ -64,12 +69,20 @@ def chat(data: ChatRequest):
                 "type": "task_pending",
                 "plan": plan,
                 "policy": policy,
+                "thought": state.current_thought,
                 "message": "This task requires your confirmation before proceeding."
             }
 
         # 4. Auto-Execution
         state.current_task_status = "executing"
         results, summary = agent.executor.execute_plan(plan, provider)
+        
+        # Extract sources from results for the UI
+        sources = []
+        for res in results.values():
+            if isinstance(res, dict) and "metadata" in res:
+                sources.extend(res["metadata"].get("sources", []))
+        
         agent.reasoner.reset()
         for step in plan["steps"]:
             agent.reasoner.evaluate_step(step, results.get(step["id"], {}), plan, results)
@@ -80,7 +93,9 @@ def chat(data: ChatRequest):
             "type": "task_complete",
             "response": summary,
             "reflection": reflection,
-            "plan": plan
+            "plan": plan,
+            "thought": state.current_thought,
+            "sources": sources[:6] # Top 6 unique sources
         }
 
 @router.post("/confirm-run")
@@ -121,7 +136,9 @@ def get_status():
     agent = get_agent()
     return {
         "status": state.current_task_status,
+        "thought": state.current_thought,
         "pending_confirmation": state.pending_confirmation,
+        "pending_plan": state.pending_plan,
         "last_reasoning": getattr(agent.reasoner, "last_reasoning", None)
     }
 

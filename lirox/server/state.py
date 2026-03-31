@@ -13,6 +13,7 @@ class GlobalState:
         self.pending_confirmation = False
         self.pending_plan = None
         self.current_task_status = "idle" # idle, thinking, planning, executing, completed
+        self.current_thought = "" 
 
     @classmethod
     def get_instance(cls):

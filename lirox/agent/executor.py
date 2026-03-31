@@ -255,44 +255,36 @@ class Executor:
         task_lower = step["task"].lower()
 
         # Determine if this is a search or a specific URL fetch
-        if any(k in task_lower for k in ["search", "find", "lookup", "research", "latest", "trending"]):
-            # Web search — use LLM to extract a good search query
+        if any(k in task_lower for k in ["research", "deep dive", "everything about", "latest on"]):
+            # Deep research synthesis
             query_prompt = (
-                f"Extract a concise web search query from this task. "
-                f"Return ONLY the search query, nothing else.\n\n"
+                f"Extract a comprehensive research query from this task. "
+                f"Return ONLY the query, nothing else.\n\n"
                 f"Task: {step['task']}\n"
                 f"Context: {context[:300] if context else 'None'}"
             )
-            search_query = generate_response(query_prompt, provider, system_prompt=system_prompt)
-            search_query = search_query.strip().strip("\"'")
+            query = generate_response(query_prompt, provider, system_prompt=system_prompt).strip().strip("\"'")
+            res = self.browser.research_topic(query)
+            if isinstance(res, dict):
+                # We return the content but the caller (Executor.run) can see metadata
+                return res.get("content", "No content found.")
+            return res
 
-            results = self.browser.search_web(search_query, num_results=5)
-
-            if not results:
-                return f"No search results found for: {search_query}"
-
-            # Format results
-            formatted = []
-            for i, r in enumerate(results, 1):
-                formatted.append(f"{i}. {r['title']}\n   {r['url']}\n   {r['snippet']}")
-
-            # Fetch top result for detailed content
-            top_url = results[0].get("url", "") if results else ""
-            page_text = ""
-            if top_url:
-                try:
-                    page_text = self.browser.summarize_page(top_url)
-                except Exception:
-                    page_text = ""
-
-            return (
-                f"Search Results for '{search_query}':\n" +
-                "\n\n".join(formatted) +
-                (f"\n\n--- Top Result Content ---\n{page_text[:2000]}" if page_text else "")
+        elif any(k in task_lower for k in ["search", "find", "lookup"]):
+            # Standard search
+            query_prompt = (
+                f"Extract a concise search query. Return ONLY the search query.\n\n"
+                f"Task: {step['task']}"
             )
+            search_query = generate_response(query_prompt, provider, system_prompt=system_prompt).strip().strip("\"'")
+            results = self.browser.search_web(search_query, num_results=5)
+            if not results: return f"No search results found for: {search_query}"
+            
+            formatted = [f"{i}. {r['title']} ({r['domain']})\n   {r['url']}\n   {r['snippet']}" for i, r in enumerate(results, 1)]
+            return f"Search Results for '{search_query}':\n" + "\n\n".join(formatted)
 
         elif "http" in task_lower:
-            # Extract URL from task
+            # Specific URL fetch
             import re
             url_match = re.search(r'https?://\S+', step["task"])
             if url_match:
@@ -368,10 +360,18 @@ class Executor:
             except ToolExecutionError as e:
                 return f"[file_io] {str(e)}"
 
-        elif any(k in task_lower for k in ["list", "ls", "directory"]):
+        elif any(k in task_lower for k in ["list", "ls", "directory", "folder"]):
+            # Extract directory
+            dir_prompt = (
+                f"Extract the directory path to list. Return ONLY the path. "
+                f"Default to '.' if none. Resolve 'the download folder' to ~/Downloads. "
+                f"Return absolute path or ~/. No explanation.\n\n"
+                f"Task: {step['task']}"
+            )
+            directory = generate_response(dir_prompt, provider, system_prompt=system_prompt).strip().strip("\"'` \n")
             try:
-                files = self.file_io.list_files(".")
-                return "\n".join(files)
+                files = self.file_io.list_files(directory)
+                return f"Files in {directory}:\n" + "\n".join(files)
             except ToolExecutionError as e:
                 return f"[file_io] {str(e)}"
 

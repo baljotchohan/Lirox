@@ -153,24 +153,17 @@ class BrowserTool:
     def search_web(self, query, num_results=5):
         """
         Search the web using DuckDuckGo HTML (no API key required).
-
-        Args:
-            query: Search query string
-            num_results: Max number of results to return
-
-        Returns:
-            List of dicts: [{"title": ..., "url": ..., "snippet": ...}]
+        Returns list of rich source objects.
         """
         search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
 
         try:
             html = self.fetch_url(search_url, timeout=15)
         except ToolExecutionError:
-            # Fallback: return empty results on search failure
             return []
 
         if not BeautifulSoup:
-            return [{"title": "Error", "url": "", "snippet": "beautifulsoup4 not installed"}]
+            return [{"title": "Error", "url": "", "snippet": "BS4 missing", "domain": "error"}]
 
         soup = BeautifulSoup(html, "html.parser")
         results = []
@@ -178,26 +171,26 @@ class BrowserTool:
         for result in soup.select(".result"):
             title_el = result.select_one(".result__a")
             snippet_el = result.select_one(".result__snippet")
-            url_el = result.select_one(".result__url")
 
             if title_el:
                 title = title_el.get_text(strip=True)
                 url = title_el.get("href", "")
                 snippet = snippet_el.get_text(strip=True) if snippet_el else ""
 
-                # DuckDuckGo wraps URLs in redirects — extract the real URL
                 if "uddg=" in url:
                     try:
                         from urllib.parse import parse_qs, urlparse as up
                         real_url = parse_qs(up(url).query).get("uddg", [url])[0]
                         url = real_url
-                    except Exception:
-                        pass
+                    except Exception: pass
 
+                domain = urlparse(url).netloc.replace("www.", "")
                 results.append({
                     "title": title,
                     "url": url,
-                    "snippet": snippet
+                    "snippet": snippet,
+                    "domain": domain,
+                    "icon": f"https://www.google.com/s2/favicons?sz=64&domain={domain}"
                 })
 
             if len(results) >= num_results:
@@ -205,40 +198,34 @@ class BrowserTool:
 
         return results
 
-    def score_source(self, url):
-        """Heuristic scoring of source quality based on domain."""
-        high_quality = ["wikipedia.org", "github.com", "stackshare.io", "techcrunch.com", "theverge.com", "arxiv.org", "medium.com"]
-        low_quality = ["quora.com", "facebook.com", "twitter.com", "reddit.com"] # Reddit can be good but noisy
-        
-        domain = urlparse(url).netloc.lower()
-        if any(h in domain for h in high_quality): return 0.9
-        if any(l in domain for l in low_quality): return 0.4
-        return 0.7 # Neutral baseline
-
     def research_topic(self, query):
         """
-        Deep research: search, fetch top 3 high-score sources, and synthesize.
+        Deep research: search, fetch top sources, and synthesize.
+        Returns a dict with 'content' and 'sources' list.
         """
         results = self.search_web(query, num_results=8)
         if not results:
-            return "No search results found for the query."
+            return {"content": "No search results found.", "sources": []}
 
-        # Rank by source score
+        # Rank by source quality score
         for r in results:
             r["score"] = self.score_source(r["url"])
         
         sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)
-        top_3 = sorted_results[:3]
+        top_sources = sorted_results[:4]
         
-        synthesis = [f"Research Synthesis for: {query}\n"]
-        for i, res in enumerate(top_3, 1):
-            synthesis.append(f"Source {i}: {res['title']} ({res['url']})")
+        synthesis_input = [f"Focus Query: {query}\n"]
+        for i, res in enumerate(top_sources, 1):
+            synthesis_input.append(f"Source {i} ({res['domain']}):")
             content = self.summarize_page(res["url"])
-            # Take a bit more content for research (6000 chars total across 3 sources)
-            synthesis.append(content[:2000])
-            synthesis.append("-" * 40)
+            synthesis_input.append(content[:1500]) # Take chunks from multiple sources
+            synthesis_input.append("-" * 20)
             
-        return "\n".join(synthesis)
+        return {
+            "content": "\n".join(synthesis_input), 
+            "sources": top_sources,
+            "type": "research_synthesis"
+        }
 
     def summarize_page(self, url):
         """

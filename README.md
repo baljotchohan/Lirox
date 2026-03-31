@@ -1,6 +1,6 @@
-# 🌌 Lirox Agent OS (v0.3.1)
+# 🌌 Lirox Agent OS (v0.4.1 - Premium Research Edition)
 
-Lirox is a powerful, local-first autonomous agent designed to be your personal AI operating system. It handles complex, multi-step tasks natively on your machine with a focus on privacy, speed, and a premium user experience.
+Lirox is a high-fidelity, local-first autonomous agent featuring advanced reasoning traces, structured source attribution, and robust provider resilience.
 
 ![Lirox Web UI](/Users/baljotchohan/.gemini/antigravity/brain/b5c13d21-051a-4110-9a82-586f7df6614c/lirox_web_ui_chat_page_1774893087514.png)
 
