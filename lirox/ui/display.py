@@ -33,6 +33,8 @@ CLR_SUCCESS = "bold #10b981" # Emerald Green
 CLR_ERROR = "bold #ef4444"   # Rose Red
 CLR_WARN = "bold #FFC107"    # Standard Yellow
 CLR_DIM = "dim #94a3b8"      # Slate
+CLR_WHITE = "bold #ffffff"
+CLR_PURPLE = "bold #a855f7"
 
 # ─── Logos & Branding ───────────────────────────────────────────────────────
 
@@ -105,13 +107,46 @@ class AgentSpinner:
 
 
 def thinking_panel(goal: str, thought_trace: str):
+    """Render a sophisticated reasoning panel with phase-based layouts."""
+    phases = {"PHASE 1": "", "PHASE 2": "", "PHASE 3": ""}
+    current_phase = None
+
+    for line in thought_trace.split("\n"):
+        if "PHASE 1" in line.upper(): current_phase = "PHASE 1"
+        elif "PHASE 2" in line.upper(): current_phase = "PHASE 2"
+        elif "PHASE 3" in line.upper(): current_phase = "PHASE 3"
+        elif current_phase:
+            phases[current_phase] += line + "\n"
+
+    # Fallback if no phases found
+    if not any(phases.values()):
+        phases["PHASE 1"] = thought_trace
+
+    layout = Layout()
+    layout.split_column(
+        Layout(name="header", size=3),
+        Layout(name="body")
+    )
+    layout["body"].split_row(
+        Layout(Panel(phases["PHASE 1"].strip(), title="[bold]01 ANALYSIS", border_style=CLR_LIROX)),
+        Layout(Panel(phases["PHASE 2"].strip(), title="[bold]02 LOGIC", border_style="#4ecdc4")),
+        Layout(Panel(phases["PHASE 3"].strip(), title="[bold]03 RISK", border_style="#ff6b6b"))
+    )
+
+    header_text = Text.assemble(
+        (" 🧠 INTERNAL REASONING ", "bold black on #FFC107"),
+        (f"  Target: {goal[:50]}...", CLR_DIM)
+    )
+    layout["header"].update(header_text)
+
+    console.print("\n")
     console.print(Panel(
-        thought_trace,
-        title=f"[{CLR_WARN}] INTERNAL REASONING: {goal[:40]}... [/]",
-        title_align="left",
-        border_style=CLR_WARN,
-        padding=(1, 2)
+        layout,
+        border_style=CLR_LIROX,
+        padding=(1, 1),
+        height=18
     ))
+    console.print("\n")
 
 # ─── Execution Trace ────────────────────────────────────────────────────────
 

@@ -121,10 +121,13 @@ def run_autonomous_task(agent, goal):
         return
 
     info_panel(f"Deployment Initialized: {goal}")
+    
     spinner = AgentSpinner("Architecting strategy...")
     spinner.start()
     thought = agent.reasoner.generate_thought_trace(goal)
     spinner.stop()
+    
+    # New Advanced Thinking UI
     thinking_panel(goal, thought)
     
     spinner = AgentSpinner("Breaking down objectives...")

@@ -28,26 +28,30 @@ class Reasoner:
         self.provider = provider
 
     def generate_thought_trace(self, goal: str, context: str = "") -> str:
-        """Produce a detailed logical breakdown (Claude-style thinking)."""
+        """Produce a detailed logical breakdown (Phase-based thinking)."""
         prompt = (
-            f"You are the reasoning core of Lirox, an autonomous AI research agent.\n"
-            f"Analyze the following goal and break down your internal logic step-by-step.\n"
-            f"Explain HOW you will approach this, WHY certain tools are needed, "
-            f"and what obstacles you anticipate.\n"
-            f"Format as an 'Internal Monologue'. Be logical, deep, and structured.\n\n"
+            f"You are the strategic reasoning core of Lirox.\n"
+            f"Analyze the following goal and break down your internal logic into three distinct phases.\n\n"
             f"Goal: {goal}\n"
             f"Context: {context or 'None'}\n\n"
-            f"### 🧠 Thought Trace (Internal Monologue)"
+            f"MANDATORY OUTPUT FORMAT:\n"
+            f"PHASE 1: STRATEGIC ANALYSIS\n"
+            f"(Analyze the core requirements and system state)\n\n"
+            f"PHASE 2: EXECUTION LOGIC\n"
+            f"(Steps, tools, and technical approach)\n\n"
+            f"PHASE 3: RISK & CONTINGENCY\n"
+            f"(Anticipated obstacles and how to bypass them)\n\n"
+            f"Be deep, technical, and logical. Use bullet points."
         )
         try:
             self.thought_trace = generate_response(
                 prompt, self.provider,
                 system_prompt="You are a brilliant, logical AI strategist. "
-                              "Your internal monologue should be detailed and insightful."
+                              "Break your logic into Phase 1, Phase 2, and Phase 3 exactly."
             )
             return self.thought_trace
         except Exception:
-            self.thought_trace = f"Thinking about how to resolve: {goal}..."
+            self.thought_trace = f"PHASE 1: ANALYSIS\n- Thinking about how to resolve: {goal}..."
             return self.thought_trace
 
     def evaluate_step(self, step: dict, result: dict, plan: dict, all_results: dict) -> dict:
