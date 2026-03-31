@@ -98,8 +98,11 @@ def process_input(agent, user_input, verbose=False):
             # Professionally strip meta-data from display
             clean_text, meta = extract_meta(raw_response)
             
+            from rich.markdown import Markdown
             spinner.stop()
-            print(f"\n{clean_text}\n")
+            print()
+            console.print(Markdown(clean_text))
+            print()
             
             # Only show signals in verbose mode or for high-risk alerts
             if verbose and meta.get("intent"):
