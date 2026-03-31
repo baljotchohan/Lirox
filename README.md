@@ -1,17 +1,19 @@
-# 🌌 Lirox Agent OS (v0.4.1)
+# 🌌 Lirox Agent OS (v0.5.0 CLI-First)
 
-**Lirox** is a local-first autonomous AI agent OS with multi-step planning, tool execution, passive memory, and a rich Web UI — all running on your own machine.
+![Lirox Logo](lirox/assets/logo.png)
+
+**Lirox** is a local-first autonomous AI agent OS designed for professional terminal environments. It features multi-step reasoning, planning, secure tool execution (terminal, file_io, browser), and persistent memory — all running on your own machine.
 
 ---
 
 ## ✨ Features
 
-- **🚀 Dual Interface** — Run in the terminal or the Web dashboard
-- **🧠 Autonomous Planning** — Breaks complex goals into executable steps
-- **🛡️ Local-First & Private** — Keys, memory, and profile stay on **your** machine
-- **🔌 Multi-LLM Router** — Smart routing between Groq, Gemini, OpenAI, OpenRouter, NVIDIA NIM
-- **📂 File System** — Read, write, and manage files autonomously
-- **🎛️ Personalized** — Adapts to your niche, agent name, and goals over time
+- **🐚 Professional CLI** — Hardened hacker-oriented interface with `rich` and `prompt_toolkit`.
+- **🧠 Autonomous Strategy** — Uses reasoning traces to architectural multi-step plans before execution.
+- **🛡️ Hardened Security** — Agent is sandboxed by default with a strict CLI-only risk policy.
+- **🔌 Multi-LLM Protocol** — Native support for Groq, Gemini, Anthropic, OpenAI, OpenRouter, and NVIDIA NIM.
+- **📂 Full File Control** — Read, write, and manage codebases within authorized paths.
+- **🦁 Personal Identity** — Adapts to your specific niche, goals, and operator context over time.
 
 ---
 
@@ -24,137 +26,71 @@ cd Lirox
 pip install -r requirements.txt
 ```
 
-### 2. Add an API Key
-Copy the example env file and fill in at least **one** key (Groq and Gemini both have free tiers):
+### 2. Configure Keys
+Create a `.env` file or run the setup wizard on first launch.
 ```bash
 cp .env.example .env
-# Then edit .env and add your key
+# Edit .env and add at least one key (e.g. GROQ_API_KEY)
 ```
 
-Or configure interactively on first launch — the setup wizard will prompt you.
-
-### 3. Launch
-```bash
-# Terminal CLI
-python3 -m lirox.main
-
-# Web UI (recommended)
-python3 -m lirox.web
-# → Open http://127.0.0.1:8000
-```
-
----
-
-## 🔄 Updating Lirox
-
-To pull the latest version and reinstall dependencies:
-
-### Option A — Inside the CLI (easiest)
-```
-/update
-```
-Run this command from the Lirox terminal prompt. It will:
-- Pull the latest code from GitHub (`git pull origin main`)
-- Reinstall any new dependencies (`pip install -r requirements.txt`)
-- Prompt you to restart
-
-### Option B — Manual (from your shell)
-```bash
-cd /path/to/Lirox
-git pull origin main
-pip install -r requirements.txt
-```
-Then restart:
-```bash
-python3 -m lirox.main
-# or
-python3 -m lirox.web
-```
-
----
-
-## 🖥️ Usage
-
-### 🌐 Web UI (Recommended)
-```bash
-python3 -m lirox.web
-```
-Open **http://127.0.0.1:8000** in your browser.
-
-| Page | What it does |
-|------|-------------|
-| Chat | Fluid conversation with your agent |
-| Autonomous Tasks | Visual planning and execution tracing |
-| Agent Profile | Set your name, goals, and tone |
-| System Settings | Manage API keys, autonomy threshold, memory |
-
-### 🐚 CLI (Power Users)
+### 3. Launch the Kernel
 ```bash
 python3 -m lirox.main
 ```
 
-| Command | Description |
-|---------|-------------|
-| `/plan "goal"` | Create a multi-step execution plan |
-| `/execute-plan` | Run the last generated plan |
-| `/reasoning` | Show agent's reasoning for last action |
-| `/trace` | Full execution trace (debug) |
-| `/tasks` | List all scheduled tasks |
-| `/schedule "goal"` | Schedule a task for later |
-| `/profile` | View your current agent profile |
-| `/setup` | Re-run the full setup wizard |
-| `/set-goal "..."` | Add a goal to your profile |
-| `/set-name Name` | Rename your agent |
-| `/set-tone tone` | Change tone: direct / casual / formal / friendly |
-| `/provider model` | Switch provider: groq / gemini / openai / openrouter / auto |
-| `/memory` | View recent conversation memory |
-| `/memory-search q` | Search memory for a keyword |
-| `/clear` | Clear conversation memory (keeps profile) |
-| `/add-api` | Open API key setup |
-| `/update` | **Pull latest version from GitHub + reinstall deps** |
-| `/status` | Show system status |
-| `/exit` | Quit Lirox |
+---
+
+## 🖥️ Professional COMMANDS
+
+| Command | Protocol |
+|---------|----------|
+| `/profile`   | Inspect operator identity and learned facts |
+| `/memory`    | Check neural core statistics |
+| `/clear`     | Flush ephemeral conversation history |
+| `/trace`     | Review raw tool execution logs |
+| `/reasoning` | Inspect the last thought trace / strategy |
+| `/think goal`| Brainstorm a mission without execution |
+| `/models`    | Map available LLM provider channels |
+| `/schedule`  | Queue a task for future execution |
+| `/add-api`   | Securely configure API keys |
+| `/exit`      | Safely shut down the Lirox kernel |
 
 ---
 
-## 🏗️ Architecture
+## 🏗️ Architecture (v0.5.0 Single-Channel)
 
 ```text
 Lirox/
-├── lirox/               Core Agent Logic
+├── lirox/               Core Domain Logic
 │   ├── agent/           Planner, Executor, Memory, Reasoner, Profile
-│   ├── server/          FastAPI Web Backend (routes, state, models)
-│   ├── tools/           Browser, File I/O, Terminal tools
-│   ├── ui/              CLI Display & Setup Wizard
-│   └── web.py           Web Server Entry Point
-├── frontend/            React + Vite Dashboard
-├── scripts/             Maintenance & Verification
-├── .env.example         API key template
-└── requirements.txt     Python dependencies
+│   ├── tools/           Hardened Browser, File I/O, Terminal toolsets
+│   ├── ui/              Rich CLI Display & Setup Wizard
+│   └── assets/          Official Branding & Visuals
+├── outputs/             Authorized Agent Output Directory
+├── .env.example         API Key Template
+└── requirements.txt     Lean CLI Dependencies
 ```
 
 ---
 
-## 🔑 Supported Providers
+## 🔑 Supported Provider Matrix
 
-| Provider | Free Tier | Env Variable |
-|----------|-----------|--------------|
-| **Groq** | ✅ Yes (fast) | `GROQ_API_KEY` |
-| **Gemini** | ✅ Yes | `GEMINI_API_KEY` |
-| **OpenRouter** | ✅ Free models | `OPENROUTER_API_KEY` |
-| **NVIDIA NIM** | ✅ Yes | `NVIDIA_API_KEY` |
-| **OpenAI** | ❌ Paid | `OPENAI_API_KEY` |
-| **DeepSeek** | ❌ Very cheap | `DEEPSEEK_API_KEY` |
-
----
-
-## 🔒 Privacy & Safety
-
-- **Local-First** — No cloud sync, no third-party storage
-- **Terminal Shield** — Agent sandboxed to project root by default
-- **Keys in `.env`** — Never committed to git (`.gitignore` covers this)
-- **Append-only Memory** — Memory is compressed and local
+| Provider | Efficiency | Signal Variable |
+|----------|------------|-----------------|
+| **Groq** | ✅ Fastest | `GROQ_API_KEY` |
+| **Gemini** | ✅ Logic Leader | `GEMINI_API_KEY` |
+| **Anthropic** | ✅ Coding Pro | `ANTHROPIC_API_KEY` |
+| **OpenRouter** | ✅ Scalable | `OPENROUTER_API_KEY` |
+| **NVIDIA NIM** | ✅ Specialized | `NVIDIA_API_KEY` |
+| **DeepSeek** | ✅ Cheap/Sharp | `DEEPSEEK_API_KEY` |
 
 ---
+
+## 🔒 Security Protocol
+
+- **Local Persistence** — All state is anchored strictly to `PROJECT_ROOT`.
+- **Memory Compression** — Passive fact learning ensures clean context windows.
+- **Sandboxed Execution** — No sudo, rm, or system edits permitted by agent by default.
+- **Privacy First** — Your data never leaves your machine unless you explicitly target a URL.
 
 Built with ❤️ by **Baljot Chohan & Antigravity**.

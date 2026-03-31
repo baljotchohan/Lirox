@@ -1,224 +1,178 @@
 """
-Lirox v0.3 — Terminal Display System
+Lirox v0.5 — Professional Terminal UI
 
-Premium terminal rendering using Rich:
-- Dark hacker aesthetic with amber/gold accents
-- Structured plan display with tool icons
-- Execution trace and reasoning panels
-- Interactive confirmation prompts
+Aesthetic components for the command-line experience:
+- Modern, hacker-ready terminal panels
+- Real-time spinners with dynamic message updates
+- System status cards with version v0.5
+- Execution trace & thinking breakdown visuals
+- Confetti-inspired success animations (ASCII)
 """
 
-import time
 import sys
+import time
+import threading
 from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
-from rich.text import Text
-from rich.progress import Progress, SpinnerColumn, BarColumn, TextColumn
-from rich.theme import Theme
-from rich.status import Status
-from rich.box import ROUNDED
+from rich.spinner import Spinner
 from rich.table import Table
-from rich.prompt import Confirm
+from rich.text import Text
+from rich.layout import Layout
+from rich.columns import Columns
+from rich.progress import Progress, SpinnerColumn, TextColumn
+from lirox.config import APP_VERSION
 
-# Custom Theme: Dark hacker aesthetic with amber/gold accents
-custom_theme = Theme({
-    "agent": "bold #f5a623",   # Amber
-    "user_input": "#7eb8f7",   # Light Blue
-    "info": "#4a4845",         # Muted gray
-    "success": "#4caf50",      # Green
-    "warning": "#ff9800",      # Orange
-    "error": "#f44336",        # Red
-    "background": "#0a0a0a",
-    "text": "#e8e6d9",         # Warm off-white
-    "cyan": "#00bcd4",         # Cyan accent
-    "purple": "#9c27b0",       # Purple accent
-})
+console = Console()
 
-console = Console(theme=custom_theme)
+# ─── Color Palette ──────────────────────────────────────────────────────────
 
+CLR_LIROX = "bold #3b82f6"  # Premium Blue
+CLR_ACCENT = "bold #60a5fa"
+CLR_SUCCESS = "bold #10b981" # Emerald Green
+CLR_ERROR = "bold #ef4444"   # Rose Red
+CLR_WARN = "bold #f59e0b"    # Amber
+CLR_DIM = "dim #94a3b8"      # Slate
 
-def print_logo():
-    logo = """
-    ██╗     ██╗██████╗  ██████╗ ██╗  ██╗
-    ██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝
-    ██║     ██║██████╔╝██║   ██║ ╚███╔╝ 
-    ██║     ██║██╔══██╗██║   ██║ ██╔██╗ 
-    ███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗
-    ╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝
-    """
-    console.print(Panel(Text(logo, justify="center", style="agent"), border_style="agent", box=ROUNDED))
-    console.print(Text("         Personal AI Agent OS • v0.3", justify="center", style="info"))
-    console.print("")
+# ─── Logos & Branding ───────────────────────────────────────────────────────
 
+LOGO = f"""
+  [bold #1d4ed8]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
+  [bold #2563eb]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]
+  [bold #3b82f6]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]
+  [bold #60a5fa]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
+  [bold #93c5fd]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
+  [bold #bfdbfe]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
+  [bold #3b82f6]v{APP_VERSION} ✦ AUTONOMOUS AGENT OS[/]
+"""
 
-def boot_animation():
-    steps = [
-        ("Initialising memory system...", 0.3),
-        ("Loading user profile...", 0.3),
-        ("Calibrating LLM router...", 0.2),
-        ("Initialising planning engine...", 0.2),
-        ("Loading browser & file tools...", 0.2),
-        ("Starting reasoning loop...", 0.1),
-        ("Agent online.", 0.1)
-    ]
+def show_welcome():
+    console.print(LOGO)
 
-    with Progress(
-        SpinnerColumn(spinner_name="dots", style="agent"),
-        BarColumn(bar_width=20, style="info", complete_style="agent"),
-        TextColumn("[progress.description]{task.description}"),
-        console=console,
-        transient=True
-    ) as progress:
-        task = progress.add_task("Booting...", total=len(steps))
-        for step_text, delay in steps:
-            time.sleep(delay)
-            progress.update(task, advance=1, description=step_text)
+# ─── Status Cards ───────────────────────────────────────────────────────────
 
-
-def show_status_card(agent_name, user_name, goals, provider, memory_count):
-    goal_text = goals[0] if goals else "None set"
-    content = Text.assemble(
-        ("Agent: ", "info"), (f"{agent_name}", "agent"), ("  •  ", "info"),
-        ("User: ", "info"), (f"{user_name}", "text"), ("\n", ""),
-        ("Goal:  ", "info"), (f"{goal_text}", "text"), ("\n", ""),
-        ("Model: ", "info"), (f"{provider}", "agent"), ("  •  ", "info"),
-        ("Memory: ", "info"), (f"{memory_count} exchanges", "text"), ("\n", ""),
-        ("Version: ", "info"), ("v0.3 — Autonomous Agent", "agent")
+def show_status_card(profile_data, providers):
+    table = Table(box=None, padding=(0, 2))
+    table.add_column("Agent Status", style=CLR_LIROX)
+    table.add_column("Operator Context", style=CLR_ACCENT)
+    
+    agent_name = profile_data.get("agent_name", "Lirox")
+    user_name = profile_data.get("user_name", "Operator")
+    niche = profile_data.get("niche", "Generalist")
+    
+    table.add_row(
+        f"Name: [white]{agent_name}[/]\nVersion: [white]{APP_VERSION}[/]",
+        f"User: [white]{user_name}[/]\nNiche: [white]{niche}[/]"
     )
-    console.print(Panel(content, border_style="agent", box=ROUNDED, width=60))
-
-
-def agent_panel(text, agent_name="Lirox"):
-    console.print(Panel(Text(text, style="text"), title=f" {agent_name} ", border_style="agent", box=ROUNDED, title_align="left"))
-
-
-def execute_panel(command):
-    console.print(Panel(Text(f"$ {command}", style="text"), title=" Executing ", border_style="info", box=ROUNDED, title_align="left"))
-
-
-# ─── v0.2 plan display (kept for backward compat) ────────────────────────────
-
-def plan_panel(steps):
-    """v0.2 style plan display — flat list."""
-    console.print("\n[agent]Planning...[/agent]\n")
-    for i, step in enumerate(steps, 1):
-        console.print(f"  {i} [info]○[/info] {step}")
-
-
-# ─── v0.3 Plan Display ───────────────────────────────────────────────────────
-
-# Tool icons for display
-TOOL_ICONS = {
-    "terminal": "🖥️",
-    "browser": "🌐",
-    "file_io": "📁",
-    "llm": "🧠",
-}
-
-
-def plan_panel_v3(plan):
-    """
-    Display a structured v0.3 plan with tool icons and metadata.
-    """
-    goal = plan.get("goal", "Unknown goal")
-    steps = plan.get("steps", [])
-    est_time = plan.get("estimated_time", "Unknown")
-    tools = plan.get("tools_required", [])
-
-    console.print("")
+    
+    prov_str = ", ".join(providers[:4]) + (f" (+{len(providers)-4})" if len(providers) > 4 else "")
+    
     console.print(Panel(
-        Text(f"📋 PLAN: {goal}", style="agent"),
-        border_style="agent", box=ROUNDED, title_align="left"
+        table,
+        title=f"[{CLR_LIROX}] SYSTEM PARAMETERS [/]",
+        subtitle=f"[{CLR_DIM}] Active Channels: {prov_str or 'None'} [/]",
+        border_style=CLR_LIROX,
+        padding=(1, 2)
     ))
 
-    # Tools summary
-    tool_str = "  ".join(f"{TOOL_ICONS.get(t, '🔧')} {t}" for t in tools)
-    console.print(f"  [info]Tools: {tool_str}  •  Est. time: {est_time}[/info]")
-    console.print("")
-
-    # Steps
-    for step in steps:
-        step_id = step.get("id", "?")
-        task = step.get("task", "Unknown")
-        step_tools = step.get("tools", ["llm"])
-        tool_icons = " ".join(TOOL_ICONS.get(t, "🔧") for t in step_tools)
-        deps = step.get("depends_on", [])
-        dep_str = f" (after step {', '.join(str(d) for d in deps)})" if deps else ""
-
-        console.print(f"  [info]{step_id}[/info] [info]○[/info] {task}")
-        console.print(f"    {tool_icons}{dep_str}")
-
-    console.print("")
-
-
-def update_plan_step(index, step, status="success"):
-    """Update a plan step's display with status icon."""
-    symbols = {
-        "success": ("✓", "success"),
-        "progress": ("◷", "warning"),
-        "failed": ("✗", "error"),
-        "skipped": ("⊘", "info"),
-        "pending": ("○", "info"),
-    }
-    symbol, style = symbols.get(status, ("○", "info"))
-    console.print(f"  {index} [{style}]{symbol}[/{style}] {step}")
-
-
-def reasoning_panel(reasoning_text):
-    """Display the reasoning summary in a styled panel."""
-    console.print(Panel(
-        Text(reasoning_text, style="text"),
-        title=" 💭 Reasoning ",
-        border_style="cyan",
-        box=ROUNDED,
-        title_align="left"
-    ))
-
-
-def trace_panel(trace_text):
-    """Display the execution trace in a styled panel."""
-    console.print(Panel(
-        Text(trace_text, style="text"),
-        title=" 🔍 Execution Trace ",
-        border_style="purple",
-        box=ROUNDED,
-        title_align="left"
-    ))
-
-
-def confirm_execute():
-    """Ask user to confirm plan execution. Returns True/False."""
-    try:
-        return Confirm.ask("  Execute plan?", default=True, console=console)
-    except (EOFError, KeyboardInterrupt):
-        return False
-
-
-def show_status_bar(provider, memory_count, agent_name, user_name):
-    bar = f" Provider: {provider}  •  Memory: {memory_count} msg  •  Profile: {agent_name}/{user_name}  •  /help for commands"
-    console.print(f"\n[info]{bar}[/info]")
-
-
-def error_panel(message):
-    console.print(Panel(Text(message, style="text"), title=" Error ", border_style="error", box=ROUNDED))
-
+# ─── Spinners & Live Updating ───────────────────────────────────────────────
 
 class AgentSpinner:
-    def __init__(self, agent_name="Lirox"):
-        self.status = Status(f" {agent_name} is thinking...", spinner="dots", spinner_style="agent")
-        self._running = False
+    """Manages a persistent, updateable spinner for the terminal."""
+    def __init__(self, message="Thinking..."):
+        self.message = message
+        self.spinner = Spinner("dots", style=CLR_LIROX)
+        self.live = None
 
-    def __enter__(self):
-        self._running = True
-        self.status.start()
-        return self
+    def start(self):
+        self.live = Live(self._render(), refresh_per_second=10)
+        self.live.start()
+
+    def update_message(self, new_message: str):
+        """Update the message being displayed next to the spinner."""
+        self.message = new_message
+        if self.live:
+            self.live.update(self._render())
 
     def stop(self):
-        """Idempotent stop."""
-        if self._running:
-            self.status.stop()
-            self._running = False
+        if self.live:
+            self.live.stop()
 
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.stop()
+    def _render(self):
+        return Columns([self.spinner, Text(f" {self.message}", style=CLR_ACCENT)])
+
+
+def thinking_panel(goal: str, thought_trace: str):
+    """Shows a detailed 'Internal Monologue' panel."""
+    console.print(Panel(
+        thought_trace,
+        title=f"[{CLR_WARN}] INTERNAL REASONING: {goal[:40]}... [/]",
+        title_align="left",
+        border_style=CLR_WARN,
+        padding=(1, 2)
+    ))
+
+# ─── Execution Trace ────────────────────────────────────────────────────────
+
+def show_plan_table(plan):
+    table = Table(title="STRATEGIC EXECUTION PLAN", border_style=CLR_DIM, header_style=CLR_LIROX)
+    table.add_column("Phase", justify="center", width=6)
+    table.add_column("Autonomous Objective", style="white")
+    table.add_column("Tools", justify="right", style=CLR_ACCENT)
+    
+    for i, step in enumerate(plan.get("steps", []), 1):
+        tools = ", ".join(step.get("tools", ["llm"]))
+        table.add_row(str(i), step["task"], tools)
+    
+    console.print(table)
+
+def execute_panel(command):
+    console.print(f"[{CLR_DIM}]执行指令:[/] [bold white]{command}[/]")
+
+def update_plan_step(step_id, task, status="waiting"):
+    """
+    Called by executor to indicate progress.
+    status: waiting, progress, success, failed, error
+    """
+    icon = "⏳" if status == "waiting" else "⚙️" if status == "progress" else "✅" if status == "success" else "❌"
+    color = CLR_DIM if status == "waiting" else CLR_LIROX if status == "progress" else CLR_SUCCESS if status == "success" else CLR_ERROR
+    
+    console.print(f"  {icon} [italic {color}]Step {step_id}: {task}[/]")
+
+# ─── Success & Utilities ────────────────────────────────────────────────────
+
+def success_message(text):
+    console.print(Panel(
+        f"[{CLR_SUCCESS}]✓ MISSION COMPLETE[/]\n\n{text}",
+        border_style=CLR_SUCCESS,
+        padding=(1, 2)
+    ))
+
+def error_panel(title, error):
+    console.print(Panel(
+        f"[{CLR_ERROR}]{error}[/]",
+        title=f"[{CLR_ERROR}] {title} [/]",
+        border_style=CLR_ERROR,
+        padding=(1, 2)
+    ))
+
+def info_panel(text):
+    console.print(Panel(text, border_style=CLR_LIROX, padding=(1, 2)))
+
+def confirm_prompt(message: str) -> bool:
+    from rich.prompt import Confirm
+    return Confirm.ask(f"[{CLR_WARN}]{message}[/]")
+
+# ─── ASCII Art Fun ──────────────────────────────────────────────────────────
+
+def show_completion_art():
+    art = f"""
+    [{CLR_SUCCESS}]      .
+            .
+      .  :  .
+       : : :
+     '.: : :.'
+       ' : '
+         ' [/]
+    """
+    console.print(art)

@@ -1,338 +1,213 @@
-"""
-Lirox v0.3 — CLI Entry Point
-
-Main interactive loop with all v0.3 commands:
-- /plan, /execute-plan, /reasoning, /trace
-- /tasks, /schedule
-- /update — pull latest version from GitHub
-- All v0.2 commands preserved
-"""
-
-import sys
 import os
-import subprocess
-from pathlib import Path
-from prompt_toolkit import PromptSession
-from prompt_toolkit.history import FileHistory
-from prompt_toolkit.styles import Style as PTStyle
+import sys
+import argparse
+import re
+import json
 from lirox.agent.core import LiroxAgent
 from lirox.ui.display import (
-    console, print_logo, boot_animation, show_status_card,
-    show_status_bar, agent_panel, error_panel, reasoning_panel,
-    trace_panel, Panel, ROUNDED
+    show_welcome, 
+    show_status_card, 
+    show_plan_table, 
+    success_message, 
+    error_panel, 
+    info_panel, 
+    thinking_panel,
+    AgentSpinner,
+    confirm_prompt,
+    show_completion_art,
+    CLR_LIROX, CLR_DIM, CLR_WARN
 )
-from lirox.ui.wizard import run_setup_wizard, check_api_keys
-
-# Prompt toolkit styles
-pt_style = PTStyle.from_dict({
-    'prompt': '#7eb8f7 bold',
-})
-
-
-def print_help():
-    help_text = """
-    ── v0.3 Agent Commands ──────────────────────────
-
-    /plan "goal"      → Show plan for a goal (don't execute)
-    /execute-plan     → Execute the last generated plan
-    /reasoning        → Show agent's reasoning for last action
-    /trace            → Show full execution trace (debug)
-    /tasks            → List all scheduled tasks
-    /schedule "goal"  → Schedule task for later
-
-    ── Profile & Settings ───────────────────────────
-
-    /profile          → View your current agent profile
-    /setup            → Re-run the full setup wizard
-    /set-goal "..."   → Add a goal to your profile
-    /set-name Name    → Rename your agent
-    /set-tone tone    → Change agent tone (direct|casual|formal|friendly)
-    /provider model   → Switch provider (openai|gemini|groq|openrouter|deepseek|auto)
-
-    ── Memory & System ──────────────────────────────
-
-    /memory           → View recent conversation memory
-    /memory-search q  → Search memory for a keyword
-    /clear            → Clear conversation memory (keeps profile)
-    /status           → Show system status
-    /add-api          → Open API key setup
-    /update           → Pull latest version from GitHub + reinstall deps
-    /exit             → Quit Lirox
-    """
-    agent_panel(help_text, "Commands")
-
-
-def run_update():
-    """Pull latest code from GitHub and reinstall requirements."""
-    project_root = Path(__file__).resolve().parent.parent
-    req_file = project_root / "requirements.txt"
-
-    console.print("\n[info]🔄 Checking for updates...[/info]")
-
-    # Step 1: git pull
-    result = subprocess.run(
-        ["git", "pull", "origin", "main"],
-        cwd=str(project_root),
-        capture_output=True,
-        text=True
-    )
-    if result.returncode != 0:
-        console.print(f"[warning]Git pull failed:\n{result.stderr.strip()}[/warning]")
-        return
-
-    output = result.stdout.strip()
-    if "Already up to date" in output:
-        console.print(Panel(
-            "✓ Already up to date. No changes pulled.",
-            border_style="success", box=ROUNDED
-        ))
-    else:
-        console.print(Panel(
-            f"✓ Update pulled successfully:\n\n{output}",
-            border_style="success", box=ROUNDED, title=" Git Update "
-        ))
-
-    # Step 2: reinstall requirements
-    if req_file.exists():
-        console.print("[info]📦 Reinstalling dependencies...[/info]")
-        pip_result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-r", str(req_file), "-q"],
-            capture_output=True,
-            text=True
-        )
-        if pip_result.returncode == 0:
-            console.print("[success]✓ Dependencies up to date.[/success]")
-        else:
-            console.print(f"[warning]pip install errors:\n{pip_result.stderr.strip()}[/warning]")
-    else:
-        console.print("[warning]requirements.txt not found — skipping dependency install.[/warning]")
-
-    console.print("[info]\n💡 Restart Lirox to apply updates: python3 -m lirox.main[/info]\n")
-
+from lirox.utils.llm import is_task_request, available_providers
+from lirox.utils.meta_parser import extract_meta
+from lirox.config import APP_VERSION
 
 def main():
-    # Load agent
-    try:
-        agent = LiroxAgent(provider="auto")
-    except Exception as e:
-        error_panel(f"Configuration error: {e}")
-        return
+    parser = argparse.ArgumentParser(description="Lirox Professional CLI Agent OS")
+    parser.add_argument("--setup", action="store_true", help="Run initial agent setup")
+    parser.add_argument("--task", type=str, help="Run a single autonomous task and exit")
+    args = parser.parse_args()
 
-    # First-run setup wizard
-    if not agent.profile.is_setup():
-        run_setup_wizard(agent.profile)
+    agent = LiroxAgent()
+    show_welcome()
 
-    # Boot sequence
-    console.clear()
-    print_logo()
-    boot_animation()
+    # Initial Setup Check
+    if not agent.profile.is_setup() or args.setup:
+        run_setup(agent)
 
-    # Show status card
-    p = agent.profile.data
-    show_status_card(
-        agent_name=p.get("agent_name", "Lirox"),
-        user_name=p.get("user_name", "User"),
-        goals=p.get("goals", []),
-        provider=agent.provider,
-        memory_count=len(agent.memory.history) // 2
-    )
+    # Single Task Mode
+    if args.task:
+        run_autonomous_task(agent, args.task)
+        sys.exit(0)
 
-    # Input session
-    session = PromptSession(history=FileHistory(".lirox_history"))
-
+    # Interactive Loop
+    show_status_card(agent.profile.data, available_providers())
+    
     while True:
         try:
-            user_input = session.prompt("You › ", style=pt_style).strip()
-        except (EOFError, KeyboardInterrupt):
-            console.print("\n[info]Goodbye.[/info]")
-            break
+            line = input(f"[{agent.profile.data.get('agent_name', 'Lirox')}] ✦ ").strip()
+            if not line:
+                continue
 
-        if not user_input:
-            continue
+            if line.lower() in ("exit", "quit", "/exit"):
+                info_panel("Shutting down Lirox Kernel. Goodbye.")
+                break
 
-        # ─── Handle Commands ──────────────────────────────────────────────
+            # Handle Commands
+            if line.startswith("/"):
+                handle_command(agent, line)
+                continue
 
-        lowered = user_input.lower()
+            # Process Message
+            process_input(agent, line)
 
-        if lowered == "/exit":
-            console.print("\n[info]Goodbye.[/info]")
-            break
-
-        if lowered == "/help":
-            print_help()
-            continue
-
-        if lowered == "/profile":
-            agent_panel(agent.profile.summary(), "Profile")
-            continue
-
-        if lowered == "/setup":
-            run_setup_wizard(agent.profile)
-            continue
-
-        if lowered == "/status":
-            p = agent.profile.data
-            show_status_card(
-                agent_name=p.get("agent_name", "Lirox"),
-                user_name=p.get("user_name", "User"),
-                goals=p.get("goals", []),
-                provider=agent.provider,
-                memory_count=len(agent.memory.history) // 2
-            )
-            continue
-
-        if lowered.startswith("/set-goal "):
-            goal = user_input[10:].strip().strip("\"'")
-            if goal:
-                agent.profile.add_goal(goal)
-                console.print(Panel(f"Goal added: {goal}", border_style="success", box=ROUNDED))
-            else:
-                console.print("[warning]Usage: /set-goal \"Goal text\"[/warning]")
-            continue
-
-        if lowered.startswith("/set-name "):
-            name = user_input[10:].strip()
-            if name:
-                agent.profile.update("agent_name", name)
-                console.print(Panel(f"Agent renamed to: {name}", border_style="success", box=ROUNDED))
-            else:
-                console.print("[warning]Usage: /set-name NewName[/warning]")
-            continue
-
-        if lowered.startswith("/set-tone "):
-            tone = user_input[10:].strip().lower()
-            if tone in ["direct", "casual", "formal", "friendly"]:
-                agent.profile.update("tone", tone)
-                console.print(Panel(f"Tone updated to: {tone}", border_style="success", box=ROUNDED))
-            else:
-                console.print("[warning]Usage: /set-tone direct|casual|formal|friendly[/warning]")
-            continue
-
-        if lowered.startswith("/provider "):
-            prov = user_input[10:].strip().lower()
-            if prov:
-                agent.set_provider(prov)
-                console.print(Panel(f"Provider set to: {prov}", border_style="success", box=ROUNDED))
-            else:
-                console.print("[warning]Usage: /provider openai|gemini|groq|openrouter|deepseek|auto[/warning]")
-            continue
-
-        if lowered == "/memory":
-            agent_panel(agent.memory.get_context(), "Memory")
-            continue
-
-        if lowered.startswith("/memory-search "):
-            query = user_input[15:].strip()
-            if query:
-                results = agent.memory.search_memory(query)
-                if results:
-                    lines = [f"Found {len(results)} result(s) for '{query}':\n"]
-                    for msg in results:
-                        role = "User" if msg["role"] == "user" else "Agent"
-                        lines.append(f"  {role}: {msg['content'][:100]}")
-                    agent_panel("\n".join(lines), "Memory Search")
-                else:
-                    agent_panel(f"No results found for '{query}'", "Memory Search")
-            else:
-                console.print("[warning]Usage: /memory-search keyword[/warning]")
-            continue
-
-        if lowered == "/clear":
-            msg = agent.memory.clear()
-            console.print(f"[success]{msg}[/success]")
-            continue
-
-        if lowered == "/add-api":
-            check_api_keys()
-            continue
-
-        # ─── v0.3 Commands ────────────────────────────────────────────────
-
-        if lowered.startswith("/plan "):
-            goal = user_input[6:].strip().strip("\"'")
-            if goal:
-                try:
-                    agent.show_plan(goal)
-                    console.print("[info]  Plan saved. Use /execute-plan to run it.[/info]")
-                except Exception as e:
-                    error_panel(f"Planning failed: {e}")
-            else:
-                console.print("[warning]Usage: /plan \"your goal\"[/warning]")
-            continue
-
-        if lowered == "/execute-plan":
-            try:
-                result = agent.execute_last_plan()
-                agent_label = agent.profile.data.get("agent_name", "Lirox")
-                agent_panel(result, agent_label)
-            except Exception as e:
-                error_panel(f"Execution failed: {e}")
-            continue
-
-        if lowered == "/reasoning":
-            reasoning = agent.get_last_reasoning()
-            reasoning_panel(reasoning)
-            continue
-
-        if lowered == "/trace":
-            trace = agent.get_last_trace()
-            trace_panel(trace)
-            continue
-
-        if lowered == "/tasks":
-            tasks = agent.list_scheduled_tasks()
-            agent_panel(tasks, "Scheduled Tasks")
-            continue
-
-        if lowered.startswith("/schedule "):
-            # Parse: /schedule "goal" [when]
-            parts = user_input[10:].strip()
-            goal = parts.strip("\"'")
-            when = "in_5_minutes"  # Default
-
-            # Check if timing is specified after the goal
-            timing_options = [
-                "in_5_minutes", "in_10_minutes", "in_30_minutes",
-                "in_1_hour", "in_2_hours", "daily_9am", "daily_6pm"
-            ]
-            for opt in timing_options:
-                if opt in parts.lower():
-                    when = opt
-                    goal = parts.lower().replace(opt, "").strip().strip("\"'")
-                    break
-
-            if goal:
-                result = agent.schedule_task(goal, when)
-                console.print(Panel(result, border_style="success", box=ROUNDED))
-            else:
-                console.print("[warning]Usage: /schedule \"goal\" [in_5_minutes|daily_9am|...][/warning]")
-            continue
-
-        if lowered == "/update":
-            run_update()
-            continue
-
-        # Unknown command
-        if user_input.startswith("/"):
-            console.print(f"[warning]Unknown command: {user_input}. Type /help for a list of commands.[/warning]")
-            continue
-
-        # ─── Main Agent Call ──────────────────────────────────────────────
-        try:
-            response = agent.process_input(user_input)
-            agent_label = agent.profile.data.get("agent_name", "Lirox")
-            agent_panel(response, agent_label)
-
-            # Show status bar after each turn
-            show_status_bar(
-                provider=agent.provider,
-                memory_count=len(agent.memory.history) // 2,
-                agent_name=agent_label,
-                user_name=agent.profile.data.get("user_name", "User")
-            )
+        except KeyboardInterrupt:
+            print("\nInterrupt received. Use /exit to shut down safely.")
         except Exception as e:
-            error_panel(f"Error processing input: {e}")
+            error_panel("KERNEL ERROR", str(e))
 
+def process_input(agent, user_input):
+    """v0.5.0 CLI-only Input Processor with LIROX_META signal parsing."""
+    spinner = AgentSpinner("Processing...")
+    spinner.start()
+    
+    try:
+        # 1. Decide if this is a complex task
+        is_task = is_task_request(user_input)
+        
+        if is_task:
+            spinner.stop()
+            run_autonomous_task(agent, user_input)
+        else:
+            # chat mode
+            spinner.update_message("Synthesizing reasoning...")
+            raw_response = agent.chat(user_input)
+            
+            # Clean up the output by extracting meta
+            clean_text, meta = extract_meta(raw_response)
+            
+            spinner.stop()
+            print(f"\n{clean_text}\n")
+            
+            # Mission intent signaling
+            if meta.get("intent"):
+                print(f"[{CLR_DIM}] SIGNED INTENT: {meta['intent']}[/]")
+            
+            if meta.get("risk_level") == "high":
+                print(f"[{CLR_WARN}] [KERNEL WARNING] DEPLOYMENT RISK DETECTED: HIGH[/]")
+            
+    except Exception as e:
+        spinner.stop()
+        error_panel("AGENT ERROR", str(e))
+
+def run_autonomous_task(agent, goal):
+    """Professional task execution pipeline."""
+    info_panel(f"Deployment Initialized: {goal}")
+    
+    # Reasoning Trace
+    spinner = AgentSpinner("Architecting strategy...")
+    spinner.start()
+    thought = agent.reasoner.generate_thought_trace(goal)
+    spinner.stop()
+    thinking_panel(goal, thought)
+    
+    # Plan Construction
+    spinner = AgentSpinner("Breaking down objectives...")
+    spinner.start()
+    plan = agent.planner.create_plan(goal, context=thought)
+    spinner.stop()
+    show_plan_table(plan)
+    
+    # Risk Assessment
+    needs_confirm = any("terminal" in s.get("tools", []) for s in plan.get("steps", []))
+    if needs_confirm:
+        if not confirm_prompt("Mission includes [bold red]terminal commands[/]. Proceed with deployment?"):
+            info_panel("Mission aborted by operator.")
+            return
+
+    # Execution
+    info_panel("Engaging autonomous channels...")
+    results, summary = agent.executor.execute_plan(plan)
+    
+    # Reflection & Learning
+    reflection = agent.reasoner.generate_reasoning_summary(plan, results)
+    
+    # Reporting
+    show_completion_art()
+    success_message(summary)
+    
+    if reflection.get("reflection", {}).get("suggestion"):
+        print(f"\n[{CLR_WARN}] AGENT REFLECTION: {reflection['reflection']['suggestion']}\n")
+
+def handle_command(agent, command):
+    cmd = command.lower().split()
+    base = cmd[0]
+
+    if base == "/profile":
+        info_panel(f"AGENT IDENTITY PROTOCOL\n\n{agent.profile.summary()}")
+    elif base == "/memory":
+        stats = agent.memory.get_stats()
+        text = f"Neural Connections: {stats['total_messages']}\nUser Signals: {stats['user_messages']}\nLast Update: {stats['newest']}"
+        info_panel(f"MEMORY CORE STATUS\n\n{text}")
+    elif base == "/clear":
+        print(agent.memory.clear())
+    elif base == "/trace":
+        print(agent.executor.get_trace())
+    elif base == "/reasoning":
+        print(agent.reasoner.last_reasoning_text or "No reasoning history in current session.")
+    elif base == "/models":
+        avail = available_providers()
+        text = "Available Providers:\n" + "\n".join([f"  • [bold green]{p}[/]" for p in avail])
+        info_panel(f"LLM CHANNEL MAPPING\n\n{text}")
+    elif base == "/add-api":
+        run_api_setup()
+    elif base == "/help":
+        help_text = (
+            "COMMAND REFERENCE\n\n"
+            "  /profile    Show agent identity and profile\n"
+            "  /memory     Show memory core statistics\n"
+            "  /clear      Purge all conversation history\n"
+            "  /trace      View low-level tool execution log\n"
+            "  /reasoning  Review the last thought strategy\n"
+            "  /models     List active LLM providers\n"
+            "  /add-api    Configure API keys for providers\n"
+            "  /exit       Safely terminate the Lirox kernel"
+        )
+        info_panel(help_text)
+    else:
+        print(f"Unknown command: {base}. Type /help for assistance.")
+
+def run_setup(agent):
+    info_panel("AGENT GENESIS PROTOCOL")
+    agent_name = input("Designate Agent Name: ").strip() or "Lirox"
+    user_name = input("Identity Operator: ").strip() or "Operator"
+    niche = input("Primary Niche (e.g. Infosec, Dev, Research): ").strip() or "Generalist"
+    
+    agent.profile.update("agent_name", agent_name)
+    agent.profile.update("user_name", user_name)
+    agent.profile.update("niche", niche)
+    success_message(f"Neural pathways initialized. Welcome, {user_name}. I am {agent_name} v{APP_VERSION} CLI.")
+
+def run_api_setup():
+    info_panel("API CHANNEL CONFIGURATION")
+    print("Add keys to activate providers (empty to skip):")
+    providers = ["gemini", "groq", "openai", "openrouter", "deepseek", "anthropic"]
+    env_path = os.path.join(os.getcwd(), ".env")
+    current_keys = {}
+    if os.path.exists(env_path):
+        with open(env_path, "r") as f:
+            for line in f:
+                if "=" in line:
+                    k, v = line.strip().split("=", 1)
+                    current_keys[k] = v
+    for p in providers:
+        key = input(f"  {p.upper()} API KEY: ").strip()
+        if key:
+            env_var = f"{p.upper()}_API_KEY"
+            current_keys[env_var] = key
+    with open(env_path, "w") as f:
+        for k, v in current_keys.items():
+            f.write(f"{k}={v}\n")
+    success_message("Protocol updated. Provider mapping reloaded.")
 
 if __name__ == "__main__":
     main()
