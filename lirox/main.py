@@ -4,11 +4,14 @@ Lirox v0.3 — CLI Entry Point
 Main interactive loop with all v0.3 commands:
 - /plan, /execute-plan, /reasoning, /trace
 - /tasks, /schedule
+- /update — pull latest version from GitHub
 - All v0.2 commands preserved
 """
 
 import sys
 import os
+import subprocess
+from pathlib import Path
 from prompt_toolkit import PromptSession
 from prompt_toolkit.history import FileHistory
 from prompt_toolkit.styles import Style as PTStyle
@@ -53,9 +56,58 @@ def print_help():
     /clear            → Clear conversation memory (keeps profile)
     /status           → Show system status
     /add-api          → Open API key setup
+    /update           → Pull latest version from GitHub + reinstall deps
     /exit             → Quit Lirox
     """
     agent_panel(help_text, "Commands")
+
+
+def run_update():
+    """Pull latest code from GitHub and reinstall requirements."""
+    project_root = Path(__file__).resolve().parent.parent
+    req_file = project_root / "requirements.txt"
+
+    console.print("\n[info]🔄 Checking for updates...[/info]")
+
+    # Step 1: git pull
+    result = subprocess.run(
+        ["git", "pull", "origin", "main"],
+        cwd=str(project_root),
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        console.print(f"[warning]Git pull failed:\n{result.stderr.strip()}[/warning]")
+        return
+
+    output = result.stdout.strip()
+    if "Already up to date" in output:
+        console.print(Panel(
+            "✓ Already up to date. No changes pulled.",
+            border_style="success", box=ROUNDED
+        ))
+    else:
+        console.print(Panel(
+            f"✓ Update pulled successfully:\n\n{output}",
+            border_style="success", box=ROUNDED, title=" Git Update "
+        ))
+
+    # Step 2: reinstall requirements
+    if req_file.exists():
+        console.print("[info]📦 Reinstalling dependencies...[/info]")
+        pip_result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-r", str(req_file), "-q"],
+            capture_output=True,
+            text=True
+        )
+        if pip_result.returncode == 0:
+            console.print("[success]✓ Dependencies up to date.[/success]")
+        else:
+            console.print(f"[warning]pip install errors:\n{pip_result.stderr.strip()}[/warning]")
+    else:
+        console.print("[warning]requirements.txt not found — skipping dependency install.[/warning]")
+
+    console.print("[info]\n💡 Restart Lirox to apply updates: python3 -m lirox.main[/info]\n")
 
 
 def main():
@@ -254,6 +306,10 @@ def main():
                 console.print(Panel(result, border_style="success", box=ROUNDED))
             else:
                 console.print("[warning]Usage: /schedule \"goal\" [in_5_minutes|daily_9am|...][/warning]")
+            continue
+
+        if lowered == "/update":
+            run_update()
             continue
 
         # Unknown command
