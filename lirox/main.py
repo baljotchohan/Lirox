@@ -4,14 +4,18 @@ import argparse
 import re
 import json
 import time
-import warnings
 
-# Suppress annoying urllib3/LibreSSL warnings for a cleaner CLI
+import warnings
+warnings.filterwarnings("ignore", category=UserWarning, module='urllib3')
+warnings.filterwarnings("ignore", message=".*NotOpenSSLWarning.*")
+warnings.filterwarnings("ignore", message=".*urllib3 v2 only supports OpenSSL.*")
+
 try:
     import urllib3
     warnings.simplefilter('ignore', urllib3.exceptions.NotOpenSSLWarning)
 except ImportError:
     pass
+
 
 from lirox.agent.core import LiroxAgent
 from lirox.ui.display import (
@@ -25,7 +29,8 @@ from lirox.ui.display import (
     AgentSpinner,
     confirm_prompt,
     show_completion_art,
-    CLR_LIROX, CLR_DIM, CLR_WARN
+    CLR_LIROX, CLR_DIM, CLR_WARN,
+    console
 )
 from lirox.utils.llm import is_task_request, available_providers
 from lirox.utils.meta_parser import extract_meta
@@ -98,10 +103,10 @@ def process_input(agent, user_input, verbose=False):
             
             # Only show signals in verbose mode or for high-risk alerts
             if verbose and meta.get("intent"):
-                print(f"[{CLR_DIM}] PROTOCOL SIGNAL: {meta['intent']}[/]")
+                console.print(f"[{CLR_DIM}] PROTOCOL SIGNAL: {meta['intent']}[/]")
             
             if meta.get("risk_level") == "high":
-                print(f"[{CLR_WARN}] [KERNEL WARNING] DEPLOYMENT RISK DETECTED: HIGH[/]")
+                console.print(f"[{CLR_WARN}] [KERNEL WARNING] DEPLOYMENT RISK DETECTED: HIGH[/]")
             
     except Exception as e:
         spinner.stop()

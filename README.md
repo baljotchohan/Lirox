@@ -1,7 +1,5 @@
 # 🌌 Lirox Agent OS (v0.5.0 CLI-First)
 
-![Lirox Logo](lirox/assets/logo.png)
-
 **Lirox** is a local-first autonomous AI agent OS designed for professional terminal environments. It features multi-step reasoning, planning, secure tool execution (terminal, file_io, browser), and persistent memory — all running on your own machine.
 
 ---
@@ -40,6 +38,29 @@ python3 -m lirox.main
 
 ---
 
+## 🔄 Updating Lirox
+
+To pull the latest stability features and fixes, you have two options:
+
+### Option A — Inside the CLI
+If supported in future kernel upgrades, use the built-in update command carefully:
+```text
+/update
+```
+*(Note: If `/update` is unavailable in your version, proceed with Option B).*
+
+### Option B — Manual `git pull` (Recommended)
+Exit the Lirox kernel if running, then run:
+
+```bash
+cd Lirox
+git pull origin main
+pip install -r requirements.txt
+python3 -m lirox.main
+```
+
+---
+
 ## 🖥️ Professional COMMANDS
 
 | Command | Protocol |
@@ -51,6 +72,7 @@ python3 -m lirox.main
 | `/reasoning` | Inspect the last thought trace / strategy |
 | `/think goal`| Brainstorm a mission without execution |
 | `/models`    | Map available LLM provider channels |
+| `/test`      | Run internal kernel diagnostics suite |
 | `/schedule`  | Queue a task for future execution |
 | `/add-api`   | Securely configure API keys |
 | `/exit`      | Safely shut down the Lirox kernel |
@@ -64,9 +86,9 @@ Lirox/
 ├── lirox/               Core Domain Logic
 │   ├── agent/           Planner, Executor, Memory, Reasoner, Profile
 │   ├── tools/           Hardened Browser, File I/O, Terminal toolsets
-│   ├── ui/              Rich CLI Display & Setup Wizard
-│   └── assets/          Official Branding & Visuals
+│   └── ui/              Rich CLI Display & Setup Wizard
 ├── outputs/             Authorized Agent Output Directory
+├── scripts/             Maintenance & Audit (e.g., professional_audit.py)
 ├── .env.example         API Key Template
 └── requirements.txt     Lean CLI Dependencies
 ```

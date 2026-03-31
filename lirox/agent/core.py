@@ -17,6 +17,7 @@ from lirox.agent.memory import Memory
 from lirox.agent.profile import UserProfile
 from lirox.agent.scheduler import TaskScheduler
 from lirox.utils.llm import generate_response, is_task_request
+from lirox.utils.meta_parser import extract_meta
 from lirox.config import APP_VERSION
 
 
@@ -48,14 +49,17 @@ class LiroxAgent:
         
         response = generate_response(full_prompt, provider, system_prompt=system_prompt)
         
+        # Strip metadata before saving to memory and passive learning
+        clean_text, _ = extract_meta(response)
+        
         # Save to memory
         self.memory.save_memory("user", user_input)
-        self.memory.save_memory("assistant", response)
+        self.memory.save_memory("assistant", clean_text)
         
         # Passive learning in background thread (non-blocking)
         threading.Thread(
             target=self._try_learn_from_exchange, 
-            args=(user_input, response), 
+            args=(user_input, clean_text), 
             daemon=True
         ).start()
         
