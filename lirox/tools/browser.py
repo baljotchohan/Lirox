@@ -114,23 +114,31 @@ class BrowserTool:
 
     def extract_text(self, html):
         """Extract clean readable text from HTML, stripping all tags."""
+        if not html: return ""
+        
         if not BeautifulSoup:
             # Fallback: basic regex tag stripping
             clean = re.sub(r'<[^>]+>', ' ', html)
             clean = re.sub(r'\s+', ' ', clean).strip()
             return clean
 
-        soup = BeautifulSoup(html, "html.parser")
+        try:
+            soup = BeautifulSoup(html, "html.parser")
 
-        # Remove script, style, and nav elements
-        for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
-            tag.decompose()
+            # Remove script, style, and nav elements
+            for tag in soup(["script", "style", "nav", "footer", "header", "aside"]):
+                tag.decompose()
 
-        text = soup.get_text(separator="\n", strip=True)
-
-        # Clean up excessive whitespace
-        lines = [line.strip() for line in text.splitlines() if line.strip()]
-        return "\n".join(lines)
+            text = soup.get_text(separator="\n", strip=True)
+            
+            # Clean up excessive whitespace
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            return "\n".join(lines)
+        except Exception:
+            # Fallback on parse error
+            clean = re.sub(r'<[^>]+>', ' ', html)
+            clean = re.sub(r'\s+', ' ', clean).strip()
+            return clean
 
     def extract_data(self, html, selector):
         """

@@ -283,6 +283,25 @@ class Executor:
             formatted = [f"{i}. {r['title']} ({r['domain']})\n   {r['url']}\n   {r['snippet']}" for i, r in enumerate(results, 1)]
             return f"Search Results for '{search_query}':\n" + "\n\n".join(formatted)
 
+        # Check if context contains URLs from previous steps that we should visit
+        import re
+        urls_in_context = re.findall(r'https?://[^\s\)\>]+', context) if context else []
+        # Filter typical search engine URLs and unique top results
+        filtered_urls = []
+        for u in urls_in_context:
+            u = u.rstrip('.,;)]')
+            if not any(stop in u for stop in ["duckduckgo.com", "google.com", "bing.com"]):
+                if u not in filtered_urls: filtered_urls.append(u)
+        
+        if any(k in task_lower for k in ["extract", "compare", "from pages", "summarize", "analyze results"]) and filtered_urls:
+            # We have URLs in context and the task implies processing them
+            top_urls = filtered_urls[:4] # Limit to top 4 to manage context
+            extracted_outputs = []
+            for url in top_urls:
+                content = self.browser.summarize_page(url)
+                extracted_outputs.append(f"--- Data from {url} ---\n{content}\n")
+            return "\n".join(extracted_outputs)
+
         elif "http" in task_lower:
             # Specific URL fetch
             import re
@@ -342,8 +361,9 @@ class Executor:
             # Determine filename
             path_prompt = (
                 f"Extract or suggest a file path for saving this content. "
-                f"Return ONLY the absolute file path. Use ~/Desktop/ if the user mentioned desktop. "
-                f"If no directory mentioned, use outputs/ directory. No explanation.\n\n"
+                f"Return ONLY the absolute file path string. Use ~/Desktop/ filename if the user mentioned desktop. "
+                f"If no specific directory is mentioned, use the 'outputs/' directory. "
+                f"Ensure the filename is descriptive but concise. No preamble.\n\n"
                 f"Task: {step['task']}\n"
                 f"Context: {context[:300] if context else 'None'}"
             )
