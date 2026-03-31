@@ -25,7 +25,13 @@ class KeysUpdate(BaseModel):
 class PlanRequest(BaseModel):
     goal: str
 
+class ConfirmRequest(BaseModel):
+    confirmed: bool
+    plan_id: Optional[str] = None
+
 class SettingsUpdate(BaseModel):
     allow_terminal_tool: bool
     memory_limit: int
     default_provider: str
+    auto_execute_max_steps: Optional[int] = 5
+    auto_execute_max_time: Optional[int] = 2

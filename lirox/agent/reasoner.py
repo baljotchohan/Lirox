@@ -183,46 +183,48 @@ class Reasoner:
 
     def generate_reasoning_summary(self, plan, all_results):
         """
-        Generate a human-readable reasoning summary of the plan execution.
-        Stored for /reasoning command.
-
-        Args:
-            plan: Full plan dict
-            all_results: Dict of {step_id: result}
-
-        Returns:
-            Formatted reasoning string
+        Generate a structured reasoning summary and overall reflection.
         """
-        lines = ["💭 REASONING SUMMARY", ""]
-        lines.append(f"Goal: {plan.get('goal', 'Unknown')}")
-        lines.append(f"Steps: {len(plan['steps'])}")
-        lines.append("")
-
-        # Step-by-step reasoning
+        eval_list = []
         for eval_data in self.evaluations:
-            icon = "✓" if eval_data["success"] else "✗"
-            confidence = int(eval_data["confidence"] * 100)
-            lines.append(
-                f"  {icon} Step {eval_data['step_id']}: {eval_data['task'][:60]}"
-            )
-            lines.append(
-                f"    Confidence: {confidence}% | Action: {eval_data['recommended_action']}"
-            )
-            if eval_data["notes"] and eval_data["notes"] != "Step completed successfully":
-                lines.append(f"    Note: {eval_data['notes'][:80]}")
-            lines.append("")
+            eval_list.append({
+                "step_id": eval_data["step_id"],
+                "task": eval_data["task"],
+                "success": eval_data["success"],
+                "confidence": eval_data["confidence"],
+                "action": eval_data["recommended_action"],
+                "notes": eval_data["notes"]
+            })
 
-        # Overall assessment
         reflection = self.reflect_on_progress(plan, all_results)
-        lines.append(f"Progress: {reflection['progress']}")
-        lines.append(f"On Track: {'Yes' if reflection['on_track'] else 'No'}")
+        
+        # Calculate overall confidence
+        avg_conf = sum(e["confidence"] for e in eval_list) / max(len(eval_list), 1)
+        reflection["overall_confidence"] = round(avg_conf, 2)
+        
+        # Self-correction check
+        if reflection["failed"] > 0 and avg_conf < 0.5:
+            reflection["suggestion"] = "Consider retrying with a more powerful model (e.g. OpenAI) or clarifying the instructions."
+        else:
+            reflection["suggestion"] = "Execution appears solid. No immediate correction needed."
 
-        if reflection["issues_detected"]:
-            lines.append("Issues: " + "; ".join(reflection["issues_detected"]))
-
-        summary = "\n".join(lines)
-        self.last_reasoning = summary
-        return summary
+        self.last_reasoning = {
+            "evaluations": eval_list,
+            "reflection": reflection
+        }
+        
+        # Format a human-readable string for CLI as well
+        text_lines = [f"💭 REASONING SUMMARY | Confidence: {int(avg_conf*100)}%", ""]
+        for e in eval_list:
+            icon = "✓" if e["success"] else "✗"
+            text_lines.append(f"  {icon} {e['task'][:50]}... ({int(e['confidence']*100)}%)")
+        
+        text_lines.append("")
+        text_lines.append(f"Status: {reflection['progress']}")
+        text_lines.append(f"Suggestion: {reflection['suggestion']}")
+        
+        self.last_reasoning_text = "\n".join(text_lines)
+        return self.last_reasoning
 
     def get_last_reasoning(self):
         """Return the last reasoning summary for display."""

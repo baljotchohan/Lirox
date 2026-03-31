@@ -90,68 +90,58 @@ class LiroxAgent:
 
     def process_input(self, user_input):
         """
-        Main entry point for processing user input.
-        Routes between chat and task execution.
-
-        Args:
-            user_input: Raw user input string
-
-        Returns:
-            Response string
+        Main entry point for processing user input (v0.4 Think-Plan-Execute-Reflect).
         """
+        from lirox.agent.policy import policy_engine
+        
         system_prompt = self._get_system_prompt()
         context = self.memory.get_relevant_context(user_input)
         agent_name = self.profile.data.get("agent_name", "Lirox")
 
-        # Route to best provider
+        # 1. THINK: Classify and Route
         best_provider = smart_router(user_input) if self.provider == "auto" else self.provider
+        is_task = is_task_request(user_input, best_provider)
 
         with AgentSpinner(agent_name) as spinner:
-            # Detect task vs chat
-            if is_task_request(user_input, best_provider):
-                # ─── PLANNING PHASE ───────────────────────────────────
+            if is_task:
+                # 2. PLAN: Goal → Steps
                 plan = self.planner.create_plan(user_input, system_prompt=system_prompt)
-
-                # Stop spinner for interactive display
-                spinner.stop()
-
-                # Show the plan
-                plan_panel_v3(plan)
-
-                # Ask for confirmation if enabled
-                if PLAN_CONFIRM:
-                    confirmed = confirm_execute()
-                    if not confirmed:
+                
+                # Check Execution Policy
+                policy = policy_engine.evaluate_risk(plan)
+                
+                if not policy["auto_execute"]:
+                    spinner.stop()
+                    # If this is called from Web UI, we might handle confirmation via state
+                    # For CLI compatibility, we still ask
+                    plan_panel_v3(plan)
+                    if not confirm_execute():
                         return "Plan cancelled. Use /execute-plan to run it later."
 
-                # ─── EXECUTION PHASE ──────────────────────────────────
+                # 3. EXECUTE: Plan → Results
                 self.reasoner.reset()
                 results, summary = self.executor.execute_plan(
                     plan, best_provider, system_prompt=system_prompt
                 )
 
-                # ─── REASONING PHASE ──────────────────────────────────
-                # Evaluate each step
+                # 4. REFLECT: Results → Evaluation
                 for step in plan["steps"]:
                     step_result = results.get(step["id"], {})
                     self.reasoner.evaluate_step(step, step_result, plan, results)
 
-                # Generate reasoning summary
-                reasoning = self.reasoner.generate_reasoning_summary(plan, results)
-
+                reflection = self.reasoner.generate_reasoning_summary(plan, results)
                 final_response = summary
             else:
-                # ─── CHAT PHASE (unchanged) ───────────────────────────
+                # ─── CHAT PHASE ───────────────────────────────────────
                 full_prompt = f"{context}User: {user_input}\nAssistant:"
                 final_response = generate_response(full_prompt, best_provider, system_prompt=system_prompt)
 
         # Save to memory
         self.memory.save_memory("user", user_input)
-        error_phrases = ["API key missing", "Unknown provider", "Error:", "Timeout"]
-        if not any(e in final_response for e in error_phrases):
+        if not any(e in final_response for e in ["API key missing", "Error:", "Timeout"]):
             self.memory.save_memory("assistant", final_response)
 
-        # Passively learn from the exchange
+        # Learning
         self._try_learn_from_exchange(user_input, final_response)
 
         return final_response
@@ -196,7 +186,7 @@ class LiroxAgent:
 
     def get_last_reasoning(self):
         """Return reasoning summary for /reasoning command."""
-        return self.reasoner.get_last_reasoning()
+        return getattr(self.reasoner, "last_reasoning_text", "No reasoning data yet.")
 
     def get_last_trace(self):
         """Return execution trace for /trace command."""

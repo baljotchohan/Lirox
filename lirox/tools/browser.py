@@ -205,17 +205,49 @@ class BrowserTool:
 
         return results
 
-    def summarize_page(self, url, provider="groq"):
+    def score_source(self, url):
+        """Heuristic scoring of source quality based on domain."""
+        high_quality = ["wikipedia.org", "github.com", "stackshare.io", "techcrunch.com", "theverge.com", "arxiv.org", "medium.com"]
+        low_quality = ["quora.com", "facebook.com", "twitter.com", "reddit.com"] # Reddit can be good but noisy
+        
+        domain = urlparse(url).netloc.lower()
+        if any(h in domain for h in high_quality): return 0.9
+        if any(l in domain for l in low_quality): return 0.4
+        return 0.7 # Neutral baseline
+
+    def research_topic(self, query):
+        """
+        Deep research: search, fetch top 3 high-score sources, and synthesize.
+        """
+        results = self.search_web(query, num_results=8)
+        if not results:
+            return "No search results found for the query."
+
+        # Rank by source score
+        for r in results:
+            r["score"] = self.score_source(r["url"])
+        
+        sorted_results = sorted(results, key=lambda x: x["score"], reverse=True)
+        top_3 = sorted_results[:3]
+        
+        synthesis = [f"Research Synthesis for: {query}\n"]
+        for i, res in enumerate(top_3, 1):
+            synthesis.append(f"Source {i}: {res['title']} ({res['url']})")
+            content = self.summarize_page(res["url"])
+            # Take a bit more content for research (6000 chars total across 3 sources)
+            synthesis.append(content[:2000])
+            synthesis.append("-" * 40)
+            
+        return "\n".join(synthesis)
+
+    def summarize_page(self, url):
         """
         Fetch a URL, extract text, truncate to reasonable size for LLM.
-
-        Returns:
-            Extracted text (truncated to ~4000 chars for prompt injection)
         """
         try:
             html = self.fetch_url(url)
             text = self.extract_text(html)
-            # Truncate to fit in LLM context with room for other prompts
-            return text[:4000] if len(text) > 4000 else text
+            # Truncate to fit in LLM context
+            return text[:3000] if len(text) > 3000 else text
         except ToolExecutionError as e:
             return f"Error accessing {url}: {str(e)}"

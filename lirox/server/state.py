@@ -10,6 +10,9 @@ class GlobalState:
         self.execution_lock = threading.Lock()
         self.last_plan = None
         self.last_results = None
+        self.pending_confirmation = False
+        self.pending_plan = None
+        self.current_task_status = "idle" # idle, thinking, planning, executing, completed
 
     @classmethod
     def get_instance(cls):
