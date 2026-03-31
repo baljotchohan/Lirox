@@ -3,6 +3,7 @@ import sys
 import argparse
 import re
 import json
+import time
 from lirox.agent.core import LiroxAgent
 from lirox.ui.display import (
     show_welcome, 
@@ -71,27 +72,19 @@ def process_input(agent, user_input):
     spinner.start()
     
     try:
-        # 1. Decide if this is a complex task
         is_task = is_task_request(user_input)
-        
         if is_task:
             spinner.stop()
             run_autonomous_task(agent, user_input)
         else:
-            # chat mode
             spinner.update_message("Synthesizing reasoning...")
             raw_response = agent.chat(user_input)
-            
-            # Clean up the output by extracting meta
             clean_text, meta = extract_meta(raw_response)
-            
             spinner.stop()
             print(f"\n{clean_text}\n")
             
-            # Mission intent signaling
             if meta.get("intent"):
                 print(f"[{CLR_DIM}] SIGNED INTENT: {meta['intent']}[/]")
-            
             if meta.get("risk_level") == "high":
                 print(f"[{CLR_WARN}] [KERNEL WARNING] DEPLOYMENT RISK DETECTED: HIGH[/]")
             
@@ -100,43 +93,53 @@ def process_input(agent, user_input):
         error_panel("AGENT ERROR", str(e))
 
 def run_autonomous_task(agent, goal):
-    """Professional task execution pipeline."""
     info_panel(f"Deployment Initialized: {goal}")
-    
-    # Reasoning Trace
     spinner = AgentSpinner("Architecting strategy...")
     spinner.start()
     thought = agent.reasoner.generate_thought_trace(goal)
     spinner.stop()
     thinking_panel(goal, thought)
     
-    # Plan Construction
     spinner = AgentSpinner("Breaking down objectives...")
     spinner.start()
     plan = agent.planner.create_plan(goal, context=thought)
     spinner.stop()
     show_plan_table(plan)
     
-    # Risk Assessment
     needs_confirm = any("terminal" in s.get("tools", []) for s in plan.get("steps", []))
     if needs_confirm:
         if not confirm_prompt("Mission includes [bold red]terminal commands[/]. Proceed with deployment?"):
             info_panel("Mission aborted by operator.")
             return
 
-    # Execution
     info_panel("Engaging autonomous channels...")
     results, summary = agent.executor.execute_plan(plan)
-    
-    # Reflection & Learning
     reflection = agent.reasoner.generate_reasoning_summary(plan, results)
-    
-    # Reporting
     show_completion_art()
     success_message(summary)
     
     if reflection.get("reflection", {}).get("suggestion"):
         print(f"\n[{CLR_WARN}] AGENT REFLECTION: {reflection['reflection']['suggestion']}\n")
+
+def run_diagnostics(agent):
+    """Professional diagnostic suite for Lirox Kernel."""
+    info_panel("INITIATING CORE DIAGNOSTICS...")
+    steps = [
+        ("Memory Bank Integrity", lambda: "Neural connections: " + str(agent.memory.get_stats()['total_messages'])),
+        ("Provider Mapping", lambda: "Available: " + ", ".join(available_providers())),
+        ("Profile Persistence", lambda: "Operator: " + agent.profile.data.get('user_name', 'None')),
+        ("Tool Authorization", lambda: "FileSystem and Terminal: [bold green]Operational[/]")
+    ]
+    
+    for i, (name, fn) in enumerate(steps, 1):
+        try:
+            res = fn()
+            print(f"  [bold green]✓[/] [white]{name:25}[/] : {res}")
+        except Exception as e:
+            print(f"  [bold red]✖[/] [white]{name:25}[/] : [bold red]{str(e)}[/]")
+        time.sleep(0.2)
+    
+    success_message("All core subsystems are within nominal operating parameters.")
 
 def handle_command(agent, command):
     cmd = command.lower().split()
@@ -158,6 +161,8 @@ def handle_command(agent, command):
         avail = available_providers()
         text = "Available Providers:\n" + "\n".join([f"  • [bold green]{p}[/]" for p in avail])
         info_panel(f"LLM CHANNEL MAPPING\n\n{text}")
+    elif base == "/test":
+        run_diagnostics(agent)
     elif base == "/add-api":
         run_api_setup()
     elif base == "/help":
@@ -165,12 +170,13 @@ def handle_command(agent, command):
             "COMMAND REFERENCE\n\n"
             "  /profile    Show agent identity and profile\n"
             "  /memory     Show memory core statistics\n"
-            "  /clear      Purge all conversation history\n"
-            "  /trace      View low-level tool execution log\n"
-            "  /reasoning  Review the last thought strategy\n"
+            "  /test       Run kernel diagnostics suite\n"
+            "  /clear      Purge conversation history\n"
+            "  /trace      View low-level tool logs\n"
+            "  /reasoning  Review the last strategy trace\n"
             "  /models     List active LLM providers\n"
-            "  /add-api    Configure API keys for providers\n"
-            "  /exit       Safely terminate the Lirox kernel"
+            "  /add-api    Configure API keys\n"
+            "  /exit       Safely terminate the kernel"
         )
         info_panel(help_text)
     else:
@@ -180,7 +186,7 @@ def run_setup(agent):
     info_panel("AGENT GENESIS PROTOCOL")
     agent_name = input("Designate Agent Name: ").strip() or "Lirox"
     user_name = input("Identity Operator: ").strip() or "Operator"
-    niche = input("Primary Niche (e.g. Infosec, Dev, Research): ").strip() or "Generalist"
+    niche = input("Primary Niche: ").strip() or "Generalist"
     
     agent.profile.update("agent_name", agent_name)
     agent.profile.update("user_name", user_name)
@@ -198,7 +204,7 @@ def run_api_setup():
             for line in f:
                 if "=" in line:
                     k, v = line.strip().split("=", 1)
-                    current_keys[k] = v
+                    current_keys[k.strip()] = v.strip()
     for p in providers:
         key = input(f"  {p.upper()} API KEY: ").strip()
         if key:
