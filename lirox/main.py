@@ -4,6 +4,15 @@ import argparse
 import re
 import json
 import time
+import warnings
+
+# Suppress annoying urllib3/LibreSSL warnings for a cleaner CLI
+try:
+    import urllib3
+    warnings.simplefilter('ignore', urllib3.exceptions.NotOpenSSLWarning)
+except ImportError:
+    pass
+
 from lirox.agent.core import LiroxAgent
 from lirox.ui.display import (
     show_welcome, 
@@ -26,6 +35,7 @@ def main():
     parser = argparse.ArgumentParser(description="Lirox Professional CLI Agent OS")
     parser.add_argument("--setup", action="store_true", help="Run initial agent setup")
     parser.add_argument("--task", type=str, help="Run a single autonomous task and exit")
+    parser.add_argument("--verbose", action="store_true", help="Show internal mission metadata")
     args = parser.parse_args()
 
     agent = LiroxAgent()
@@ -59,15 +69,15 @@ def main():
                 continue
 
             # Process Message
-            process_input(agent, line)
+            process_input(agent, line, verbose=args.verbose)
 
         except KeyboardInterrupt:
             print("\nInterrupt received. Use /exit to shut down safely.")
         except Exception as e:
             error_panel("KERNEL ERROR", str(e))
 
-def process_input(agent, user_input):
-    """v0.5.0 CLI-only Input Processor with LIROX_META signal parsing."""
+def process_input(agent, user_input, verbose=False):
+    """v0.5.0 CLI-only Input Processor. Metadata is hidden by default for maximum professionalism."""
     spinner = AgentSpinner("Processing...")
     spinner.start()
     
@@ -79,12 +89,17 @@ def process_input(agent, user_input):
         else:
             spinner.update_message("Synthesizing reasoning...")
             raw_response = agent.chat(user_input)
+            
+            # Professionally strip meta-data from display
             clean_text, meta = extract_meta(raw_response)
+            
             spinner.stop()
             print(f"\n{clean_text}\n")
             
-            if meta.get("intent"):
-                print(f"[{CLR_DIM}] SIGNED INTENT: {meta['intent']}[/]")
+            # Only show signals in verbose mode or for high-risk alerts
+            if verbose and meta.get("intent"):
+                print(f"[{CLR_DIM}] PROTOCOL SIGNAL: {meta['intent']}[/]")
+            
             if meta.get("risk_level") == "high":
                 print(f"[{CLR_WARN}] [KERNEL WARNING] DEPLOYMENT RISK DETECTED: HIGH[/]")
             
@@ -122,23 +137,20 @@ def run_autonomous_task(agent, goal):
         print(f"\n[{CLR_WARN}] AGENT REFLECTION: {reflection['reflection']['suggestion']}\n")
 
 def run_diagnostics(agent):
-    """Professional diagnostic suite for Lirox Kernel."""
     info_panel("INITIATING CORE DIAGNOSTICS...")
     steps = [
         ("Memory Bank Integrity", lambda: "Neural connections: " + str(agent.memory.get_stats()['total_messages'])),
         ("Provider Mapping", lambda: "Available: " + ", ".join(available_providers())),
         ("Profile Persistence", lambda: "Operator: " + agent.profile.data.get('user_name', 'None')),
-        ("Tool Authorization", lambda: "FileSystem and Terminal: [bold green]Operational[/]")
+        ("Tool Authorization", lambda: "FileSystem/Terminal: [bold green]Operational[/]")
     ]
-    
     for i, (name, fn) in enumerate(steps, 1):
         try:
             res = fn()
             print(f"  [bold green]✓[/] [white]{name:25}[/] : {res}")
         except Exception as e:
             print(f"  [bold red]✖[/] [white]{name:25}[/] : [bold red]{str(e)}[/]")
-        time.sleep(0.2)
-    
+        time.sleep(0.1)
     success_message("All core subsystems are within nominal operating parameters.")
 
 def handle_command(agent, command):
@@ -187,7 +199,6 @@ def run_setup(agent):
     agent_name = input("Designate Agent Name: ").strip() or "Lirox"
     user_name = input("Identity Operator: ").strip() or "Operator"
     niche = input("Primary Niche: ").strip() or "Generalist"
-    
     agent.profile.update("agent_name", agent_name)
     agent.profile.update("user_name", user_name)
     agent.profile.update("niche", niche)
