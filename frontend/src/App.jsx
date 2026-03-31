@@ -15,14 +15,19 @@ const App = () => {
   const [profile, setProfile] = useState({});
   const [status, setStatus] = useState({ status: 'idle', pending_confirmation: false });
   const [loading, setLoading] = useState(true);
+  const [providers, setProviders] = useState({ available: [], all: [] });
 
-  // Initial Profile Fetch
+  // Initial Profile + Provider Fetch
   useEffect(() => {
     const init = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/profile`);
-        setProfile(res.data);
-        if (!res.data.user_name) setPage('setup');
+        const [profRes, provRes] = await Promise.all([
+          axios.get(`${API_BASE}/profile`),
+          axios.get(`${API_BASE}/providers`)
+        ]);
+        setProfile(profRes.data);
+        setProviders(provRes.data);
+        if (!profRes.data.user_name) setPage('setup');
       } catch (e) {
         console.error("Failed to fetch profile", e);
       } finally {
@@ -72,6 +77,16 @@ const App = () => {
           </div>
         </div>
 
+        {/* No-key warning banner */}
+        {providers.available.length === 0 && (
+          <div style={{background:'#fff7ed', border:'1px solid #fed7aa', borderRadius:'12px', padding:'0.875rem 1rem', marginBottom:'1rem', cursor:'pointer'}} onClick={() => setPage('settings')}>
+            <div style={{fontWeight:'800', color:'#c2410c', fontSize:'0.8rem', marginBottom:'0.25rem', display:'flex', alignItems:'center', gap:'0.4rem'}}>
+              <Key size={14}/> No API Keys
+            </div>
+            <div style={{fontSize:'0.75rem', color:'#9a3412', lineHeight:'1.4'}}>Add a key in Settings to activate the agent.</div>
+          </div>
+        )}
+
         <div style={{display:'flex', flexDirection:'column', gap:'0.5rem'}}>
           <NavItem icon={<MessageSquare size={20}/>} label="Chat Console" active={page === 'chat'} onClick={() => setPage('chat')} />
           <NavItem icon={<ListChecks size={20}/>} label="Autonomous Tasks" active={page === 'task'} onClick={() => setPage('task')} />
@@ -102,6 +117,11 @@ const App = () => {
                <ShieldAlert size={14}/> Action Required
              </div>
            )}
+           {providers.available.length > 0 && (
+             <div style={{marginTop:'0.75rem', fontSize:'0.7rem', color:'#64748b', fontWeight:'600'}}>
+               {providers.available.length} provider{providers.available.length > 1 ? 's' : ''} active
+             </div>
+           )}
         </div>
       </nav>
 
@@ -110,7 +130,7 @@ const App = () => {
         {page === 'chat' && <ChatPage profile={profile} status={status} />}
         {page === 'task' && <TaskPage profile={profile} status={status} />}
         {page === 'setup' && <SetupPage profile={profile} setProfile={setProfile} onComplete={() => setPage('chat')} />}
-        {page === 'settings' && <SettingsPage />}
+        {page === 'settings' && <SettingsPage providers={providers} setProviders={setProviders} />}
       </main>
     </div>
   );
@@ -479,18 +499,27 @@ const TaskPage = ({ profile, status: globalStatus }) => {
     );
 };
 
-const SettingsPage = () => {
+const SettingsPage = ({ providers: initialProviders, setProviders }) => {
     const [settings, setSettings] = useState({ allow_terminal_tool: false, auto_execute_max_steps: 5, default_provider: 'auto' });
     const [loading, setLoading] = useState(true);
+    const [providers, setLocalProviders] = useState(initialProviders || { available: [], all: [] });
+    const [keys, setKeys] = useState({ gemini: '', groq: '', openai: '', openrouter: '', deepseek: '', nvidia: '' });
+    const [keySaving, setKeySaving] = useState(false);
+    const [keySaved, setKeySaved] = useState(null);
 
     useEffect(() => {
-        const fetch = async () => {
+        const fetchAll = async () => {
             try {
-                const res = await axios.get(`${API_BASE}/settings`);
-                setSettings(res.data);
+                const [sRes, pRes] = await Promise.all([
+                    axios.get(`${API_BASE}/settings`),
+                    axios.get(`${API_BASE}/providers`)
+                ]);
+                setSettings(sRes.data);
+                setLocalProviders(pRes.data);
+                if (setProviders) setProviders(pRes.data);
             } finally { setLoading(false); }
         };
-        fetch();
+        fetchAll();
     }, []);
 
     const save = async (s) => {
@@ -498,12 +527,96 @@ const SettingsPage = () => {
         await axios.post(`${API_BASE}/settings`, s);
     };
 
+    const saveKey = async (provider) => {
+        const val = keys[provider];
+        if (!val.trim()) return;
+        setKeySaving(true);
+        try {
+            await axios.post(`${API_BASE}/keys`, { [provider]: val.trim() });
+            setKeySaved(provider);
+            setKeys(k => ({ ...k, [provider]: '' }));
+            // Refresh providers list
+            const pRes = await axios.get(`${API_BASE}/providers`);
+            setLocalProviders(pRes.data);
+            if (setProviders) setProviders(pRes.data);
+            setTimeout(() => setKeySaved(null), 3000);
+        } catch(e) {
+            alert('Failed to save key: ' + (e.response?.data?.detail || e.message));
+        } finally {
+            setKeySaving(false);
+        }
+    };
+
     if (loading) return <div style={{padding:'3rem', textAlign:'center', color:'#64748b'}}>Syncing system parameters...</div>;
 
+    const providerDefs = [
+      { key: 'gemini',      label: 'Gemini',      hint: 'aistudio.google.com  — FREE' },
+      { key: 'groq',        label: 'Groq',        hint: 'console.groq.com     — FREE' },
+      { key: 'openrouter',  label: 'OpenRouter',  hint: 'openrouter.ai        — FREE models' },
+      { key: 'openai',      label: 'OpenAI',      hint: 'platform.openai.com  — Paid' },
+      { key: 'deepseek',    label: 'DeepSeek',    hint: 'platform.deepseek.com — Cheap' },
+      { key: 'nvidia',      label: 'NVIDIA NIM',  hint: 'build.nvidia.com     — FREE' },
+    ];
+
     return (
-        <div style={{padding:'3rem', maxWidth:'900px', margin:'0 auto'}}>
+        <div style={{padding:'3rem', maxWidth:'900px', margin:'0 auto', overflowY:'auto', height:'100%'}}>
             <h1 style={{fontSize:'2rem', marginBottom:'2.5rem', fontWeight:'900', color:'#0f172a'}}>System Configuration</h1>
 
+            {/* API Keys Section */}
+            <div className="card" style={{padding:'2.5rem', borderRadius:'24px', marginBottom:'2rem', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.05)'}}>
+                <div style={{display:'flex', alignItems:'center', gap:'0.75rem', marginBottom:'0.5rem'}}>
+                  <Key size={20} color="#3b82f6"/>
+                  <div style={{fontWeight:'900', fontSize:'1.15rem', color:'#0f172a'}}>API Keys</div>
+                </div>
+                <div style={{color:'#64748b', fontSize:'0.95rem', marginBottom:'2rem'}}>
+                  {providers.available.length === 0
+                    ? '⚠ No providers configured. Add at least one key to activate the agent.'
+                    : `${providers.available.length} of ${providers.all.length} providers active: ${providers.available.join(', ')}`
+                  }
+                </div>
+                <div style={{display:'flex', flexDirection:'column', gap:'1.25rem'}}>
+                  {providerDefs.map(({ key, label, hint }) => {
+                    const isActive = providers.available.includes(key);
+                    return (
+                      <div key={key} style={{display:'flex', gap:'1rem', alignItems:'center'}}>
+                        <div style={{width:'130px', flexShrink:0}}>
+                          <div style={{fontWeight:'700', fontSize:'0.9rem', color:'#1e293b'}}>{label}</div>
+                          <div style={{fontSize:'0.75rem', color: isActive ? '#10b981' : '#94a3b8', fontWeight:'600'}}>
+                            {isActive ? '✓ Active' : hint}
+                          </div>
+                        </div>
+                        <input
+                          type="password"
+                          placeholder={isActive ? 'Enter new key to update…' : 'Paste API key here…'}
+                          value={keys[key]}
+                          onChange={e => setKeys(k => ({ ...k, [key]: e.target.value }))}
+                          onKeyDown={e => e.key === 'Enter' && saveKey(key)}
+                          style={{
+                            flex:1, padding:'0.75rem 1rem', border:isActive ? '2px solid #d1fae5' : '2px solid #f1f5f9',
+                            borderRadius:'12px', fontSize:'0.95rem', color:'#1e293b', background: isActive ? '#f0fdf4' : '#f8fafc',
+                            outline:'none', fontFamily:'inherit'
+                          }}
+                        />
+                        <button
+                          id={`save-key-${key}`}
+                          onClick={() => saveKey(key)}
+                          disabled={keySaving || !keys[key].trim()}
+                          style={{
+                            padding:'0.75rem 1.25rem', borderRadius:'12px', fontWeight:'800', fontSize:'0.85rem',
+                            background: keySaved === key ? '#10b981' : '#3b82f6',
+                            color:'white', border:'none', cursor:'pointer', transition:'all 0.2s',
+                            opacity: (!keys[key].trim() || keySaving) ? 0.5 : 1, whiteSpace:'nowrap'
+                          }}
+                        >
+                          {keySaved === key ? '✓ Saved' : 'Save'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+            </div>
+
+            {/* Autonomy + Safety Settings */}
             <div className="card" style={{padding:'3rem', display:'flex', flexDirection:'column', gap:'3rem', borderRadius:'24px', boxShadow:'0 4px 6px -1px rgba(0,0,0,0.05)'}}>
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center'}}>
                     <div style={{maxWidth:'70%'}}>
@@ -524,7 +637,7 @@ const SettingsPage = () => {
                     />
                     <div style={{display:'flex', justifyContent:'space-between', marginTop:'0.75rem', fontSize:'0.75rem', color:'#94a3b8', fontWeight:'700'}}>
                       <span>CAUTIOUS (1)</span>
-                      <span>AGRESSIVE (10)</span>
+                      <span>AGGRESSIVE (10)</span>
                     </div>
                 </div>
 
@@ -538,8 +651,9 @@ const SettingsPage = () => {
 
                 <div style={{paddingTop:'1.5rem', display:'flex', gap:'1.5rem', alignItems:'center'}}>
                     <button 
+                        id="purge-memory-btn"
                         onClick={async () => {
-                            if (window.confirm("Perform a deep neural reset? All conversation persistent states will be purged.")) {
+                            if (window.confirm("Perform a deep neural reset? All conversation states will be cleared.")) {
                                 await axios.post(`${API_BASE}/memory/clear`);
                                 alert("Neural pathways cleared.");
                             }

@@ -2,10 +2,13 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
-# Load .env or .env.local
-for env_file in ['.env', '.env.local']:
-    if os.path.exists(env_file):
-        load_dotenv(env_file)
+# Anchor .env loading to the project root (2 levels up from this file)
+# This ensures it works regardless of where the user launches the process from.
+_PROJECT_ROOT_DIR = Path(__file__).resolve().parent.parent
+
+for env_file in [_PROJECT_ROOT_DIR / '.env', _PROJECT_ROOT_DIR / '.env.local']:
+    if env_file.exists():
+        load_dotenv(str(env_file))
         break
 else:
     load_dotenv()
@@ -16,10 +19,11 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
 
 # Default settings
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "openai")
-MEMORY_LIMIT = 20  # Increased from 10
+DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "groq")
+MEMORY_LIMIT = int(os.getenv("MEMORY_LIMIT", "20"))
 
 # Terminal safety — expanded allowlist
 ALLOWED_COMMANDS = [

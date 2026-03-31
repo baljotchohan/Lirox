@@ -21,6 +21,7 @@ class KeysUpdate(BaseModel):
     openai: Optional[str] = None
     openrouter: Optional[str] = None
     deepseek: Optional[str] = None
+    nvidia: Optional[str] = None
 
 class PlanRequest(BaseModel):
     goal: str

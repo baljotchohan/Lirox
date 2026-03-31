@@ -12,7 +12,13 @@ router = APIRouter(prefix="/api")
 
 @router.get("/health")
 def health():
-    return {"status": "ok", "version": "0.4.0-alpha"}
+    state = get_state()
+    return {
+        "status": "ok",
+        "version": "0.4.1",
+        "agent_ready": state.agent is not None,
+        "init_error": getattr(state, "init_error", None)
+    }
 
 @router.get("/profile")
 def get_profile():
@@ -77,7 +83,7 @@ def chat(data: ChatRequest):
         state.current_task_status = "executing"
         results, summary = agent.executor.execute_plan(plan, provider)
         
-        # Extract sources from results for the UI
+        # Extract sources from results for the UI — safe guard against non-dict values
         sources = []
         for res in results.values():
             if isinstance(res, dict) and "metadata" in res:
@@ -165,3 +171,34 @@ def update_settings(data: SettingsUpdate):
     policy_engine.max_auto_steps = data.auto_execute_max_steps
     policy_engine.max_auto_time_mins = data.auto_execute_max_time
     return {"status": "success"}
+
+
+@router.post("/memory/clear")
+def clear_memory():
+    """Clear conversation memory — called by the Web UI Settings page."""
+    agent = get_agent()
+    msg = agent.memory.clear()
+    return {"status": "success", "message": msg}
+
+
+@router.post("/keys")
+def update_keys(data: KeysUpdate):
+    """Save API keys to .env and reload into environment — new-user onboarding."""
+    from lirox.config import _PROJECT_ROOT_DIR
+    env_path = str(_PROJECT_ROOT_DIR / ".env")
+    mapping = {
+        "gemini": "GEMINI_API_KEY",
+        "groq": "GROQ_API_KEY",
+        "openai": "OPENAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
+        "deepseek": "DEEPSEEK_API_KEY",
+        "nvidia": "NVIDIA_API_KEY",
+    }
+    saved = []
+    for field, env_var in mapping.items():
+        value = getattr(data, field, None)
+        if value:
+            set_key(env_path, env_var, value)
+            os.environ[env_var] = value
+            saved.append(field)
+    return {"status": "success", "saved": saved}

@@ -1,7 +1,13 @@
 import os
+from pathlib import Path
 from lirox.ui.display import console, Panel, ROUNDED
-from rich.prompt import Prompt, IntPrompt
+from rich.prompt import Prompt
 from dotenv import set_key
+
+# Anchor .env path to project root (same logic as config.py)
+_PROJECT_ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+_ENV_PATH = str(_PROJECT_ROOT_DIR / ".env")
+
 
 def run_setup_wizard(profile):
     """First-time setup: collect user identity and goals."""
@@ -39,16 +45,16 @@ def run_setup_wizard(profile):
 
     # Step 5 - Tone
     tone_options = {
-        "1": ("Direct", "No fluff. Get to the point fast."),
+        "1": ("Direct",   "No fluff. Get to the point fast."),
         "2": ("Friendly", "Warm, encouraging, supportive."),
-        "3": ("Formal", "Professional tone at all times."),
-        "4": ("Casual", "Relaxed and conversational.")
+        "3": ("Formal",   "Professional tone at all times."),
+        "4": ("Casual",   "Relaxed and conversational.")
     }
-    
+
     console.print("\n  How should your agent talk to you?\n")
     for k, (name, desc) in tone_options.items():
         console.print(f"  [{k}] {name.ljust(10)} {desc}")
-    
+
     tone_choice = Prompt.ask("\n  Choose (1-4)", choices=["1", "2", "3", "4"], default="1")
     profile.update("tone", tone_options[tone_choice][0].lower())
 
@@ -57,44 +63,72 @@ def run_setup_wizard(profile):
     if context:
         profile.update("user_context", context)
 
-    # API Keys check
-    check_api_keys()
+    # API Keys check — always run for new users
+    check_api_keys(force=True)
 
     console.clear()
     console.print(Panel(
-        f"✓ Profile saved\n\nAgent:  {agent_name}\nUser:   {user_name}\nNiche:  {niche}\nTone:   {tone_options[tone_choice][0]}\n\n{agent_name} is ready. Type anything to begin.",
+        f"✓ Profile saved\n\n"
+        f"Agent:  {agent_name}\n"
+        f"User:   {user_name}\n"
+        f"Niche:  {niche}\n"
+        f"Tone:   {tone_options[tone_choice][0]}\n\n"
+        f"{agent_name} is ready. Type anything to begin.",
         border_style="success", box=ROUNDED, title=" Setup Complete "
     ))
 
-def check_api_keys():
-    """Integrated API key setup."""
-    providers = ["GEMINI_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY", "DEEPSEEK_API_KEY"]
-    existing = [p for p in providers if os.getenv(p)]
-    
+
+def check_api_keys(force=False):
+    """
+    Integrated API key setup.
+    - If force=True: always prompt (used during first-run setup).
+    - If force=False: only prompt if NO keys are configured yet.
+    """
+    provider_options = {
+        "1": ("Gemini",      "GEMINI_API_KEY",      "aistudio.google.com  — FREE tier available"),
+        "2": ("Groq",        "GROQ_API_KEY",        "console.groq.com     — FREE tier available"),
+        "3": ("OpenRouter",  "OPENROUTER_API_KEY",  "openrouter.ai        — FREE models available"),
+        "4": ("OpenAI",      "OPENAI_API_KEY",      "platform.openai.com  — Paid"),
+        "5": ("DeepSeek",    "DEEPSEEK_API_KEY",    "platform.deepseek.com — Very cheap"),
+        "6": ("NVIDIA NIM",  "NVIDIA_API_KEY",      "build.nvidia.com     — FREE tier available"),
+    }
+
+    existing = [p for _, (_, env_key, _) in provider_options.items() if os.getenv(env_key)]
+
+    if not force and existing:
+        # Already configured — no need to prompt
+        return
+
+    console.print("\n" + "─" * 60)
     if not existing:
-        console.print("\n" + "─" * 40)
-        console.print("  Add at least one LLM API key to continue")
-        console.print("─" * 40 + "\n")
-        
-        provider_options = {
-            "1": ("Gemini", "GEMINI_API_KEY", "aistudio.google.com"),
-            "2": ("Groq", "GROQ_API_KEY", "console.groq.com"),
-            "3": ("OpenAI", "OPENAI_API_KEY", "platform.openai.com"),
-            "4": ("OpenRouter", "OPENROUTER_API_KEY", "openrouter.ai"),
-            "5": ("DeepSeek", "DEEPSEEK_API_KEY", "platform.deepseek.com")
-        }
-        
-        for k, (name, env_key, url) in provider_options.items():
-            console.print(f"  [{k}] {name.ljust(12)} ({url})")
-        
-        console.print("  [6] Skip / Continue (configure later)\n")
-        choice = Prompt.ask("\n  Choice", choices=["1", "2", "3", "4", "5", "6"], default="1")
-        
-        if choice != "6":
-            name, env_key, url = provider_options[choice]
-            key = Prompt.ask(f"\n  Paste your {name} API key")
-            if key:
-                # Update .env
-                set_key(".env", env_key, key)
-                os.environ[env_key] = key
-                console.print(f"\n  [success]✓ {name} key saved to .env[/success]\n")
+        console.print("  ⚠  No API keys found. Add at least one key to use Lirox.")
+    else:
+        console.print(f"  ✓  {len(existing)} provider(s) already configured.")
+        console.print("  You can add more keys now, or press Enter to continue.")
+    console.print("─" * 60 + "\n")
+
+    console.print("  Recommended free options: Groq (#2) or Gemini (#1)\n")
+    for k, (name, env_key, url) in provider_options.items():
+        status = " ✓" if os.getenv(env_key) else "  "
+        console.print(f"  [{k}]{status} {name.ljust(12)} {url}")
+
+    console.print(f"  [7]   Skip / Continue (configure later)\n")
+    choices = ["1", "2", "3", "4", "5", "6", "7"]
+    choice = Prompt.ask("\n  Choose a provider to add", choices=choices, default="7")
+
+    if choice != "7":
+        name, env_key, url = provider_options[choice]
+        key = Prompt.ask(f"\n  Paste your {name} API key (input is hidden)", password=True)
+        if key and key.strip():
+            # Ensure .env file exists
+            if not Path(_ENV_PATH).exists():
+                Path(_ENV_PATH).write_text("# Lirox API Configuration\n")
+            set_key(_ENV_PATH, env_key, key.strip())
+            os.environ[env_key] = key.strip()
+            console.print(f"\n  [success]✓ {name} key saved to .env[/success]")
+            # Offer to add another
+            another = Prompt.ask("\n  Add another key?", choices=["y", "n"], default="n")
+            if another == "y":
+                check_api_keys(force=True)
+        else:
+            console.print("\n  [warning]No key entered — skipped.[/warning]")

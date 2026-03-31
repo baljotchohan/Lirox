@@ -78,7 +78,8 @@ class LiroxAgent:
         Return ONLY valid JSON like: ["fact 1", "fact 2"]
         """
         try:
-            raw_facts = generate_response(learn_prompt, "groq", system_prompt="You are a JSON extractor.")
+            # Use auto-routing so this works regardless of which keys are configured
+            raw_facts = generate_response(learn_prompt, "auto", system_prompt="You are a JSON extractor.")
             if "[" in raw_facts and "]" in raw_facts:
                 json_part = raw_facts[raw_facts.find("["):raw_facts.rfind("]")+1]
                 facts = json.loads(json_part)

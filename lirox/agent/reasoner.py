@@ -29,7 +29,7 @@ class Reasoner:
             f"Format as an 'Internal Monologue'. Be logical, deep, and structured.\n\n"
             f"Goal: {goal}\n"
             f"Context: {context or 'None'}\n\n"
-            f"Thought Trace:"
+            f"### 🧠 Thought Trace (Internal Monologue)"
         )
         try:
             self.thought_trace = generate_response(prompt, self.provider, system_prompt="You are a brilliant, logical AI strategist. Your internal monologue should be detailed and insightful.")
@@ -233,14 +233,14 @@ class Reasoner:
         }
         
         # Format a human-readable string for CLI as well
-        text_lines = [f"💭 REASONING SUMMARY | Confidence: {int(avg_conf*100)}%", ""]
+        text_lines = [f"### 💭 Reasoning Summary | Confidence: {int(avg_conf*100)}%", ""]
         for e in eval_list:
             icon = "✓" if e["success"] else "✗"
-            text_lines.append(f"  {icon} {e['task'][:50]}... ({int(e['confidence']*100)}%)")
+            text_lines.append(f"- **{icon}** {e['task'][:50]}... (**{int(e['confidence']*100)}%**)")
         
         text_lines.append("")
-        text_lines.append(f"Status: {reflection['progress']}")
-        text_lines.append(f"Suggestion: {reflection['suggestion']}")
+        text_lines.append(f"**Current Status**: {reflection['progress']}")
+        text_lines.append(f"**Final Suggestion**: {reflection['suggestion']}")
         
         self.last_reasoning_text = "\n".join(text_lines)
         return self.last_reasoning

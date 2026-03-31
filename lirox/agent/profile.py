@@ -25,9 +25,14 @@ class UserProfile:
         if os.path.exists(self.storage_file):
             try:
                 with open(self.storage_file, 'r') as f:
-                    return json.load(f)
-            except:
-                pass
+                    data = json.load(f)
+                    # Merge with DEFAULT so new keys added in future versions are present
+                    merged = dict(self.DEFAULT)
+                    merged.update(data)
+                    return merged
+            except (json.JSONDecodeError, IOError) as e:
+                import sys
+                print(f"[LIROX WARNING] Could not load profile ({e}). Starting fresh.", file=sys.stderr)
         
         # Default empty profile
         profile = dict(self.DEFAULT)

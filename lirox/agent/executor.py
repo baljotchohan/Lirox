@@ -459,10 +459,11 @@ class Executor:
                 successes += 1
 
         summary = (
-            f"📊 EXECUTION SUMMARY\n\n"
-            f"Goal: {plan.get('goal', 'Unknown')}\n"
-            f"Result: {successes}/{total} steps completed\n\n"
-        ) + "\n".join(lines)
+            f"### 📊 Execution Summary\n\n"
+            f"**Goal**: {plan.get('goal', 'Unknown')}\n\n"
+            f"**Status**: {successes}/{total} steps successfully completed\n\n"
+            "```text\n"
+        ) + "\n".join(lines) + "\n```"
 
         # Ask LLM for a narrative summary
         if total > 0:
@@ -487,7 +488,7 @@ class Executor:
                     f"Results ({successes}/{total} succeeded):\n" + "\n".join(all_outputs)
                 )
                 narrative = generate_response(summary_prompt, provider, system_prompt=system_prompt)
-                summary += f"\n\n{narrative}"
+                summary += f"\n\n### 📝 Narrative Insight\n\n{narrative}"
             except Exception:
                 pass
 
@@ -511,7 +512,7 @@ class Executor:
         if not self.last_trace:
             return "No execution trace available. Run a task first."
 
-        lines = ["🔍 EXECUTION TRACE", ""]
+        lines = ["### 🔍 System Execution Trace", ""]
         for entry in self.last_trace:
             icon = "✓" if entry["status"] == "success" else "✗" if entry["status"] == "failed" else "⊘"
             lines.append(f"{icon} Step {entry['step_id']}: {entry['task']}")
