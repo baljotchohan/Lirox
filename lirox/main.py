@@ -116,6 +116,10 @@ def process_input(agent, user_input, verbose=False):
         error_panel("AGENT ERROR", str(e))
 
 def run_autonomous_task(agent, goal):
+    if goal.lower().startswith("research") or " research " in goal.lower():
+        run_deep_research(agent, goal)
+        return
+
     info_panel(f"Deployment Initialized: {goal}")
     spinner = AgentSpinner("Architecting strategy...")
     spinner.start()
@@ -135,8 +139,18 @@ def run_autonomous_task(agent, goal):
             info_panel("Mission aborted by operator.")
             return
 
+    # Risk evaluation via policy engine
+    from lirox.agent.policy import policy_engine
+    risk = policy_engine.evaluate_risk(plan)
+    if not risk["auto_execute"]:
+        console.print(f"[bold yellow]⚠ Risk: {risk['reason']}[/]")
+        if not confirm_prompt("Proceed with execution?"):
+            info_panel("Aborted by operator.")
+            return
+
     info_panel("Engaging autonomous channels...")
-    results, summary = agent.executor.execute_plan(plan)
+    system_prompt = agent.profile.to_system_prompt()
+    results, summary = agent.executor.execute_plan(plan, provider="auto", system_prompt=system_prompt)
     reflection = agent.reasoner.generate_reasoning_summary(plan, results)
     show_completion_art()
     success_message(summary)
@@ -213,9 +227,48 @@ def handle_command(agent, command):
         run_git_update()
     elif base == "/add-api":
         run_api_setup()
+    elif base == "/research":
+        # /research "query" [--depth quick|standard|deep]
+        query_part = command[len("/research "):].strip().strip('"\'')
+        depth = "standard"
+        if "--depth" in query_part:
+            parts = query_part.split("--depth")
+            query_part = parts[0].strip()
+            depth = parts[1].strip().split()[0] if parts[1].strip() else "standard"
+        
+        if not query_part:
+            info_panel("Usage: /research \"your question\" [--depth quick|standard|deep]")
+            return
+        
+        run_deep_research(agent, query_part, depth)
+    elif base == "/sources":
+        # Show last research session sources
+        if hasattr(agent, 'last_report') and agent.last_report:
+            display_sources(agent.last_report.sources)
+        else:
+            info_panel("No research session active. Run /research first.")
+    elif base == "/tier":
+        from lirox.agent.tier import tier_description, get_available_search_apis
+        apis = get_available_search_apis()
+        text = (
+            f"Research Tier Status\n\n"
+            f"{tier_description()}\n\n"
+            f"Available search APIs: {', '.join(apis) if apis else 'None (using DuckDuckGo)'}\n\n"
+            f"To upgrade: add API keys via /add-api"
+        )
+        info_panel(text)
+    elif base == "/add-search-api":
+        run_search_api_setup()
     elif base == "/help":
         help_text = (
             "COMMAND REFERENCE\n\n"
+            "── Research (v0.6) ──────────────────────────────────\n"
+            "  /research \"Q\"    Deep research any topic\n"
+            "  /research \"Q\" --depth deep    Extended 12-source research\n"
+            "  /sources         View sources from last research\n"
+            "  /tier            Show current research tier & APIs\n"
+            "  /add-search-api  Add Tavily/Serper/Exa search keys\n\n"
+            "── Agent ────────────────────────────────────────────\n"
             "  /profile    Show agent identity and profile\n"
             "  /memory     Show memory core statistics\n"
             "  /test       Run kernel diagnostics suite\n"
@@ -244,8 +297,9 @@ def run_setup(agent):
 def run_api_setup():
     info_panel("API CHANNEL CONFIGURATION")
     print("Add keys to activate providers (empty to skip):")
-    providers = ["gemini", "groq", "openai", "openrouter", "deepseek", "anthropic"]
-    env_path = os.path.join(os.getcwd(), ".env")
+    providers = ["gemini", "groq", "openai", "openrouter", "deepseek", "anthropic", "nvidia"]
+    from lirox.config import PROJECT_ROOT
+    env_path = os.path.join(PROJECT_ROOT, ".env")
     current_keys = {}
     if os.path.exists(env_path):
         with open(env_path, "r") as f:
@@ -262,6 +316,113 @@ def run_api_setup():
         for k, v in current_keys.items():
             f.write(f"{k}={v}\n")
     success_message("Protocol updated. Provider mapping reloaded.")
+
+def run_deep_research(agent, query: str, depth: str = "standard"):
+    """Execute a deep research session."""
+    from lirox.agent.researcher import Researcher
+    from lirox.agent.tier import tier_description, get_tier
+    
+    info_panel(f"Research Query: {query}\nDepth: {depth}\n{tier_description()}")
+    
+    spinner = AgentSpinner(f"Decomposing research query...")
+    spinner.start()
+    
+    researcher = Researcher(agent.executor.browser, provider="auto")
+    
+    try:
+        spinner.update_message("Searching across sources...")
+        report = researcher.research(query, depth=depth)
+        spinner.stop()
+        
+        # Save report
+        report_path = researcher.generate_report(report)
+        agent.last_report = report
+        
+        # Display summary
+        display_research_report(report, report_path)
+        
+        # Save to memory
+        agent.memory.save_memory("user", f"RESEARCH: {query}")
+        agent.memory.save_memory("assistant", f"RESEARCH COMPLETE: {report.summary[:500]}")
+        
+    except Exception as e:
+        spinner.stop()
+        error_panel("RESEARCH ERROR", str(e))
+
+def display_research_report(report, report_path: str):
+    """Display research results in the terminal."""
+    from rich.markdown import Markdown
+    
+    console.print()
+    console.print(Markdown(f"# Research: {report.query}"))
+    console.print(Markdown(f"**Confidence:** {int(report.confidence_overall * 100)}%  |  "
+                           f"**Sources:** {len(report.sources)}  |  "
+                           f"**APIs:** {', '.join(report.search_apis_used)}"))
+    console.print()
+    console.print(Markdown(report.summary))
+    console.print()
+    
+    if report.findings:
+        console.print(Markdown("## Key Findings"))
+        for finding in report.findings[:5]:
+            confidence_icon = "🟢" if finding.get("confidence") == "high" else "🟡" if finding.get("confidence") == "medium" else "🔴"
+            console.print(f"  {confidence_icon} {finding.get('claim', '')}")
+    
+    console.print()
+    console.print(f"[dim]Full report saved: {report_path}[/dim]")
+    console.print(f"[dim]Type /sources to view source details[/dim]")
+    console.print()
+
+def display_sources(sources):
+    """Display research sources as a table."""
+    from rich.table import Table
+    table = Table(title="Research Sources", border_style="dim")
+    table.add_column("#", width=3)
+    table.add_column("Title", style="white")
+    table.add_column("Domain")
+    table.add_column("Quality", justify="center")
+    table.add_column("URL", style="dim")
+    
+    for source in sources:
+        quality_bar = "█" * int(source.score * 5) + "░" * (5 - int(source.score * 5))
+        table.add_row(
+            str(source.citation_id),
+            source.title[:40],
+            source.domain,
+            f"{quality_bar} {int(source.score * 100)}%",
+            source.url[:40]
+        )
+    
+    console.print(table)
+
+def run_search_api_setup():
+    """Dedicated setup for search API keys."""
+    info_panel("SEARCH API CONFIGURATION\n\nThese APIs power the research engine. All are optional — Lirox falls back to DuckDuckGo.")
+    
+    apis = {
+        "1": ("Tavily", "TAVILY_API_KEY", "app.tavily.com — Best for deep research"),
+        "2": ("Serper", "SERPER_API_KEY", "serper.dev — Google Search API, cheap"),
+        "3": ("Exa",    "EXA_API_KEY",    "exa.ai — Neural search, great for tech"),
+    }
+    
+    from lirox.config import PROJECT_ROOT
+    from dotenv import set_key
+    env_path = os.path.join(PROJECT_ROOT, ".env")
+    
+    for k, (name, env_var, desc) in apis.items():
+        status = "✓ Set" if os.getenv(env_var) else "Not set"
+        console.print(f"  [{k}] {name.ljust(8)} {status.ljust(12)} {desc}")
+    
+    console.print()
+    choice = input("Enter number to configure (Enter to skip): ").strip()
+    
+    if choice in apis:
+        name, env_var, _ = apis[choice]
+        key = input(f"Paste your {name} API key: ").strip()
+        if key:
+            set_key(env_path, env_var, key)
+            os.environ[env_var] = key
+            console.print(f"  ✓ {name} key saved.")
 
 if __name__ == "__main__":
     main()

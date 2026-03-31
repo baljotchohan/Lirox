@@ -3,11 +3,13 @@ from dotenv import load_dotenv, set_key
 
 # Mapping of user-friendly names to .env keys
 PROVIDERS = {
-    "1": ("OpenAI", "OPENAI_API_KEY"),
-    "2": ("Gemini", "GEMINI_API_KEY"),
-    "3": ("OpenRouter", "OPENROUTER_API_KEY"),
-    "4": ("Groq", "GROQ_API_KEY"),
-    "5": ("DeepSeek", "DEEPSEEK_API_KEY"),
+    "1": ("OpenAI",      "OPENAI_API_KEY"),
+    "2": ("Gemini",      "GEMINI_API_KEY"),
+    "3": ("OpenRouter",  "OPENROUTER_API_KEY"),
+    "4": ("Groq",        "GROQ_API_KEY"),
+    "5": ("DeepSeek",    "DEEPSEEK_API_KEY"),
+    "6": ("NVIDIA NIM",  "NVIDIA_API_KEY"),
+    "7": ("Anthropic",   "ANTHROPIC_API_KEY"),
 }
 
 def show_config_status():

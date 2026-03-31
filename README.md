@@ -1,4 +1,4 @@
-# 🌌 Lirox Agent OS (v0.5.0 CLI-First)
+# 🌌 Lirox Agent OS (v0.6.0 Research Engine)
 
 **Lirox** is a local-first autonomous AI agent OS designed for professional terminal environments. It features multi-step reasoning, planning, secure tool execution (terminal, file_io, browser), and persistent memory — all running on your own machine.
 
@@ -10,7 +10,8 @@
 - **🧠 Autonomous Strategy** — Uses reasoning traces to architectural multi-step plans before execution.
 - **🛡️ Hardened Security** — Agent is sandboxed by default with a strict CLI-only risk policy.
 - **🔌 Multi-LLM Protocol** — Native support for Groq, Gemini, Anthropic, OpenAI, OpenRouter, and NVIDIA NIM.
-- **📂 Full File Control** — Read, write, and manage codebases within authorized paths.
+- **📁 Full File Control** — Read, write, and manage codebases within authorized paths.
+- **🕵️ Deep Research Engine** *(New in v0.6)* — Perplexity-grade parallel search with auto-deduplication, source quality scoring, LLM synthesis, and cited markdown reporting.
 - **🦁 Personal Identity** — Adapts to your specific niche, goals, and operator context over time.
 
 ---
@@ -63,6 +64,17 @@ python3 -m lirox.main
 
 ## 🖥️ Professional COMMANDS
 
+### Research (v0.6)
+| Command | Protocol |
+|---------|----------|
+| `/research "Q"`   | Launch a deep, multi-source research sequence |
+| `/research "Q" --depth deep` | Extended 12-source research (standard is 6) |
+| `/sources`        | View URLs, domains, and quality scores of your last research |
+| `/tier`           | Check active API Tier (0=DuckDuckGo, 1=Standard, 2=Premium) |
+| `/add-search-api` | Securely configure Tavily, Serper, or Exa API keys |
+
+### General AI OS
+
 | Command | Protocol |
 |---------|----------|
 | `/profile`   | Inspect operator identity and learned facts |
@@ -97,6 +109,7 @@ Lirox/
 
 ## 🔑 Supported Provider Matrix
 
+### Core LLMs
 | Provider | Efficiency | Signal Variable |
 |----------|------------|-----------------|
 | **Groq** | ✅ Fastest | `GROQ_API_KEY` |
@@ -105,6 +118,15 @@ Lirox/
 | **OpenRouter** | ✅ Scalable | `OPENROUTER_API_KEY` |
 | **NVIDIA NIM** | ✅ Specialized | `NVIDIA_API_KEY` |
 | **DeepSeek** | ✅ Cheap/Sharp | `DEEPSEEK_API_KEY` |
+| **OpenAI** | ✅ Reliable | `OPENAI_API_KEY` |
+
+### Search APIs (v0.6)
+| Provider | Strength | Signal Variable |
+|----------|----------|-----------------|
+| **Tavily** | Best for Deep Research | `TAVILY_API_KEY` |
+| **Serper** | Google Scale Search | `SERPER_API_KEY` |
+| **Exa** | Neural / Tech Target | `EXA_API_KEY` |
+| **DuckDuckGo** | Free Fallback (Tier 0) | *No key needed* |
 
 ---
 

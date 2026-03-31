@@ -19,6 +19,7 @@ from rich.text import Text
 from rich.layout import Layout
 from rich.columns import Columns
 from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.box import ROUNDED
 from lirox.config import APP_VERSION
 
 console = Console()

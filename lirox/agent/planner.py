@@ -53,25 +53,28 @@ Rules:
 class Planner:
     """Converts user goals into structured, executable plans."""
 
-    def __init__(self, provider="openai"):
+    def __init__(self, provider="auto"):
         self.provider = provider
         self.last_plan = None  # Store last plan for /execute-plan command
 
     def set_provider(self, provider):
         self.provider = provider
 
-    def create_plan(self, goal, system_prompt=None):
+    def create_plan(self, goal, system_prompt=None, context=None):
         """
         Convert a goal into a structured plan dict.
 
         Args:
             goal: User's goal string
             system_prompt: System prompt for LLM context
+            context: Optional reasoning trace to append to the prompt
 
         Returns:
             Plan dict with structured steps, or fallback plan on parse failure
         """
         prompt = PLAN_PROMPT.format(goal=goal)
+        if context:
+            prompt += f"\n\nContext / reasoning trace:\n{context[:2000]}"
 
         response = generate_response(prompt, self.provider, system_prompt=system_prompt)
         plan = self._parse_plan_response(response, goal)

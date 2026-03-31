@@ -1,17 +1,24 @@
+# Core UI
 rich
 prompt_toolkit
+
+# LLM Providers
 google-generativeai
-groq
-openai
-anthropic
-openrouter
-python-dotenv
 requests
-aiohttp
+python-dotenv
+
+# Optional SDK providers (comment out if not using)
+# openai
+# anthropic
+# groq
+
+# Web research
 beautifulsoup4
-markdownify
-chromadb
-tiktoken
-psutil
+lxml
+
+# Scheduling
 schedule
+
+# Dev/test
 pytest
+psutil

@@ -63,6 +63,13 @@ class UserProfile:
                 self.data["learned_facts"] = self.data["learned_facts"][-50:]
             self.save()
 
+    def add_goal(self, goal: str):
+        if goal and goal not in self.data.get("goals", []):
+            if "goals" not in self.data:
+                self.data["goals"] = []
+            self.data["goals"].append(goal)
+            self.save()
+
     def is_setup(self) -> bool:
         return self.data.get("agent_name") is not None and self.data.get("user_name") != "Operator"
 
@@ -132,6 +139,9 @@ MEMORY / LEARNING (CURRENT CAPABILITY)
 - LEARNED CONTEXT: {facts}
 - Only store compact “facts” or preferences.
 - If unsure whether something is a stable preference, ask once before treating it as long-term.
+
+RESEARCH CAPABILITY (v0.6)
+You are a research-capable autonomous agent. When asked factual questions, you proactively search the web, synthesize multiple sources, and cite your findings. You NEVER make up facts. When uncertain, you say so and recommend using /research for deeper analysis. Research outputs include confidence scores and source citations.
 
 OUTPUT REQUIREMENT FOR RELIABILITY (MANDATORY)
 At the end of EVERY response, include a small machine-readable block that the host can optionally parse:
