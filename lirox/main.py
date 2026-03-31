@@ -150,7 +150,8 @@ def run_diagnostics(agent):
         ("Memory Bank Integrity", lambda: "Neural connections: " + str(agent.memory.get_stats()['total_messages'])),
         ("Provider Mapping", lambda: "Available: " + ", ".join(available_providers())),
         ("Profile Persistence", lambda: "Operator: " + agent.profile.data.get('user_name', 'None')),
-        ("Tool Authorization", lambda: "FileSystem/Terminal: [bold green]Operational[/]")
+        ("Tool Authorization", lambda: "FileSystem/Terminal: [bold green]Operational[/]"),
+        ("Kernel Version", lambda: f"v{APP_VERSION} [bold green]Downloaded/Latest[/]")
     ]
     for i, (name, fn) in enumerate(steps, 1):
         try:
@@ -160,6 +161,31 @@ def run_diagnostics(agent):
             print(f"  [bold red]✖[/] [white]{name:25}[/] : [bold red]{str(e)}[/]")
         time.sleep(0.1)
     success_message("All core subsystems are within nominal operating parameters.")
+
+def run_git_update():
+    info_panel("CHECKING FOR KERNEL UPDATES...")
+    try:
+        import subprocess
+        from lirox.config import PROJECT_ROOT
+        
+        # Fetch latest
+        subprocess.run(["git", "fetch", "origin", "main"], capture_output=True, check=True, cwd=PROJECT_ROOT)
+        # Check if local is behind
+        result = subprocess.run(
+            ["git", "rev-list", "HEAD..origin/main", "--count"],
+            capture_output=True, text=True, check=True, cwd=PROJECT_ROOT
+        )
+        count = int(result.stdout.strip())
+        
+        if count > 0:
+            info_panel(f"Found {count} new update(s). Synchronizing...")
+            subprocess.run(["git", "pull", "origin", "main"], capture_output=True, check=True, cwd=PROJECT_ROOT)
+            subprocess.run(["pip", "install", "-r", "requirements.txt"], capture_output=True, cwd=PROJECT_ROOT)
+            success_message("Update Downloaded & Applied. Please restart Lirox.")
+        else:
+            success_message(f"Kernel is up to date (v{APP_VERSION}).")
+    except Exception as e:
+        error_panel("UPDATE ERROR", f"Failed to synchronize with remote: {str(e)}")
 
 def handle_command(agent, command):
     cmd = command.lower().split()
@@ -183,6 +209,8 @@ def handle_command(agent, command):
         info_panel(f"LLM CHANNEL MAPPING\n\n{text}")
     elif base == "/test":
         run_diagnostics(agent)
+    elif base == "/update":
+        run_git_update()
     elif base == "/add-api":
         run_api_setup()
     elif base == "/help":
@@ -196,6 +224,7 @@ def handle_command(agent, command):
             "  /reasoning  Review the last strategy trace\n"
             "  /models     List active LLM providers\n"
             "  /add-api    Configure API keys\n"
+            "  /update     Check and apply kernel updates\n"
             "  /exit       Safely terminate the kernel"
         )
         info_panel(help_text)

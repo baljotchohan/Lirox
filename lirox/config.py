@@ -10,7 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 # ─── Version ─────────────────────────────────────────────────────────────────
-APP_VERSION = "0.5.0"
+APP_VERSION = "0.6.0"
 
 # ─── Path Anchoring ───────────────────────────────────────────────────────────
 # Repo root is always 2 levels above this file:
