@@ -35,6 +35,7 @@ from lirox.ui.display import (
 from lirox.utils.llm import is_task_request, available_providers
 from lirox.utils.meta_parser import extract_meta
 from lirox.config import APP_VERSION
+from lirox.utils.intent_router import router
 
 def main():
     parser = argparse.ArgumentParser(description="Lirox Professional CLI Agent OS")
@@ -82,38 +83,71 @@ def main():
             error_panel("KERNEL ERROR", str(e))
 
 def process_input(agent, user_input, verbose=False):
-    """v0.5.0 CLI-only Input Processor. Metadata is hidden by default for maximum professionalism."""
-    spinner = AgentSpinner("Processing...")
-    spinner.start()
+    """v0.6 Smart Input Processor with Intent Routing & Learning."""
     
-    try:
-        is_task = is_task_request(user_input)
-        if is_task:
-            spinner.stop()
-            run_autonomous_task(agent, user_input)
-        else:
-            spinner.update_message("Synthesizing reasoning...")
+    # Detect intent
+    intent, suggested_command, confidence = router.detect_intent(user_input)
+    
+    if verbose:
+        console.print(f"[dim]Intent: {intent} ({int(confidence*100)}%) | Command: {suggested_command}[/]")
+    
+    # Route based on intent
+    if intent == "command":
+        handle_command(agent, suggested_command)
+        return
+    
+    elif intent == "research":
+        if suggested_command:
+            # Auto-execute research command
+            query = suggested_command.split('"')[1] if '"' in suggested_command else user_input
+            run_deep_research(agent, query, depth="standard")
+            router.learn_from_choice("research", "/research")
+        return
+    
+    elif intent == "task":
+        run_autonomous_task(agent, user_input)
+        router.learn_from_choice("task", "autonomous")
+        return
+    
+    elif intent == "memory":
+        # Extract and save to memory
+        if "remember" in user_input.lower() or "save" in user_input.lower():
+            fact = user_input.replace("remember", "").replace("save", "").strip()
+            agent.profile.add_learned_fact(fact)
+            success_message(f"Remembered: {fact}")
+            router.learn_from_choice("memory", "save_fact")
+        return
+    
+    else:  # chat
+        spinner = AgentSpinner("Processing...")
+        spinner.start()
+        
+        try:
+            is_task = is_task_request(user_input)
+            if is_task:
+                spinner.stop()
+                run_autonomous_task(agent, user_input)
+                return
+            
+            spinner.update_message("Synthesizing response...")
             raw_response = agent.chat(user_input)
             
-            # Professionally strip meta-data from display
             clean_text, meta = extract_meta(raw_response)
-            
-            from rich.markdown import Markdown
             spinner.stop()
-            print()
-            console.print(Markdown(clean_text))
-            print()
             
-            # Only show signals in verbose mode or for high-risk alerts
-            if verbose and meta.get("intent"):
-                console.print(f"[{CLR_DIM}] PROTOCOL SIGNAL: {meta['intent']}[/]")
+            console.print(f"\n[{CLR_ACCENT}]{clean_text}[/]\n")
             
-            if meta.get("risk_level") == "high":
-                console.print(f"[{CLR_WARN}] [KERNEL WARNING] DEPLOYMENT RISK DETECTED: HIGH[/]")
+            if verbose and meta:
+                console.print(f"[dim]Meta: {json.dumps(meta, indent=2)}[/]")
             
-    except Exception as e:
-        spinner.stop()
-        error_panel("AGENT ERROR", str(e))
+            # Show helpful next steps
+            suggestion = router.suggest_next_command("chat")
+            if suggestion:
+                console.print(f"[dim]💡 {suggestion}[/]")
+                
+        except Exception as e:
+            spinner.stop()
+            error_panel("AGENT ERROR", str(e))
 
 def run_autonomous_task(agent, goal):
     if goal.lower().startswith("research") or " research " in goal.lower():
@@ -152,9 +186,15 @@ def run_autonomous_task(agent, goal):
             return
 
     info_panel("Engaging autonomous channels...")
-    system_prompt = agent.profile.to_system_prompt()
+    import time
+    start_time = time.time()
+    system_prompt = agent.profile.to_advanced_system_prompt()
     results, summary = agent.executor.execute_plan(plan, provider="auto", system_prompt=system_prompt)
     reflection = agent.reasoner.generate_reasoning_summary(plan, results)
+    
+    is_success = "error" not in summary.lower() and "failed" not in summary.lower()
+    agent.profile.track_task_execution(goal, is_success, time.time() - start_time)
+    
     show_completion_art()
     success_message(summary)
     
@@ -321,36 +361,65 @@ def run_api_setup():
     success_message("Protocol updated. Provider mapping reloaded.")
 
 def run_deep_research(agent, query: str, depth: str = "standard"):
-    """Execute a deep research session."""
+    """v0.6 Research with tier enforcement and advanced UI."""
     from lirox.agent.researcher import Researcher
-    from lirox.agent.tier import tier_description, get_tier
+    from lirox.agent.tier import tier_description, get_available_search_apis, get_tier
+    from lirox.ui.display import format_research_summary, format_findings_table, TaskProgressBar
     
-    info_panel(f"Research Query: {query}\nDepth: {depth}\n{tier_description()}")
+    tier = get_tier()
+    apis = get_available_search_apis()
     
-    spinner = AgentSpinner(f"Decomposing research query...")
-    spinner.start()
+    # Show tier status
+    info_panel(
+        f"RESEARCH QUERY: {query}\n"
+        f"DEPTH: {depth.upper()}\n"
+        f"{tier_description()}\n"
+        f"Using: {', '.join(apis) if apis else 'DuckDuckGo (free)'}"
+    )
+    
+    # Enforce tier constraints
+    if depth == "deep" and tier < 1:
+        info_panel(
+            "⚠️  Deep research requires a paid search API.\n"
+            f"Current tier: {tier_description()}\n"
+            f"Add Tavily, Serper, or Exa keys via /add-search-api"
+        )
+        depth = "standard"
     
     researcher = Researcher(agent.executor.browser, provider="auto")
     
-    try:
-        spinner.update_message("Searching across sources...")
-        report = researcher.research(query, depth=depth)
-        spinner.stop()
-        
-        # Save report
-        report_path = researcher.generate_report(report)
-        agent.last_report = report
-        
-        # Display summary
-        display_research_report(report, report_path)
-        
-        # Save to memory
-        agent.memory.save_memory("user", f"RESEARCH: {query}")
-        agent.memory.save_memory("assistant", f"RESEARCH COMPLETE: {report.summary[:500]}")
-        
-    except Exception as e:
-        spinner.stop()
-        error_panel("RESEARCH ERROR", str(e))
+    # Progress bar for research
+    with TaskProgressBar(4, "Deep Research") as progress:
+        try:
+            progress.update(1, "Decomposing query into sub-questions...")
+            sub_queries = researcher._decompose_query(query)
+            
+            progress.update(1, "Searching across all available APIs...")
+            raw_sources = researcher._search_all(sub_queries)
+            
+            progress.update(1, "Extracting and analyzing content...")
+            report = researcher.research(query, depth=depth)
+            
+            progress.update(1, "Generating comprehensive report...")
+            report_path = researcher.generate_report(report)
+            
+            # Store for /sources command
+            agent.last_report = report
+            
+            # Display results
+            format_research_summary(query, len(report.sources), report.confidence_overall, report.search_apis_used)
+            format_findings_table(report.findings)
+            
+            # Save to memory
+            agent.memory.save_memory("user", f"RESEARCH: {query}")
+            agent.memory.save_memory("assistant", f"RESEARCH COMPLETE: {report.summary[:300]}")
+            
+            console.print(f"\n[dim]Full report: {report_path}[/dim]")
+            console.print(f"[dim]Sources: {len(report.sources)} | Confidence: {int(report.confidence_overall*100)}%[/dim]\n")
+            
+        except Exception as e:
+            progress.stop()
+            error_panel("RESEARCH ERROR", str(e))
 
 def display_research_report(report, report_path: str):
     """Display research results in the terminal."""

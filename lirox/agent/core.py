@@ -39,7 +39,7 @@ class LiroxAgent:
         self.version = APP_VERSION
 
     def _get_system_prompt(self) -> str:
-        return self.profile.to_system_prompt()
+        return self.profile.to_advanced_system_prompt()
 
     def chat(self, user_input: str, provider: str = "auto") -> str:
         """Simple chat response with context and personalization."""
@@ -73,6 +73,9 @@ class LiroxAgent:
         3. Execute (Parallel/Sequential tools)
         4. Reflect (Evaluate results)
         """
+        import time
+        start_time = time.time()
+        
         system_prompt = self._get_system_prompt()
         
         # 1. Internal Reasoning Trace
@@ -87,9 +90,14 @@ class LiroxAgent:
         # 4. Evaluation & Reflection
         reflection = self.reasoner.generate_reasoning_summary(plan, results)
         
-        # Save results to memory
+        duration = time.time() - start_time
+        
+        # Save results to memory and track execution
         self.memory.save_memory("user", f"TASK: {goal}")
         self.memory.save_memory("assistant", f"SUMMARY: {summary}\n\nREFLECTION: {reflection.get('reflection', {}).get('suggestion', '')}")
+        
+        is_success = "error" not in summary.lower() and "failed" not in summary.lower()
+        self.profile.track_task_execution(goal, is_success, duration)
         
         return {
             "goal":       goal,

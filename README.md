@@ -6,13 +6,14 @@
 
 ## ✨ Features
 
-- **🐚 Professional CLI** — Hardened hacker-oriented interface with `rich` and `prompt_toolkit`.
+- **🐚 Professional CLI** — Hardened hacker-oriented interface with `rich`, dynamic task progress bars, and `prompt_toolkit`.
+- **🎯 Smart Intent Routing** *(New in v0.6)* — Natural language command detection (auto-routes to chat, research, mapping, memory, or task execution).
 - **🧠 Autonomous Strategy** — Uses reasoning traces to architectural multi-step plans before execution.
-- **🛡️ Hardened Security** — Agent is sandboxed by default with a strict CLI-only risk policy.
+- **🛡️ Hardened Security & Resource Limits** *(New in v0.6)* — Agent is sandboxed by default with a strict CLI-only risk policy, featuring RPM API rate limiters and host CPU/RAM monitors.
 - **🔌 Multi-LLM Protocol** — Native support for Groq, Gemini, Anthropic, OpenAI, OpenRouter, and NVIDIA NIM.
 - **📁 Full File Control** — Read, write, and manage codebases within authorized paths.
 - **🕵️ Deep Research Engine** *(New in v0.6)* — Perplexity-grade parallel search with auto-deduplication, source quality scoring, LLM synthesis, and cited markdown reporting.
-- **🦁 Personal Identity** — Adapts to your specific niche, goals, and operator context over time.
+- **🦁 Personal Identity & Learning** *(New in v0.6)* — Adapts to your specific niche, goals, and operator context over time safely into your profile, while tracking task success metrics.
 
 ---
 

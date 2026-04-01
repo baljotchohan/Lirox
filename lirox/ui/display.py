@@ -18,8 +18,9 @@ from rich.table import Table
 from rich.text import Text
 from rich.layout import Layout
 from rich.columns import Columns
-from rich.progress import Progress, SpinnerColumn, TextColumn
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
 from rich.box import ROUNDED
+from rich.panel import Panel  # Re-export for wizard
 from lirox.config import APP_VERSION
 
 console = Console()
@@ -79,6 +80,102 @@ def show_status_card(profile_data, providers):
 
 def available_styled_providers(providers):
     return [f"[bold green]{p}[/]" for p in providers[:5]]
+
+# ─── Task Progress Tracking ─────────────────────────────────────────────────
+
+class TaskProgressBar:
+    """Professional progress tracking for multi-step tasks."""
+    
+    def __init__(self, total_steps: int, title: str = "Task Execution"):
+        self.total_steps = total_steps
+        self.title = title
+        self.progress = None
+        self.task_id = None
+        
+    def start(self):
+        self.progress = Progress(
+            SpinnerColumn(style=CLR_LIROX),
+            TextColumn("[progress.description]{task.description}", style=CLR_WHITE),
+            BarColumn(bar_width=30, style=CLR_LIROX),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            TimeRemainingColumn(),
+            console=console,
+            transient=False
+        )
+        self.progress.start()
+        self.task_id = self.progress.add_task(f"[{CLR_LIROX}]{self.title}[/]", total=self.total_steps)
+        return self
+    
+    def update(self, advance: int = 1, description: str = None):
+        if self.progress and self.task_id is not None:
+            if description:
+                self.progress.update(self.task_id, description=f"[{CLR_LIROX}]{description}[/]")
+            self.progress.update(self.task_id, advance=advance)
+    
+    def stop(self):
+        if self.progress:
+            self.progress.stop()
+    
+    def __enter__(self):
+        self.start()
+        return self
+    
+    def __exit__(self, *args):
+        self.stop()
+
+
+class AdvancedTaskPanel:
+    """Display real-time task execution with step tracking."""
+    
+    def __init__(self, goal: str, total_steps: int):
+        self.goal = goal
+        self.total_steps = total_steps
+        self.current_step = 0
+        self.step_results = []
+        
+    def start(self):
+        console.print(Panel(
+            f"[{CLR_LIROX}]AUTONOMOUS MISSION INITIATED[/]\n\n"
+            f"Goal: [white]{self.goal}[/]\n"
+            f"Steps: [white]{self.total_steps}[/]",
+            border_style=CLR_LIROX,
+            padding=(1, 2)
+        ))
+    
+    def update_step(self, step_num: int, task: str, status: str, details: str = ""):
+        """Update UI with current step progress."""
+        self.current_step = step_num
+        
+        icon_map = {
+            "waiting": "⏳",
+            "running": "⚙️ ",
+            "success": "✅",
+            "error": "❌"
+        }
+        color_map = {
+            "waiting": CLR_DIM,
+            "running": CLR_LIROX,
+            "success": CLR_SUCCESS,
+            "error": CLR_ERROR
+        }
+        
+        icon = icon_map.get(status, "•")
+        color = color_map.get(status, CLR_DIM)
+        
+        msg = f"  {icon} [Step {step_num}/{self.total_steps}] [{color}]{task}[/]"
+        if details:
+            msg += f"\n     [dim]{details}[/]"
+        
+        console.print(msg)
+        self.step_results.append({
+            "step": step_num,
+            "task": task,
+            "status": status,
+            "details": details
+        })
+    
+    def finish(self, summary: str = ""):
+        success_message(f"Mission Complete\n\n{summary}")
 
 # ─── Spinners & Live Updating ───────────────────────────────────────────────
 
@@ -207,3 +304,45 @@ def show_completion_art():
          ' [/]
     """
     console.print(art)
+
+# ─── Research Output Formatting ────────────────────────────────────────────
+
+def format_research_summary(query: str, source_count: int, confidence: float, apis_used: list):
+    """Format a clean research summary header."""
+    confidence_bar = "█" * int(confidence * 10) + "░" * (10 - int(confidence * 10))
+    
+    table = Table(show_header=False, border_style=CLR_DIM)
+    table.add_row(f"[{CLR_LIROX}]Query[/]", f"[white]{query}[/]")
+    table.add_row(f"[{CLR_LIROX}]Sources[/]", f"[white]{source_count} analyzed[/]")
+    table.add_row(f"[{CLR_LIROX}]Confidence[/]", f"[{CLR_SUCCESS}]{confidence_bar}[/] [white]{int(confidence * 100)}%[/]")
+    table.add_row(f"[{CLR_LIROX}]APIs Used[/]", f"[white]{', '.join(apis_used) or 'DuckDuckGo'}[/]")
+    
+    console.print(Panel(
+        table,
+        title=f"[{CLR_LIROX}] RESEARCH COMPLETE [/]",
+        border_style=CLR_LIROX,
+        padding=(1, 2)
+    ))
+
+
+def format_findings_table(findings: list):
+    """Display findings with confidence indicators."""
+    table = Table(title="Key Findings", border_style=CLR_DIM, header_style=CLR_LIROX)
+    table.add_column("#", width=3)
+    table.add_column("Finding", style="white")
+    table.add_column("Confidence", justify="center")
+    table.add_column("Sources", width=8)
+    
+    for i, finding in enumerate(findings[:8], 1):
+        confidence = finding.get("confidence", "medium")
+        conf_icon = "🟢" if confidence == "high" else "🟡" if confidence == "medium" else "🔴"
+        citations = ", ".join(map(str, finding.get("citation_ids", [])[:3]))
+        
+        table.add_row(
+            str(i),
+            finding.get("claim", "")[:70],
+            f"{conf_icon} {confidence.capitalize()}",
+            f"[{citations}]" if citations else "—"
+        )
+    
+    console.print(table)

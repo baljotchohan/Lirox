@@ -395,7 +395,20 @@ def generate_response_stream(prompt: str, provider: str = "auto", system_prompt:
 
 
 def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> str:
-    """Route to the correct provider function."""
+    """Route to the correct provider function with rate and resource limits."""
+    from lirox.utils.rate_limiter import api_limiter, sys_monitor
+    import time
+    
+    # Enforce API rate limits
+    api_limiter.wait_if_needed()
+    
+    # Enforce system resource limits
+    while not sys_monitor.check_resources():
+        time.sleep(5)
+        
+    # Record this call
+    api_limiter.record_call()
+
     if provider == "openai":    return openai_call(prompt, system_prompt)
     if provider == "gemini":    return gemini_call(prompt, system_prompt)
     if provider == "groq":      return groq_call(prompt, system_prompt)

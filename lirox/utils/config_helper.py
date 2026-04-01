@@ -22,6 +22,9 @@ def show_config_status():
 
 def run_setup_wizard():
     """Interactive flow to add/update API keys."""
+    from lirox.config import PROJECT_ROOT
+    import shutil
+    
     show_config_status()
     
     choice = input("Enter the number of the provider to configure (or 'q' to quit): ").strip()
@@ -35,13 +38,13 @@ def run_setup_wizard():
         new_key = input(f"Paste your {name} API Key: ").strip()
         
         if new_key:
-            # Update .env file
-            env_path = ".env"
+            # Update .env file — anchored to PROJECT_ROOT
+            env_path = os.path.join(PROJECT_ROOT, ".env")
             if not os.path.exists(env_path):
                 # Fallback to .env.example copy if .env doesn't exist
-                if os.path.exists(".env.example"):
-                    import shutil
-                    shutil.copy(".env.example", ".env")
+                example_path = os.path.join(PROJECT_ROOT, ".env.example")
+                if os.path.exists(example_path):
+                    shutil.copy(example_path, env_path)
                 else:
                     open(env_path, 'a').close()
             
