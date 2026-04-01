@@ -14,6 +14,40 @@ try:
     warnings.simplefilter('ignore', urllib3.exceptions.NotOpenSSLWarning)
 except ImportError:
     pass
+def check_dependencies():
+    """Ensure all critical dependencies are present before starting."""
+    import sys
+    required = {
+        "rich": "rich",
+        "prompt_toolkit": "prompt-toolkit",
+        "psutil": "psutil",
+        "google.genai": "google-genai",
+        "dotenv": "python-dotenv",
+        "bs4": "beautifulsoup4",
+        "lxml": "lxml"
+    }
+    missing = []
+    for mod, pkg in required.items():
+        try:
+            # Handle modules with dots like google.genai
+            __import__(mod.split('.')[0])
+        except ImportError:
+            missing.append(pkg)
+    
+    if missing:
+        print("\n" + "="*60)
+        print(" [!] KERNEL INITIALIZATION FAILURE: MISSING DEPENDENCIES")
+        print("="*60)
+        print(f" The following packages are required but not found:")
+        for pkg in missing:
+            print(f"    • {pkg}")
+        print("\n TO FIX, RUN BOTH COMMANDS IN YOUR TERMINAL:")
+        print("    1. python -m pip install -r requirements.txt")
+        print("    2. python -m lirox.main")
+        print("="*60 + "\n")
+        sys.exit(1)
+
+check_dependencies()
 
 
 from lirox.agent.core import LiroxAgent
@@ -300,6 +334,61 @@ def handle_command(agent, command):
             f"To upgrade: add API keys via /add-api"
         )
         info_panel(text)
+    elif base == "/think":
+        # /think goal
+        goal = command[len("/think "):].strip()
+        if not goal:
+            info_panel("Usage: /think \"your goal\"")
+            return
+        
+        info_panel(f"Brainstorming mission: {goal}")
+        spinner = AgentSpinner("Architecting strategy...")
+        spinner.start()
+        thought = agent.reasoner.generate_thought_trace(goal)
+        plan = agent.planner.create_plan(goal, context=thought)
+        spinner.stop()
+        
+        thinking_panel(goal, thought)
+        show_plan_table(plan)
+        success_message("Strategy analysis complete. Use /test to execute if satisfied.")
+
+    elif base == "/schedule":
+        # /schedule goal [--when time]
+        cmd_text = command[len("/schedule "):].strip()
+        when = "in_5_minutes"
+        goal = cmd_text
+        if "--when" in cmd_text:
+            parts = cmd_text.split("--when")
+            goal = parts[0].strip().strip('"\'')
+            when = parts[1].strip()
+        
+        if not goal:
+            info_panel("Usage: /schedule \"goal\" [--when in_5_minutes|in_10_minutes|daily_9am]")
+            return
+            
+        task = agent.scheduler.schedule_task(goal, when)
+        if task.get("id") == -1:
+            error_panel("SCHEDULER ERROR", task.get("error", "Unknown error"))
+        else:
+            success_message(f"Mission deferred: [bold cyan]#{task['id']}[/] scheduled for [bold green]{when}[/]")
+
+    elif base == "/reset":
+        if confirm_prompt("[bold red]⚠ HIGH RISK[/]: This will purge all profile, memory, and scheduled data. Proceed?"):
+            info_panel("INITIATING CORE PURGE...")
+            files_to_purge = [
+                os.path.join(agent.profile.storage_file),
+                os.path.join(agent.memory.storage_file),
+                os.path.join(agent.scheduler.storage_file),
+                os.path.join(os.getcwd(), ".lirox_history")
+            ]
+            for f in files_to_purge:
+                if os.path.exists(f):
+                    os.remove(f)
+                    print(f"  [dim]Purged: {os.path.basename(f)}[/dim]")
+            
+            success_message("Kernel reset complete. Shutting down for reboot.")
+            sys.exit(0)
+
     elif base == "/add-search-api":
         run_search_api_setup()
     elif base == "/help":

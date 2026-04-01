@@ -7,7 +7,14 @@ so Lirox works correctly regardless of which directory it is launched from.
 
 import os
 from pathlib import Path
-from dotenv import load_dotenv
+try:
+    from dotenv import load_dotenv
+except ImportError:
+    import sys
+    print("\n[!] ERROR: 'python-dotenv' is not installed.")
+    print("    To fix, run:  python -m pip install python-dotenv")
+    print("    If you already installed it, use: python -m lirox.main\n")
+    sys.exit(1)
 
 # ─── Version ─────────────────────────────────────────────────────────────────
 APP_VERSION = "0.6.0"
