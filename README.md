@@ -66,6 +66,24 @@ python -m lirox.main
 
 ---
 
+## 🔑 Environment Configuration
+
+Lirox uses a `.env` file to securely store your API keys. You can manage this in two ways:
+
+### Option A — Automated Setup (Recommended)
+Launch Lirox and use the built-in configuration commands:
+- `/add-api` — Configure LLM providers (Gemini, Groq, OpenAI, etc.)
+- `/add-search-api` — Configure Search APIs (Tavily, Serper, Exa)
+
+### Option B — Manual Configuration
+1.  Copy the template: `cp .env.example .env`
+2.  Open `.env` in your preferred editor.
+3.  Add your keys following the `KEY_NAME=value` format.
+
+**Required Keys**: At least one LLM key is required (e.g., `GEMINI_API_KEY` or `GROQ_API_KEY`).
+
+---
+
 ## 🏗️ Architecture
 
 ```text
