@@ -444,6 +444,7 @@ def run_api_setup():
         if key:
             env_var = f"{p.upper()}_API_KEY"
             current_keys[env_var] = key
+            os.environ[env_var] = key  # Update current process immediately
     with open(env_path, "w") as f:
         for k, v in current_keys.items():
             f.write(f"{k}={v}\n")
@@ -582,8 +583,8 @@ def run_search_api_setup():
         key = input(f"Paste your {name} API key: ").strip()
         if key:
             set_key(env_path, env_var, key)
-            os.environ[env_var] = key
-            console.print(f"  ✓ {name} key saved.")
+            os.environ[env_var] = key  # Update current process immediately
+            console.print(f"  ✓ {name} key saved and connected.")
 
 if __name__ == "__main__":
     main()
