@@ -135,6 +135,7 @@ def process_input(agent, user_input, verbose=False):
             clean_text, meta = extract_meta(raw_response)
             spinner.stop()
             
+            from lirox.ui.display import CLR_ACCENT
             console.print(f"\n[{CLR_ACCENT}]{clean_text}[/]\n")
             
             if verbose and meta:

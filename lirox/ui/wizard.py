@@ -93,7 +93,7 @@ def check_api_keys(force=False):
         "6": ("NVIDIA NIM",  "NVIDIA_API_KEY",      "build.nvidia.com     — FREE tier available"),
     }
 
-    existing = [p for _, (_, env_key, _) in provider_options.items() if os.getenv(env_key)]
+    existing = [name for _, (name, env_key, _) in provider_options.items() if os.getenv(env_key)]
 
     if not force and existing:
         # Already configured — no need to prompt

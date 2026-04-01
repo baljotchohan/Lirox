@@ -1,24 +1,29 @@
-# Core UI
-rich
-prompt_toolkit
+# Core UI & Utils
+rich>=13.0.0
+prompt_toolkit>=3.0.0
+psutil>=5.9.0
 
 # LLM Providers
-google-genai
-requests
-python-dotenv
+google-genai>=0.3.0
+requests>=2.31.0
+python-dotenv>=1.0.0
 
-# Optional SDK providers (comment out if not using)
-# openai
-# anthropic
-# groq
+# Optional SDK providers (uncomment to use specific models)
+# openai>=1.0.0
+# anthropic>=0.7.0
+# groq>=0.4.0
 
-# Web research
-beautifulsoup4
-lxml
+# Web research & content extraction
+beautifulsoup4>=4.12.0
+lxml>=4.9.0
 
-# Scheduling
-schedule
+# Research APIs (optional)
+# tavily-python>=0.3.0  # Uncomment when you have Tavily key
+# exa-py>=1.0.0        # Uncomment when you have Exa key
+
+# Scheduling & async
+schedule>=1.2.0
+python-dateutil>=2.8.0
 
 # Dev/test
-pytest
-psutil
+pytest>=7.4.0
