@@ -8,9 +8,9 @@
 
 - **🐚 Professional CLI** — Hardened hacker-oriented interface with `rich`, dynamic task progress bars, and `prompt_toolkit`.
 - **🎯 Smart Intent Routing** *(New in v0.6)* — Natural language command detection (auto-routes to chat, research, mapping, memory, or task execution).
-- **🧠 Autonomous Strategy** — Uses reasoning traces to architectural multi-step plans before execution.
+- **🧠 Autonomous Strategy** — Uses phase-based reasoning traces (Analysis, Logic, Risk) to architect multi-step plans before execution.
 - **🛡️ Hardened Security & Resource Limits** *(New in v0.6)* — Agent is sandboxed by default with a strict CLI-only risk policy, featuring RPM API rate limiters and host CPU/RAM monitors.
-- **🔌 Multi-LLM Protocol** — Native support for Groq, Gemini, Anthropic, OpenAI, OpenRouter, and NVIDIA NIM.
+- **🔌 Multi-LLM Protocol** — Native support for Groq, Gemini, Anthropic, OpenAI, OpenRouter, and DeepSeek.
 - **📁 Full File Control** — Read, write, and manage codebases within authorized paths.
 - **🕵️ Deep Research Engine** *(New in v0.6)* — Perplexity-grade parallel search with auto-deduplication, source quality scoring, LLM synthesis, and cited markdown reporting.
 - **🦁 Personal Identity & Learning** *(New in v0.6)* — Adapts to your specific niche, goals, and operator context over time safely into your profile, while tracking task success metrics.
@@ -45,11 +45,10 @@ python3 -m lirox.main
 To pull the latest stability features and fixes, you have two options:
 
 ### Option A — Inside the CLI
-If supported in future kernel upgrades, use the built-in update command carefully:
+Lirox now supports seamless self-updating natively inside the terminal:
 ```text
 /update
 ```
-*(Note: If `/update` is unavailable in your version, proceed with Option B).*
 
 ### Option B — Manual `git pull` (Recommended)
 Exit the Lirox kernel if running, then run:
@@ -92,7 +91,7 @@ python3 -m lirox.main
 
 ---
 
-## 🏗️ Architecture (v0.5.0 Single-Channel)
+## 🏗️ Architecture (v0.6.0 Autonomous Intent Router)
 
 ```text
 Lirox/

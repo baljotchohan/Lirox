@@ -13,13 +13,10 @@ Perplexity-grade autonomous research:
 
 import os
 import json
-import time
-import hashlib
-import threading
 import requests
 from urllib.parse import urlparse
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Tuple
 from dataclasses import dataclass, field
 from datetime import datetime
 

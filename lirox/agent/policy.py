@@ -1,5 +1,3 @@
-import os
-
 class ExecutionPolicy:
     """
     Central logic for deciding if a task should auto-execute or require confirmation.

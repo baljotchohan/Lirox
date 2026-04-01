@@ -7,9 +7,6 @@ Aesthetic components for the command-line experience:
 - System status cards with version v0.5.
 """
 
-import sys
-import time
-import threading
 from rich.console import Console
 from rich.panel import Panel
 from rich.live import Live
@@ -19,8 +16,6 @@ from rich.text import Text
 from rich.layout import Layout
 from rich.columns import Columns
 from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
-from rich.box import ROUNDED
-from rich.panel import Panel  # Re-export for wizard
 from lirox.config import APP_VERSION
 
 console = Console()

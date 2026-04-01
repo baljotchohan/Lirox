@@ -14,7 +14,7 @@ Features:
 import os
 import hashlib
 import requests
-from typing import List, Dict, Optional, Any, Generator
+from typing import List, Dict, Optional, Generator
 
 DEFAULT_SYSTEM = (
     "You are Lirox, a premium autonomous AI agent designed for high-performance research and systems execution. "
@@ -91,7 +91,7 @@ def gemini_call(prompt, system_prompt=None):
                 config=config
             )
             return response.text
-        except:
+        except Exception:
             return f"Gemini Error: {str(e)}"
 
 

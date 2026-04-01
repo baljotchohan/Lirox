@@ -112,7 +112,7 @@ def check_api_keys(force=False):
         status = " ✓" if os.getenv(env_key) else "  "
         console.print(f"  [{k}]{status} {name.ljust(12)} {url}")
 
-    console.print(f"  [7]   Skip / Continue (configure later)\n")
+    console.print("  [7]   Skip / Continue (configure later)\n")
     choices = ["1", "2", "3", "4", "5", "6", "7"]
     choice = Prompt.ask("\n  Choose a provider to add", choices=choices, default="7")
 

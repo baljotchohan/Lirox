@@ -7,7 +7,7 @@ paths + user-accessible directories (Desktop, Documents, Downloads).
 """
 
 import os
-from pathlib import Path
+
 from lirox.utils.errors import ToolExecutionError
 from lirox.config import SAFE_DIRS
 

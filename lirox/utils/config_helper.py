@@ -1,5 +1,5 @@
 import os
-from dotenv import load_dotenv, set_key
+from dotenv import set_key
 
 # Mapping of user-friendly names to .env keys
 PROVIDERS = {

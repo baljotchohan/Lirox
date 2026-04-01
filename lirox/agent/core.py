@@ -9,14 +9,13 @@ v0.5 Updates:
 """
 
 import threading
-import time
 from lirox.agent.planner import Planner
 from lirox.agent.executor import Executor
 from lirox.agent.reasoner import Reasoner
 from lirox.agent.memory import Memory
 from lirox.agent.profile import UserProfile
 from lirox.agent.scheduler import TaskScheduler
-from lirox.utils.llm import generate_response, is_task_request
+from lirox.utils.llm import generate_response
 from lirox.utils.meta_parser import extract_meta
 from lirox.config import APP_VERSION
 

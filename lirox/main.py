@@ -1,7 +1,6 @@
 import os
 import sys
 import argparse
-import re
 import json
 import time
 
@@ -29,7 +28,7 @@ from lirox.ui.display import (
     AgentSpinner,
     confirm_prompt,
     show_completion_art,
-    CLR_LIROX, CLR_DIM, CLR_WARN,
+    CLR_WARN,
     console
 )
 from lirox.utils.llm import is_task_request, available_providers
@@ -396,7 +395,7 @@ def run_deep_research(agent, query: str, depth: str = "standard"):
             sub_queries = researcher._decompose_query(query)
             
             progress.update(1, "Searching across all available APIs...")
-            raw_sources = researcher._search_all(sub_queries)
+            _ = researcher._search_all(sub_queries)
             
             progress.update(1, "Extracting and analyzing content...")
             report = researcher.research(query, depth=depth)
@@ -443,7 +442,7 @@ def display_research_report(report, report_path: str):
     
     console.print()
     console.print(f"[dim]Full report saved: {report_path}[/dim]")
-    console.print(f"[dim]Type /sources to view source details[/dim]")
+    console.print("[dim]Type /sources to view source details[/dim]")
     console.print()
 
 def display_sources(sources):

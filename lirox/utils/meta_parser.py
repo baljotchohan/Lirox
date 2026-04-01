@@ -17,7 +17,7 @@ def extract_meta(text: str) -> tuple[str, dict]:
                 meta = json.loads(json_str)
                 clean_text = text[:start].strip()
                 return clean_text, meta
-        except:
+        except Exception:
             pass
         return text, {}
 
@@ -27,5 +27,5 @@ def extract_meta(text: str) -> tuple[str, dict]:
         # Remove the match from the text
         clean_text = text[:match.start()].strip() + "\n" + text[match.end():].strip()
         return clean_text.strip(), meta
-    except:
+    except Exception:
         return text, {}
