@@ -65,15 +65,34 @@ def gemini_call(prompt, system_prompt=None):
     if not api_key:
         return "Gemini API key missing."
     try:
-        import google.generativeai as genai
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel(
-            model_name="gemini-1.5-flash",
-            system_instruction=system_prompt or DEFAULT_SYSTEM
+        from google import genai
+        from google.genai import types
+        client = genai.Client(api_key=api_key)
+        
+        # In the new SDK, system_instruction is passed to generate_content
+        # or as a config in some versions. Let's use the standard config way.
+        config = types.GenerateContentConfig(
+            system_instruction=system_prompt or DEFAULT_SYSTEM,
+            temperature=0.7,
         )
-        return model.generate_content(prompt).text
+        
+        response = client.models.generate_content(
+            model="gemini-2.0-flash", # Upgrade to 2.0 while we are at it if they have it
+            contents=prompt,
+            config=config
+        )
+        return response.text
     except Exception as e:
-        return f"Gemini Error: {str(e)}"
+        # Fallback to gemini-1.5-flash if 2.0 is not available
+        try:
+            response = client.models.generate_content(
+                model="gemini-1.5-flash",
+                contents=prompt,
+                config=config
+            )
+            return response.text
+        except:
+            return f"Gemini Error: {str(e)}"
 
 
 def groq_call(prompt, system_prompt=None, model="llama-3.3-70b-versatile"):
