@@ -45,8 +45,8 @@ def is_safe(cmd):
     # 3. Comprehensive Chain/Pipe Parsing
     # We split by all shell delimiters to ensure NO command escapes validation
     import re
-    # Split by: &&, ||, ;, |
-    delimiters = r' && | || |;|\|'
+    # Split by: &&, ||, ;, | (with optional surrounding whitespace)
+    delimiters = r'\s*&&\s*|\s*\|\|\s*|\s*;\s*|\s*\|\s*'
     sub_commands = re.split(delimiters, cmd)
 
     for sub_cmd in sub_commands:

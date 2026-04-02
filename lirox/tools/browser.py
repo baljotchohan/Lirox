@@ -170,6 +170,30 @@ class BrowserTool:
             clean = re.sub(r'\s+', ' ', clean).strip()
             return clean
 
+    def extract_data(self, html: str, selector: str) -> list:
+        """
+        Extract text content from HTML elements matching a CSS selector.
+
+        Args:
+            html: HTML content string
+            selector: CSS selector (e.g., '.item', '#header', 'div.content')
+
+        Returns:
+            List of text content from matching elements
+        """
+        if not html or not selector:
+            return []
+
+        if not BeautifulSoup:
+            return []
+
+        try:
+            soup = BeautifulSoup(html, "html.parser")
+            elements = soup.select(selector)
+            return [elem.get_text(strip=True) for elem in elements]
+        except Exception:
+            return []
+
     def find_numeric_data(self, text: str, labels: list = None) -> list:
         """
         Specialized extraction for financial/real-time data (prices, indices).
