@@ -22,7 +22,7 @@ from lirox.tools.browser import BrowserTool
 from lirox.tools.file_io import FileIOTool
 from lirox.utils.llm import generate_response
 from lirox.utils.errors import ToolExecutionError, should_retry
-from lirox.ui.display import execute_panel, update_plan_step
+from lirox.ui.display import execute_panel, update_plan_step, AgentSpinner
 from lirox.config import MAX_RETRIES, RETRY_BACKOFF, CONTEXT_MAX_CHARS, PARALLEL_MAX_WORKERS
 
 
@@ -329,48 +329,62 @@ class Executor:
                 return res.get("content", "No content found.")
             return res
 
-        elif any(k in task_lower for k in ["search", "find", "lookup"]):
+        elif any(k in task_lower for k in ["search", "find", "lookup", "what is", "current", "live", "price"]):
+            # Phase 2: Professional Data-Point Detection
             query_prompt = (
                 f"Extract a concise search query. Return ONLY the search query.\n\n"
                 f"Task: {step['task']}"
             )
             search_query = generate_response(query_prompt, provider, system_prompt=system_prompt).strip().strip("\"'")
-            results = self.browser.search_web(search_query, num_results=5)
-            if not results:
-                return f"No search results found for: {search_query}"
             
-            # v0.6: Proactively look for numeric data in snippets
-            snippets = " ".join([r["snippet"] for r in results])
-            numeric_hits = self.browser.find_numeric_data(snippets, labels=[search_query])
+            # Use the new verified fetching for data points
+            res = self.browser.fetch_verified_data(step["task"], search_query)
             
-            formatted = [
-                f"{i}. {r['title']} ({r['domain']})\n   {r['url']}\n   {r['snippet']}"
-                for i, r in enumerate(results, 1)
-            ]
+            if res.get("type") == "verified_data":
+                return res["content"]
             
-            output = f"Search Results for '{search_query}':\n" + "\n\n".join(formatted)
-            if numeric_hits:
-                output = f"📈 POTENTIAL DATA HITS: {', '.join(numeric_hits)}\n\n" + output
-            return output
+            # If unverified, try one more time with a slightly different query
+            if res.get("type") == "unverified_data":
+                retry_query = f"current {search_query} real-time value"
+                retry_res = self.browser.fetch_verified_data(step["task"], retry_query)
+                if retry_res.get("type") == "verified_data":
+                    return f"[Retry success] {retry_res['content']}"
+                
+                # Final fallback: return the best search results found
+                formatted = [
+                    f"{i}. {r['title']} ({r['domain']})\n   {r['url']}\n   {r['snippet']}"
+                    for i, r in enumerate(res.get("sources", []), 1)
+                ]
+                return f"Searched for '{search_query}' but could not verify live data point.\nBest sources:\n" + "\n\n".join(formatted)
+
+            return res.get("content", f"No results found for {search_query}")
 
         # Use the improved URL extractor from BrowserTool
         urls_in_context = self.browser.extract_urls_from_text(context) if context else []
 
         if any(k in task_lower for k in ["extract", "compare", "from pages", "summarize", "analyze results"]) and urls_in_context:
-            # v0.7: Use headless for URL extraction if available
-            if self.headless_browser and self.headless_browser._browser_available:
-                results = []
-                for url in urls_in_context[:4]:
-                    fetch = self.headless_browser.fetch_page(url, extract="markdown")
-                    content = fetch.get("data", {}).get("markdown", "")
-                    results.append(f"--- Data from {url} ---\n{content[:3000]}\n")
-                return "\n".join(results)
-
+            # Phase 3: Parallel fetching for multi-URL tasks
+            spinner = AgentSpinner(f"Scanning {len(urls_in_context[:4])} reliable sources...")
+            spinner.start()
+            
             top_urls = urls_in_context[:4]
             extracted = []
-            for url in top_urls:
-                content = self.browser.summarize_page(url)
-                extracted.append(f"--- Data from {url} ---\n{content}\n")
+            
+            def fetch_item(url):
+                spinner.update_message(f"Extracting from {urlparse(url).netloc}...")
+                if self.headless_browser and self.headless_browser._browser_available:
+                    fetch = self.headless_browser.fetch_page(url, extract="markdown", timeout=15)
+                    return f"--- Data from {url} ---\n{fetch.get('data', {}).get('markdown', '')[:3500]}\n"
+                else:
+                    content = self.browser.summarize_page(url)
+                    return f"--- Data from {url} ---\n{content}\n"
+
+            try:
+                with ThreadPoolExecutor(max_workers=min(len(top_urls), 4)) as executor:
+                    extracted = list(executor.map(fetch_item, top_urls))
+            finally:
+                spinner.stop()
+                
             return "\n".join(extracted)
 
         elif "http" in task_lower:

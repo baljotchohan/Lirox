@@ -64,7 +64,19 @@ _HIGH_QUALITY_DOMAINS = {
     "docs.anthropic.com": 0.88,
     "openai.com": 0.85,
     "wikipedia.org": 0.85,
-    "reuters.com": 0.85,
+    "reuters.com": 0.92,
+    "bloomberg.com": 0.92,
+    "finance.yahoo.com": 0.90,
+    "investing.com": 0.88,
+    "marketwatch.com": 0.88,
+    "cnbc.com": 0.88,
+    "forbes.com": 0.85,
+    "ft.com": 0.90,
+    "wsj.com": 0.90,
+    "nseindia.com": 0.95,
+    "moneycontrol.com": 0.85,
+    "coingecko.com": 0.88,
+    "coinmarketcap.com": 0.88,
     "bbc.com": 0.82,
     "nytimes.com": 0.82,
     "techcrunch.com": 0.75,
@@ -72,6 +84,12 @@ _HIGH_QUALITY_DOMAINS = {
     "reddit.com": 0.60,
     "quora.com": 0.55,
 }
+
+# Financial/Real-time data indicators
+_DATA_POINT_KEYWORDS = [
+    "price", "price now", "value", "current", "live", "rate", "index", 
+    "closing", "opening", "high", "low", "market cap", "volatility", "vix"
+]
 
 # Penalise spam/SEO-farm-like patterns
 _LOW_QUALITY_SIGNALS = [
@@ -243,27 +261,91 @@ class BrowserTool:
         except Exception:
             return []
 
-    def find_numeric_data(self, text: str, labels: list = None) -> list:
+    def find_numeric_data(self, text: str, query: str = None) -> list:
         """
-        Specialized extraction for financial/real-time data (prices, indices).
-        Looks for patterns like 'Nifty 50: 22,000' or '$50.00'.
+        Sophisticated extraction for financial/real-time data (prices, indices).
+        Uses contextual regex to find numbers associated with the query.
         """
         if not text:
             return []
-        patterns = [
-            r'(\$|₹|USD|INR)\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?',  # Currency
-            r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s?(points|%)',      # Percentage/Points
-        ]
-        if labels:
-            for label in labels:
-                patterns.append(rf'{re.escape(label)}[:\s-]+(\d{{1,3}}(?:,\d{{3}})*(?:\.\d+)?)')
-
+            
         found = []
-        for p in patterns:
+        # 1. Look for currency symbols followed by numbers
+        currency_patterns = [
+            r'(?:[$\u20b9\u20ac\u00a3]|USD|INR|EUR|GBP)\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?',
+            r'\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?(?:[$\u20b9\u20ac\u00a3]|USD|INR|EUR|GBP)',
+        ]
+        
+        # 2. Look for percentage/point changes
+        change_patterns = [
+            r'[+-]?\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?%',
+            r'[+-]?\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?\s?(?:points|pts)',
+        ]
+        
+        # 3. Contextual search if query is provided
+        if query:
+            # Extract keywords from query (e.g., "Bitcoin" from "What is Bitcoin price?")
+            keywords = [k for k in query.split() if len(k) > 3 and k.lower() not in ["what", "price", "current", "index"]]
+            for kw in keywords[:2]:
+                # Find number near the keyword (within 50 chars)
+                context_pattern = rf'{re.escape(kw)}.*?(\d{{1,3}}(?:,\d{{3}})*(?:\.\d+)?)'
+                matches = re.finditer(context_pattern, text, re.IGNORECASE | re.DOTALL)
+                for m in matches:
+                    if len(m.group(0)) < 100: # Ensure they are close
+                        found.append(f"{kw}: {m.group(1)}")
+
+        for p in currency_patterns + change_patterns:
             matches = re.finditer(p, text, re.IGNORECASE)
             for m in matches:
                 found.append(m.group(0))
-        return list(set(found))[:5]
+                
+        # Deduplicate and prioritize contextual over raw
+        return list(dict.fromkeys(found))[:8]
+
+    def fetch_verified_data(self, query: str, search_query: str = None) -> dict:
+        """
+        Phase 1: Professional verified data retrieval.
+        Searches, fetches top results, and verifies if the desired data point exists.
+        """
+        search_q = search_query or query
+        if not any(k in query.lower() for k in _DATA_POINT_KEYWORDS):
+            # Normal research synthesis if not a specific data point
+            return self.research_topic(search_q)
+
+        results = self.search_web(search_q, num_results=5)
+        if not results:
+            return {
+                "error": "No results found", 
+                "type": "failure", 
+                "content": f"No search results found for '{search_q}'."
+            }
+
+        # Try to find the answer in the first 3 reliable sources
+        attempts = []
+        for i, res in enumerate(results[:3]):
+            try:
+                html = self.fetch_url(res["url"])
+                text = self.extract_text(html)
+                # Take snippet + first 2k chars
+                context = (res["snippet"] + "\n" + text)[:2500]
+                data_points = self.find_numeric_data(context, query)
+                
+                if data_points:
+                    return {
+                        "content": f"Found real-time data for '{query}' at {res['domain']}:\n" + "\n".join([f"- {dp}" for dp in data_points]),
+                        "sources": [res],
+                        "data_points": data_points,
+                        "type": "verified_data"
+                    }
+                attempts.append(f"Scanned {res['domain']} - no specific match.")
+            except Exception as e:
+                attempts.append(f"Failed to access {res['domain']}: {str(e)}")
+
+        return {
+            "content": f"Searched for '{query}' but could not verify live data point in top sources.\n" + "\n".join(attempts),
+            "sources": results[:2],
+            "type": "unverified_data"
+        }
 
     # ─── URL Unwrapping ──────────────────────────────────────────────────────
 
