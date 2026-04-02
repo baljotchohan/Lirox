@@ -55,6 +55,8 @@ class RateLimiter:
     def wait_if_needed(self):
         """Block execution until a call is permitted."""
         while not self.check_limit():
+            if self.total_today >= self.rpd_limit:
+                raise Exception(f"Daily rate limit of {self.rpd_limit} reached.")
             time.sleep(5)
 
 

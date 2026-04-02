@@ -373,13 +373,14 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
 
     # Helper method for timeout wrapping
     def _execute_with_timeout(func, *args):
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(func, *args)
-            try:
-                # [FIX #3] Block thread on timeout
-                return future.result(timeout=timeout)
-            except concurrent.futures.TimeoutError:
-                raise TimeoutError(f"LLM API timed out after {timeout}s")
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        future = executor.submit(func, *args)
+        try:
+            # [FIX #3] Block thread on timeout
+            return future.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            executor.shutdown(wait=False)
+            raise TimeoutError(f"LLM API timed out after {timeout}s")
 
     # Primary attempt
     try:

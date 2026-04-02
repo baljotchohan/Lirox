@@ -97,7 +97,7 @@ class LiroxLoop:
                     print(f"[Error] {e}")
                     time.sleep(3) # [FIX #1] Error cooldown
             
-            time.sleep(30)  # loop delay
+            time.sleep(5)  # loop delay
             
         if iteration >= max_iterations:
             print("[!] Safety Abort: Max autonomous iterations reached.")
