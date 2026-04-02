@@ -1,4 +1,4 @@
-# 🌌 Lirox Agent OS (v0.6.0 Research Engine)
+# 🌌 Lirox Agent OS (v0.6.1-stable Research Engine)
 
 **Lirox** is a local-first autonomous AI agent OS designed for professional terminal environments. It features multi-step reasoning, planning, secure tool execution (terminal, file_io, browser), and persistent memory — all running on your own machine.
 
@@ -13,6 +13,8 @@
 - **🔌 Multi-LLM Protocol** — Native support for Groq (Fastest), Gemini (Logic), Anthropic (Coding), OpenAI, OpenRouter, and DeepSeek.
 - **📁 Advanced File Control** — Efficiently manages codebases and data within authorized local paths.
 - **🕵️ Deep Research Engine** — Perplexity-grade parallel search with auto-deduplication, source quality scoring, and cited markdown reporting.
+- **📈 Numeric Data Extraction** — Proactive pattern-matching for real-time indices (Nifty 50, Bitcoin) and financial data.
+- **🚫 Zero-Hallucination Logic** — Enhanced reflection engine that detects and flags "failed to extract" scenarios, preventing false success claims.
 - **🦁 Personal Learning** — Adapts to your niche, goals, and operator context over time, safely persisting your profile.
 
 ---

@@ -17,7 +17,7 @@ except ImportError:
     sys.exit(1)
 
 # ─── Version ─────────────────────────────────────────────────────────────────
-APP_VERSION = "0.6.0"
+APP_VERSION = "0.6.1-stable"
 
 # ─── Path Anchoring ───────────────────────────────────────────────────────────
 # Repo root is always 2 levels above this file:
@@ -60,12 +60,12 @@ ALLOWED_COMMANDS = [
     # Navigation & listing
     "ls", "pwd", "find", "which", "whoami", "file", "wc", "head", "tail", "du", "df",
     # File operations (safe)
-    "mkdir", "touch", "cat", "cp", "mv", "rm", "echo", "tee",
-    # Development tools
-    "python", "python3", "pip", "pip3", "npm", "npx", "node", "yarn",
+    "mkdir", "touch", "cat", "cp", "mv", "rm", "echo", "tee", "shasum", "md5",
+    # Development tools (Execution only, no installs)
+    "python", "python3", "node", "npx", "yarn",
     "git", "cargo", "go", "rustc", "gcc", "make",
     # Network & fetching
-    "curl", "wget",
+    "curl", "wget", "ping",
     # Text processing
     "grep", "awk", "sed", "sort", "uniq", "tr", "cut", "xargs",
     # System info

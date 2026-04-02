@@ -64,11 +64,24 @@ def is_safe(cmd):
             return False, "Malformed command structure"
 
         if base_cmd and base_cmd not in ALLOWED_COMMANDS:
-            # Special case for absolute paths: check the basename
+            # Special case for absolute paths: check the basename and directory
             import os
             basename = os.path.basename(base_cmd)
+            is_absolute = os.path.isabs(base_cmd)
+            
+            # Strict validation for absolute paths: must be in standard system bins
+            SAFE_BIN_PATHS = ["/usr/bin", "/bin", "/usr/local/bin"]
+            if is_absolute:
+                dirname = os.path.dirname(base_cmd)
+                if dirname not in SAFE_BIN_PATHS:
+                    return False, f"Untrusted execution path for binary: '{base_cmd}'"
+            
             if basename not in ALLOWED_COMMANDS:
-                return False, f"'{base_cmd}' is not in the allowed commands list"
+                return False, f"'{basename}' is not in the allowed commands list"
+
+        # 4. Environment Safety check (pip/npm)
+        if base_cmd in ["pip", "pip3", "npm"]:
+            return False, "Autonomous environment modification blocked. Please run pip/npm commands manually in your terminal."
 
     return True, "ok"
 
