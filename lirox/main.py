@@ -254,29 +254,65 @@ def run_diagnostics(agent):
     success_message("All core subsystems are within nominal operating parameters.")
 
 def run_git_update():
+    """v0.6 Hardened Update Protocol: Stash, Pull, Sync requirements, and Stream output."""
     info_panel("CHECKING FOR KERNEL UPDATES...")
     try:
         import subprocess
+        import sys
         from lirox.config import PROJECT_ROOT
         
-        # Fetch latest
-        subprocess.run(["git", "fetch", "origin", "main"], capture_output=True, check=True, cwd=PROJECT_ROOT)
-        # Check if local is behind
-        result = subprocess.run(
-            ["git", "rev-list", "HEAD..origin/main", "--count"],
+        def stream_command(cmd, cwd=None):
+            """Run a command and stream output to the console in real-time."""
+            process = subprocess.Popen(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+                text=True, shell=False, cwd=cwd
+            )
+            for line in process.stdout:
+                print(f"  [dim]» {line.strip()}[/dim]")
+            process.wait()
+            return process.returncode
+
+        # 1. Detect current branch
+        res = subprocess.run(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"], 
             capture_output=True, text=True, check=True, cwd=PROJECT_ROOT
         )
-        count = int(result.stdout.strip())
+        branch = res.stdout.strip() or "main"
+        
+        # 2. Stash local changes (safety first)
+        info_panel(f"Synchronizing [bold cyan]{branch}[/] branch. Stashing local edits...")
+        subprocess.run(["git", "stash"], capture_output=True, cwd=PROJECT_ROOT)
+        
+        # 3. Fetch and Check
+        subprocess.run(["git", "fetch", "origin", branch], capture_output=True, check=True, cwd=PROJECT_ROOT)
+        result = subprocess.run(
+            ["git", "rev-list", f"HEAD..origin/{branch}", "--count"],
+            capture_output=True, text=True, check=True, cwd=PROJECT_ROOT
+        )
+        count = int(result.stdout.strip() or "0")
         
         if count > 0:
-            info_panel(f"Found {count} new update(s). Synchronizing...")
-            subprocess.run(["git", "pull", "origin", "main"], capture_output=True, check=True, cwd=PROJECT_ROOT)
-            subprocess.run(["pip", "install", "-r", "requirements.txt"], capture_output=True, cwd=PROJECT_ROOT)
-            success_message("Update Downloaded & Applied. Please restart Lirox.")
+            info_panel(f"Found {count} update(s). Synchronizing kernel...")
+            
+            # Pull with streaming feedback
+            if stream_command(["git", "pull", "origin", branch], cwd=PROJECT_ROOT) != 0:
+                raise Exception("Git pull failed.")
+            
+            # Sync requirements using current interpreter
+            info_panel("Synchronizing dependencies...")
+            if stream_command([sys.executable, "-m", "pip", "install", "-r", "requirements.txt"], cwd=PROJECT_ROOT) != 0:
+                success_message("Kernel updated, but dependency sync encountered a warning.")
+            else:
+                success_message("Kernel synchronization complete.")
+            
+            info_panel("NOTE: Please restart Lirox to apply architectural changes.")
         else:
+            # Pop stash if no updates were found (optional, but polite)
+            subprocess.run(["git", "stash", "pop"], capture_output=True, cwd=PROJECT_ROOT)
             success_message(f"Kernel is up to date (v{APP_VERSION}).")
+            
     except Exception as e:
-        error_panel("UPDATE ERROR", f"Failed to synchronize with remote: {str(e)}")
+        error_panel("UPDATE ERROR", f"Kernel synchronization failed: {str(e)}")
 
 def handle_command(agent, command):
     cmd = command.lower().split()
@@ -371,6 +407,20 @@ def handle_command(agent, command):
             error_panel("SCHEDULER ERROR", task.get("error", "Unknown error"))
         else:
             success_message(f"Mission deferred: [bold cyan]#{task['id']}[/] scheduled for [bold green]{when}[/]")
+    
+    elif base == "/run-task":
+        # /run-task ID
+        try:
+            task_id = int(cmd[1])
+            task = next((t for t in agent.scheduler.tasks if t["id"] == task_id), None)
+            if not task:
+                error_panel("SCHEDULER ERROR", f"Task #{task_id} not found.")
+            else:
+                info_panel(f"Force-executing Mission #{task_id}: {task['goal']}")
+                agent.scheduler._execute_task(task_id)
+                success_message(f"Task #{task_id} execution attempt complete.")
+        except (IndexError, ValueError):
+            info_panel("Usage: /run-task <ID>")
 
     elif base == "/reset":
         if confirm_prompt("[bold red]⚠ HIGH RISK[/]: This will purge all profile, memory, and scheduled data. Proceed?"):
@@ -409,6 +459,8 @@ def handle_command(agent, command):
             "  /reasoning  Review the last strategy trace\n"
             "  /models     List active LLM providers\n"
             "  /add-api    Configure API keys\n"
+            "  /schedule \"Q\" [--when X] Defer a mission\n"
+            "  /run-task ID Run a scheduled task immediately\n"
             "  /update     Check and apply kernel updates\n"
             "  /exit       Safely terminate the kernel"
         )

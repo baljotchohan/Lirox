@@ -114,16 +114,18 @@ class TaskScheduler:
 
         if self.execute_callback:
             try:
+                # v0.6: Pass the entire task for better context if needed
                 self.execute_callback(task["goal"])
                 task["status"] = "completed"
                 task["completed_at"] = datetime.now().isoformat()
             except Exception as e:
                 task["status"] = "failed"
-                task["error"]  = str(e)
+                task["error"]  = f"Execution Error: {str(e)}"
         else:
             task["status"] = "failed"
-            task["error"]  = "No execute callback registered"
-
+            task["error"]  = "Kernel Initialization Failure: Execute callback (process_task) not registered."
+            # v0.6: Keep it as failed so it can be manually re-queued or audited
+        
         self._save()
 
     def list_tasks(self) -> str:
