@@ -56,6 +56,17 @@ def _run_async(coro):
             except Exception as e:
                 exception[0] = e
             finally:
+                # Clean up pending tasks to avoid 'Task destroyed' warnings
+                try:
+                    pending = asyncio.all_tasks(new_loop)
+                    for task in pending:
+                        task.cancel()
+                    if pending:
+                        new_loop.run_until_complete(
+                            asyncio.gather(*pending, return_exceptions=True)
+                        )
+                except Exception:
+                    pass
                 new_loop.close()
 
         t = threading.Thread(target=run)

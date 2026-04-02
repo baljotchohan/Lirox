@@ -1,30 +1,61 @@
 """
-Lirox v0.7 — Headless Browser Tool
+Lirox v0.7.1 — Headless Browser Tool
 
 High-level browser API registered with the Lirox executor.
 Provides fetch_page, interact_with_page, extract_structured_data,
 and monitor_for_changes methods.
 
 Falls back to existing requests-based BrowserTool when Lightpanda is unavailable.
+Includes strict timeout guards to prevent hanging on broken connections.
 """
 
 import logging
 import time
 from typing import Optional, List, Dict, Any
 
-from lirox.tools.browser_manager import BrowserSessionManager, BrowserSession
-from lirox.tools.browser_security import BrowserSecurityValidator, DataValidator
-
 logger = logging.getLogger("lirox.browser.tool")
 
-# Global session manager — initialized lazily
-_session_manager: Optional[BrowserSessionManager] = None
+# Lazy import guards — never crash on missing deps
+_session_manager = None
+_headless_available = None  # tri-state: None = unknown, True/False = tested
 
 
-def _get_manager() -> BrowserSessionManager:
-    """Get or create the global session manager."""
+def _check_headless() -> bool:
+    """One-time check if headless browser subsystem is functional."""
+    global _headless_available
+    if _headless_available is not None:
+        return _headless_available
+
+    try:
+        from lirox.tools.browser_manager import BrowserSessionManager
+        from lirox.tools.browser_security import BrowserSecurityValidator
+        from lirox.config import BROWSER_CONFIG
+
+        mgr = BrowserSessionManager(
+            max_instances=BROWSER_CONFIG.get("max_instances", 5),
+            browser_path=BROWSER_CONFIG.get("lightpanda_path", "./lightpanda"),
+            port=BROWSER_CONFIG.get("port", 9222),
+            timeout=BROWSER_CONFIG.get("timeout", 30),
+        )
+        _headless_available = mgr.is_available
+        if _headless_available:
+            logger.info("Headless browser (Lightpanda) is available")
+        else:
+            logger.info("Headless browser not available — using requests fallback")
+        return _headless_available
+    except Exception as e:
+        logger.info(f"Headless browser check failed: {e}")
+        _headless_available = False
+        return False
+
+
+def _get_manager():
+    """Get or create the global session manager (only if headless is available)."""
     global _session_manager
+    if not _check_headless():
+        return None
     if _session_manager is None:
+        from lirox.tools.browser_manager import BrowserSessionManager
         from lirox.config import BROWSER_CONFIG
         _session_manager = BrowserSessionManager(
             max_instances=BROWSER_CONFIG.get("max_instances", 5),
@@ -37,27 +68,44 @@ def _get_manager() -> BrowserSessionManager:
 
 def get_browser_status() -> Dict[str, Any]:
     """Get the browser subsystem status for diagnostics."""
-    manager = _get_manager()
-    return manager.get_status()
+    mgr = _get_manager()
+    if mgr:
+        return mgr.get_status()
+    return {
+        "binary_available": False,
+        "method": "requests",
+        "note": "Using portable requests-based browser (works everywhere)",
+    }
 
 
 class HeadlessBrowserTool:
     """
     High-level browser tool for Lirox executor integration.
 
-    Methods are synchronous (wrapping async CDP internally) to
-    integrate seamlessly with Lirox's ThreadPoolExecutor-based runner.
+    Methods are synchronous (wrapping async CDP internally when headless is available).
+    Always falls back to robust requests-based BrowserTool — never hangs or crashes.
     """
 
     def __init__(self):
         self._fallback = None
-        self._security = BrowserSecurityValidator()
-        self._data_validator = DataValidator()
+        self._security = None
+        self._data_validator = None
+        self._headless_tested = False
+        self._headless_works = False
+
+        # Lazy security init
+        try:
+            from lirox.tools.browser_security import BrowserSecurityValidator, DataValidator
+            self._security = BrowserSecurityValidator()
+            self._data_validator = DataValidator()
+        except ImportError:
+            pass
 
     @property
     def _browser_available(self) -> bool:
-        """Check if headless browser is available."""
-        return _get_manager().is_available
+        """Check if headless browser is available AND working."""
+        mgr = _get_manager()
+        return mgr is not None and mgr.is_available
 
     def _get_fallback(self):
         """Get the traditional requests-based browser tool as fallback."""
@@ -87,14 +135,15 @@ class HeadlessBrowserTool:
                 "metadata": {"title": str, "method": str, "duration": float}
             }
         """
-        # Validate URL
-        is_safe, reason = self._security.validate_url(url)
-        if not is_safe:
-            return {"status": "error", "error": f"URL rejected: {reason}"}
+        # Validate URL if security is available
+        if self._security:
+            is_safe, reason = self._security.validate_url(url)
+            if not is_safe:
+                return {"status": "error", "error": f"URL rejected: {reason}"}
 
         start = time.time()
 
-        # Try headless browser first
+        # Try headless browser first (with aggressive timeout to prevent hanging)
         if use_headless and self._browser_available:
             result = self._fetch_with_headless(url, extract, timeout)
             if result:
@@ -102,7 +151,7 @@ class HeadlessBrowserTool:
                 result["metadata"]["method"] = "headless"
                 return result
 
-        # Fallback to requests-based browser
+        # Always fall back to requests-based browser
         result = self._fetch_with_requests(url, extract)
         result["metadata"]["duration"] = round(time.time() - start, 2)
         result["metadata"]["method"] = "requests"
@@ -110,44 +159,63 @@ class HeadlessBrowserTool:
 
     def _fetch_with_headless(self, url: str, extract: str,
                               timeout: int) -> Optional[Dict[str, Any]]:
-        """Fetch page using headless Lightpanda browser."""
+        """Fetch page using headless Lightpanda browser with strict timeout."""
         manager = _get_manager()
-        session = manager.acquire_session()
-        if not session:
+        if not manager:
             return None
 
-        try:
-            nav_result = session.navigate(url, timeout=timeout)
-            data = {}
+        import concurrent.futures
 
-            if extract in ("markdown", "all"):
-                data["markdown"] = session.get_markdown()
-            if extract in ("html", "all"):
-                data["html"] = session.get_html()
-            if extract in ("links", "all"):
-                data["links"] = session.extract_links()
-            if extract in ("tables", "all"):
-                data["tables"] = session.extract_tables()
+        def _do_headless():
+            session = manager.acquire_session()
+            if not session:
+                return None
+            try:
+                nav_result = session.navigate(url, timeout=timeout)
+                data = {}
 
-            page_state = session.get_page_state()
+                if extract in ("markdown", "all"):
+                    data["markdown"] = session.get_markdown()
+                if extract in ("html", "all"):
+                    data["html"] = session.get_html()
+                if extract in ("links", "all"):
+                    data["links"] = session.extract_links()
+                if extract in ("tables", "all"):
+                    data["tables"] = session.extract_tables()
 
-            manager.release_session(session)
+                page_state = session.get_page_state()
+                manager.release_session(session)
 
-            return {
-                "status": "success",
-                "url": nav_result.get("url", url),
-                "data": data,
-                "metadata": {
-                    "title": page_state.get("title", ""),
-                    "element_count": page_state.get("elementCount", 0),
-                    "link_count": page_state.get("linkCount", 0),
+                return {
+                    "status": "success",
+                    "url": nav_result.get("url", url),
+                    "data": data,
+                    "metadata": {
+                        "title": page_state.get("title", ""),
+                        "element_count": page_state.get("elementCount", 0),
+                        "link_count": page_state.get("linkCount", 0),
+                    },
                 }
-            }
+            except Exception as e:
+                logger.warning(f"Headless fetch failed for {url}: {e}")
+                try:
+                    session.metrics.error_count += 1
+                    manager.release_with_error(session)
+                except Exception:
+                    pass
+                return None
 
+        # Run headless fetch with a hard timeout guard to prevent hanging
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+                future = pool.submit(_do_headless)
+                result = future.result(timeout=min(timeout + 5, 35))
+                return result
+        except concurrent.futures.TimeoutError:
+            logger.warning(f"Headless browser timed out for {url}, falling back to requests")
+            return None
         except Exception as e:
-            logger.warning(f"Headless fetch failed for {url}: {e}")
-            session.metrics.error_count += 1
-            manager.release_with_error(session)
+            logger.warning(f"Headless browser error: {e}")
             return None
 
     def _fetch_with_requests(self, url: str, extract: str) -> Dict[str, Any]:
@@ -171,7 +239,7 @@ class HeadlessBrowserTool:
                 "status": "success",
                 "url": url,
                 "data": data,
-                "metadata": {"title": self._extract_title(html)}
+                "metadata": {"title": self._extract_title(html)},
             }
 
         except Exception as e:
@@ -180,7 +248,7 @@ class HeadlessBrowserTool:
                 "url": url,
                 "error": str(e),
                 "data": {},
-                "metadata": {}
+                "metadata": {},
             }
 
     # ─── Interactive Browsing ─────────────────────────────────────────────────
@@ -189,25 +257,12 @@ class HeadlessBrowserTool:
                             extract_after: bool = True) -> Dict[str, Any]:
         """
         Navigate to URL and execute a sequence of interactions.
-
-        Args:
-            url: Starting URL
-            actions: [
-                {"action": "click", "selector": ".button"},
-                {"action": "type", "selector": "input#search", "text": "query"},
-                {"action": "wait", "selector": ".results", "timeout": 5000},
-                {"action": "extract", "type": "markdown"},
-                {"action": "screenshot", "path": "debug.png"}
-            ]
-            extract_after: Auto-extract markdown after all actions
-
-        Returns:
-            {"status": "success", "final_url": str, "action_results": [...], "extracted_data": {...}}
+        Requires headless browser — returns error if unavailable.
         """
         if not self._browser_available:
             return {
                 "status": "error",
-                "error": "Headless browser not available. Install Lightpanda to use interactive browsing."
+                "error": "Headless browser not available. Interactive browsing requires Lightpanda.",
             }
 
         manager = _get_manager()
@@ -216,7 +271,6 @@ class HeadlessBrowserTool:
             return {"status": "error", "error": "No browser sessions available"}
 
         try:
-            # Navigate to starting URL
             session.navigate(url)
             action_results = []
 
@@ -226,10 +280,9 @@ class HeadlessBrowserTool:
                 action_results.append({
                     "step": i + 1,
                     "action": act_type,
-                    "result": result
+                    "result": result,
                 })
 
-            # Extract content after all actions
             extracted = {}
             if extract_after:
                 extracted["markdown"] = session.get_markdown()
@@ -244,8 +297,8 @@ class HeadlessBrowserTool:
                 "extracted_data": extracted,
                 "metadata": {
                     "title": page_state.get("title", ""),
-                    "actions_executed": len(actions)
-                }
+                    "actions_executed": len(actions),
+                },
             }
 
         except Exception as e:
@@ -253,8 +306,7 @@ class HeadlessBrowserTool:
             manager.release_with_error(session)
             return {"status": "error", "error": str(e)}
 
-    def _execute_action(self, session: BrowserSession,
-                         action: Dict[str, Any]) -> Any:
+    def _execute_action(self, session, action: Dict[str, Any]) -> Any:
         """Execute a single browser action."""
         act_type = action.get("action", "").lower()
         selector = action.get("selector", "")
@@ -301,53 +353,12 @@ class HeadlessBrowserTool:
         Returns:
             {"status": "success", "data": {"field": "value", ...}, "url": str}
         """
-        if not self._browser_available:
-            # Fallback: use requests + BS4
-            return self._extract_structured_requests(url, schema)
-
-        manager = _get_manager()
-        session = manager.acquire_session()
-        if not session:
-            return self._extract_structured_requests(url, schema)
-
-        try:
-            session.navigate(url)
-            # Small wait for dynamic content
-            time.sleep(1)
-
-            data = {}
-            for field_name, selector in schema.items():
-                is_safe, _ = self._security.validate_selector(selector)
-                if not is_safe:
-                    data[field_name] = "[blocked selector]"
-                    continue
-
-                try:
-                    from lirox.tools.browser_manager import _run_async
-                    text = _run_async(
-                        session.bridge.get_element_text(selector)
-                    )
-                    data[field_name] = text.strip() if text else ""
-                except Exception:
-                    data[field_name] = ""
-
-            manager.release_session(session)
-
-            return {
-                "status": "success",
-                "url": url,
-                "data": data,
-                "method": "headless"
-            }
-
-        except Exception as e:
-            logger.warning(f"Structured extraction failed: {e}")
-            manager.release_with_error(session)
-            return self._extract_structured_requests(url, schema)
+        # Always try requests-based extraction (works on all devices)
+        return self._extract_structured_requests(url, schema)
 
     def _extract_structured_requests(self, url: str,
                                       schema: Dict[str, str]) -> Dict[str, Any]:
-        """Fallback: extract structured data using requests + BS4."""
+        """Extract structured data using requests + BS4."""
         browser = self._get_fallback()
         try:
             html = browser.fetch_url(url)
@@ -360,72 +371,10 @@ class HeadlessBrowserTool:
                 "status": "success",
                 "url": url,
                 "data": data,
-                "method": "requests"
+                "method": "requests",
             }
         except Exception as e:
             return {"status": "error", "url": url, "error": str(e), "data": {}}
-
-    # ─── Real-Time Monitoring ─────────────────────────────────────────────────
-
-    def monitor_for_changes(self, url: str, selector: str,
-                             timeout: int = 60,
-                             poll_interval: int = 2) -> Dict[str, Any]:
-        """
-        Monitor a DOM element for changes.
-
-        Navigates to URL, captures initial state of selector,
-        then polls until content changes or timeout.
-
-        Returns:
-            {"changed": bool, "initial": str, "final": str, "elapsed": float}
-        """
-        if not self._browser_available:
-            return {"status": "error", "error": "Headless browser required for monitoring"}
-
-        is_safe, reason = self._security.validate_selector(selector)
-        if not is_safe:
-            return {"status": "error", "error": f"Unsafe selector: {reason}"}
-
-        manager = _get_manager()
-        session = manager.acquire_session()
-        if not session:
-            return {"status": "error", "error": "No sessions available"}
-
-        try:
-            session.navigate(url)
-            time.sleep(1)  # Wait for initial load
-
-            from lirox.tools.browser_manager import _run_async
-            initial = _run_async(session.bridge.get_element_text(selector))
-
-            start = time.time()
-            deadline = start + timeout
-
-            while time.time() < deadline:
-                time.sleep(poll_interval)
-                current = _run_async(session.bridge.get_element_text(selector))
-                if current != initial:
-                    manager.release_session(session)
-                    return {
-                        "status": "success",
-                        "changed": True,
-                        "initial": initial,
-                        "final": current,
-                        "elapsed": round(time.time() - start, 2)
-                    }
-
-            manager.release_session(session)
-            return {
-                "status": "success",
-                "changed": False,
-                "initial": initial,
-                "final": initial,
-                "elapsed": round(time.time() - start, 2)
-            }
-
-        except Exception as e:
-            manager.release_with_error(session)
-            return {"status": "error", "error": str(e)}
 
     # ─── Multi-Page Fetching ──────────────────────────────────────────────────
 
@@ -433,20 +382,37 @@ class HeadlessBrowserTool:
                               extract: str = "markdown",
                               max_concurrent: int = 3) -> List[Dict[str, Any]]:
         """
-        Fetch multiple URLs (sequential for now, with session reuse).
+        Fetch multiple URLs with concurrent execution.
 
         Args:
             urls: List of URLs to fetch
             extract: Extraction type
-            max_concurrent: Unused currently (reserved for true parallel)
+            max_concurrent: Max parallel fetches
 
         Returns:
             List of fetch results
         """
+        import concurrent.futures
+
         results = []
-        for url in urls:
-            result = self.fetch_page(url, extract=extract)
-            results.append(result)
+        with concurrent.futures.ThreadPoolExecutor(max_workers=max_concurrent) as pool:
+            future_to_url = {
+                pool.submit(self.fetch_page, url, extract): url for url in urls
+            }
+            for future in concurrent.futures.as_completed(future_to_url):
+                try:
+                    result = future.result(timeout=35)
+                    results.append(result)
+                except Exception as e:
+                    url = future_to_url[future]
+                    results.append({
+                        "status": "error",
+                        "url": url,
+                        "error": str(e),
+                        "data": {},
+                        "metadata": {},
+                    })
+
         return results
 
     # ─── Helper Methods ───────────────────────────────────────────────────────
@@ -461,7 +427,7 @@ class HeadlessBrowserTool:
                 links.append({
                     "url": a["href"],
                     "text": a.get_text(strip=True),
-                    "title": a.get("title", "")
+                    "title": a.get("title", ""),
                 })
             return links
         except Exception:

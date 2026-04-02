@@ -1,32 +1,46 @@
 """
-Lirox v0.5 — Browser Tool
+Lirox v0.7.1 — Browser Tool (Portable Edition)
 
-Lightweight web access for research and data gathering.
-Uses requests + BeautifulSoup (no headless browser needed).
+Robust web access for research and data gathering.
+Works on ANY device — no headless browser binary required.
 
-Fixes from v0.4:
-- Added missing score_source() method (was causing crash in research_topic)
-- Improved URL extraction with better cleaning
-- Increased timeout to 15s
+Features:
+- Real HTTP fetching with proper headers and retry logic
+- DuckDuckGo search with proper URL unwrapping
+- Google fallback search when DDG fails
+- Source quality scoring
+- Content extraction with BS4
+- User-Agent rotation to avoid blocks
 """
 
 import re
+import time
+import random
+import logging
 import requests
-from urllib.parse import quote_plus, urlparse
+from urllib.parse import quote_plus, urlparse, parse_qs, unquote
 from lirox.utils.errors import ToolExecutionError
+
+logger = logging.getLogger("lirox.browser")
 
 try:
     from bs4 import BeautifulSoup
 except ImportError:
     BeautifulSoup = None
 
+# ─── User-Agent Pool — rotate to avoid detection ─────────────────────────────
 
-# User-Agent to avoid bot blocking on most sites
-USER_AGENT = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-    "AppleWebKit/537.36 (KHTML, like Gecko) "
-    "Chrome/124.0.0.0 Safari/537.36"
-)
+_USER_AGENTS = [
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+    "(KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36",
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_4) AppleWebKit/605.1.15 "
+    "(KHTML, like Gecko) Version/17.3.1 Safari/605.1.15",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:126.0) Gecko/20100101 Firefox/126.0",
+]
 
 # Domains/patterns to block outright
 BLOCKED_PATTERNS = [
@@ -65,17 +79,30 @@ _LOW_QUALITY_SIGNALS = [
     "casino", "bet", "free-gift", "discount", "coupon",
 ]
 
+# Search-engine domains to filter out of results
+_SEARCH_ENGINES = {"duckduckgo.com", "google.com", "bing.com", "yahoo.com",
+                   "yandex.com", "baidu.com"}
+
 
 class BrowserTool:
-    """Lightweight web access tool for fetching, parsing, and searching the web."""
+    """Robust web access tool for fetching, parsing, and searching the web."""
 
     def __init__(self, timeout=15):
         self.timeout = timeout
         self.session = requests.Session()
+        self._rotate_ua()
+
+    def _rotate_ua(self):
+        """Set a fresh random User-Agent on the session."""
+        ua = random.choice(_USER_AGENTS)
         self.session.headers.update({
-            "User-Agent": USER_AGENT,
+            "User-Agent": ua,
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "Accept-Language": "en-US,en;q=0.5",
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept-Encoding": "gzip, deflate",
+            "DNT": "1",
+            "Connection": "keep-alive",
+            "Upgrade-Insecure-Requests": "1",
         })
 
     # ─── URL Safety ──────────────────────────────────────────────────────────
@@ -98,9 +125,10 @@ class BrowserTool:
 
     # ─── Core Fetching ───────────────────────────────────────────────────────
 
-    def fetch_url(self, url, timeout=None):
+    def fetch_url(self, url, timeout=None, retries=2):
         """
         Safely fetch a URL and return its raw HTML content.
+        Includes automatic retry with User-Agent rotation on failure.
 
         Raises ToolExecutionError on failure.
         """
@@ -108,38 +136,58 @@ class BrowserTool:
         if not safe:
             raise ToolExecutionError("browser", f"Unsafe URL: {reason}")
 
-        try:
-            response = self.session.get(
-                url,
-                timeout=timeout or self.timeout,
-                allow_redirects=True,
-                stream=True
-            )
-            response.raise_for_status()
+        last_error = None
+        for attempt in range(retries + 1):
+            try:
+                if attempt > 0:
+                    self._rotate_ua()
+                    time.sleep(0.5 * attempt)
 
-            # Check content size before reading
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > MAX_CONTENT_SIZE:
-                raise ToolExecutionError(
-                    "browser",
-                    f"Content too large: {content_length} bytes",
-                    is_retryable=False
+                response = self.session.get(
+                    url,
+                    timeout=timeout or self.timeout,
+                    allow_redirects=True,
+                    stream=True,
                 )
+                response.raise_for_status()
 
-            return response.text[:MAX_CONTENT_SIZE]
+                # Check content size before reading
+                content_length = response.headers.get("content-length")
+                if content_length and int(content_length) > MAX_CONTENT_SIZE:
+                    raise ToolExecutionError(
+                        "browser",
+                        f"Content too large: {content_length} bytes",
+                        is_retryable=False,
+                    )
 
-        except ToolExecutionError:
-            raise
-        except requests.exceptions.Timeout:
-            raise ToolExecutionError("browser", f"Timeout fetching {url}", is_retryable=True)
-        except requests.exceptions.ConnectionError:
-            raise ToolExecutionError("browser", f"Connection failed: {url}", is_retryable=True)
-        except requests.exceptions.HTTPError as e:
-            status = e.response.status_code if e.response else "unknown"
-            is_retryable = status in (429, 500, 502, 503, 504)
-            raise ToolExecutionError("browser", f"HTTP {status}: {url}", is_retryable=is_retryable)
-        except Exception as e:
-            raise ToolExecutionError("browser", f"Error fetching {url}: {str(e)}")
+                return response.text[:MAX_CONTENT_SIZE]
+
+            except ToolExecutionError:
+                raise
+            except requests.exceptions.Timeout as e:
+                last_error = e
+                if attempt < retries:
+                    continue
+                raise ToolExecutionError("browser", f"Timeout fetching {url}", is_retryable=True)
+            except requests.exceptions.ConnectionError as e:
+                last_error = e
+                if attempt < retries:
+                    continue
+                raise ToolExecutionError("browser", f"Connection failed: {url}", is_retryable=True)
+            except requests.exceptions.HTTPError as e:
+                status = e.response.status_code if e.response else "unknown"
+                is_retryable = status in (429, 500, 502, 503, 504)
+                if is_retryable and attempt < retries:
+                    last_error = e
+                    continue
+                raise ToolExecutionError("browser", f"HTTP {status}: {url}", is_retryable=is_retryable)
+            except Exception as e:
+                last_error = e
+                if attempt < retries:
+                    continue
+                raise ToolExecutionError("browser", f"Error fetching {url}: {str(e)}")
+
+        raise ToolExecutionError("browser", f"All retries failed for {url}: {last_error}")
 
     # ─── HTML Parsing ─────────────────────────────────────────────────────────
 
@@ -157,7 +205,8 @@ class BrowserTool:
             soup = BeautifulSoup(html, "html.parser")
 
             # Remove script, style, and navigation elements
-            for tag in soup(["script", "style", "nav", "footer", "header", "aside", "noscript"]):
+            for tag in soup(["script", "style", "nav", "footer", "header",
+                           "aside", "noscript", "svg", "iframe"]):
                 tag.decompose()
 
             text = soup.get_text(separator="\n", strip=True)
@@ -199,10 +248,11 @@ class BrowserTool:
         Specialized extraction for financial/real-time data (prices, indices).
         Looks for patterns like 'Nifty 50: 22,000' or '$50.00'.
         """
-        if not text: return []
+        if not text:
+            return []
         patterns = [
-            r'(\$|₹|USD|INR)\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?', # Currency
-            r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s?(points|%)'     # Percentage/Points
+            r'(\$|₹|USD|INR)\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?',  # Currency
+            r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s?(points|%)',      # Percentage/Points
         ]
         if labels:
             for label in labels:
@@ -215,18 +265,104 @@ class BrowserTool:
                 found.append(m.group(0))
         return list(set(found))[:5]
 
+    # ─── URL Unwrapping ──────────────────────────────────────────────────────
+
+    @staticmethod
+    def _unwrap_ddg_url(url: str) -> str:
+        """
+        Unwrap DuckDuckGo redirect URLs to get the actual destination URL.
+        Handles multiple DDG redirect formats.
+        """
+        if not url:
+            return url
+
+        # Format 1: //duckduckgo.com/l/?uddg=ENCODED_URL&...
+        if "uddg=" in url:
+            try:
+                parsed = urlparse(url)
+                qs = parse_qs(parsed.query)
+                real_urls = qs.get("uddg", [])
+                if real_urls:
+                    return unquote(real_urls[0])
+            except Exception:
+                pass
+
+        # Format 2: /y.js?ad_domain=... (DDG ads — extract ad_domain)
+        if "/y.js?" in url and "ad_domain=" in url:
+            try:
+                parsed = urlparse(url)
+                qs = parse_qs(parsed.query)
+                ad_domain = qs.get("ad_domain", [""])[0]
+                if ad_domain:
+                    return f"https://{ad_domain}"
+            except Exception:
+                pass
+
+        # Format 3: duckduckgo.com redirect with rut parameter
+        if "duckduckgo.com" in url and "rut=" in url:
+            try:
+                parsed = urlparse(url)
+                qs = parse_qs(parsed.query)
+                rut_urls = qs.get("rut", [])
+                if rut_urls:
+                    return unquote(rut_urls[0])
+            except Exception:
+                pass
+
+        return url
+
+    @staticmethod
+    def _is_real_result_url(url: str) -> bool:
+        """Check if a URL is a real destination (not a search engine redirect)."""
+        if not url or not url.startswith("http"):
+            return False
+        domain = urlparse(url).netloc.replace("www.", "").lower()
+        # Reject search engine domains and internal DDG URLs
+        if domain in _SEARCH_ENGINES:
+            return False
+        if "/y.js?" in url:
+            return False
+        return True
+
     # ─── Web Search ──────────────────────────────────────────────────────────
 
     def search_web(self, query, num_results=5):
         """
         Search the web using DuckDuckGo HTML (no API key required).
         Returns list of rich source objects with title, url, snippet, domain, icon.
+
+        Properly unwraps all DDG redirect URLs.
         """
+        results = self._search_duckduckgo(query, num_results)
+
+        # If DDG returned too few results, try Google scrape fallback
+        if len(results) < 2:
+            logger.info("DDG returned < 2 results, trying Google fallback")
+            google_results = self._search_google_fallback(query, num_results)
+            results.extend(google_results)
+
+        # Deduplicate by domain
+        seen_domains = set()
+        deduped = []
+        for r in results:
+            d = r.get("domain", "")
+            if d and d not in seen_domains:
+                seen_domains.add(d)
+                deduped.append(r)
+            elif not d:
+                deduped.append(r)
+        
+        return deduped[:num_results]
+
+    def _search_duckduckgo(self, query, num_results=5):
+        """Search DuckDuckGo HTML — no API key required."""
         search_url = f"https://html.duckduckgo.com/html/?q={quote_plus(query)}"
 
         try:
+            self._rotate_ua()
             html = self.fetch_url(search_url, timeout=15)
-        except ToolExecutionError:
+        except ToolExecutionError as e:
+            logger.warning(f"DDG search failed: {e}")
             return []
 
         if not BeautifulSoup:
@@ -236,32 +372,85 @@ class BrowserTool:
         results = []
 
         for result in soup.select(".result"):
-            title_el   = result.select_one(".result__a")
+            title_el = result.select_one(".result__a")
             snippet_el = result.select_one(".result__snippet")
 
-            if title_el:
-                title   = title_el.get_text(strip=True)
-                url     = title_el.get("href", "")
-                snippet = snippet_el.get_text(strip=True) if snippet_el else ""
+            if not title_el:
+                continue
 
-                # Unwrap DuckDuckGo redirect URLs
-                if "uddg=" in url:
-                    try:
-                        from urllib.parse import parse_qs, urlparse as up
-                        real_url = parse_qs(up(url).query).get("uddg", [url])[0]
-                        url = real_url
-                    except Exception:
-                        pass
+            title = title_el.get_text(strip=True)
+            raw_url = title_el.get("href", "")
+            snippet = snippet_el.get_text(strip=True) if snippet_el else ""
 
-                domain = urlparse(url).netloc.replace("www.", "")
-                results.append({
-                    "title":   title,
-                    "url":     url,
-                    "snippet": snippet,
-                    "domain":  domain,
-                    "icon":    f"https://www.google.com/s2/favicons?sz=64&domain={domain}",
-                    "score":   self.score_source(url),
-                })
+            # Unwrap DDG redirect URL
+            url = self._unwrap_ddg_url(raw_url)
+
+            # Skip if still a search engine URL after unwrapping
+            if not self._is_real_result_url(url):
+                continue
+
+            domain = urlparse(url).netloc.replace("www.", "")
+            results.append({
+                "title": title,
+                "url": url,
+                "snippet": snippet,
+                "domain": domain,
+                "icon": f"https://www.google.com/s2/favicons?sz=64&domain={domain}",
+                "score": self.score_source(url),
+            })
+
+            if len(results) >= num_results:
+                break
+
+        return results
+
+    def _search_google_fallback(self, query, num_results=5):
+        """Fallback: scrape Google search results page."""
+        search_url = f"https://www.google.com/search?q={quote_plus(query)}&num={num_results + 5}"
+
+        try:
+            self._rotate_ua()
+            html = self.fetch_url(search_url, timeout=15)
+        except ToolExecutionError:
+            return []
+
+        if not BeautifulSoup:
+            return []
+
+        soup = BeautifulSoup(html, "html.parser")
+        results = []
+
+        # Google wraps results in <a> tags with href starting with /url?q=
+        for a_tag in soup.select("a"):
+            href = a_tag.get("href", "")
+
+            # Google result links
+            real_url = None
+            if href.startswith("/url?q="):
+                try:
+                    qs = parse_qs(urlparse(href).query)
+                    real_url = qs.get("q", [""])[0]
+                except Exception:
+                    continue
+            elif href.startswith("https://") and "google.com" not in href:
+                real_url = href
+
+            if not real_url or not self._is_real_result_url(real_url):
+                continue
+
+            title = a_tag.get_text(strip=True) or ""
+            if not title or len(title) < 5:
+                continue
+
+            domain = urlparse(real_url).netloc.replace("www.", "")
+            results.append({
+                "title": title,
+                "url": real_url,
+                "snippet": "",
+                "domain": domain,
+                "icon": f"https://www.google.com/s2/favicons?sz=64&domain={domain}",
+                "score": self.score_source(real_url),
+            })
 
             if len(results) >= num_results:
                 break
@@ -356,6 +545,8 @@ class BrowserTool:
         try:
             html = self.fetch_url(url)
             text = self.extract_text(html)
+            if not text or len(text) < 50:
+                return f"[Page at {url} returned minimal content — may require JavaScript]"
             return text[:4000] if len(text) > 4000 else text
         except ToolExecutionError as e:
             return f"Error accessing {url}: {str(e)}"
@@ -368,14 +559,14 @@ class BrowserTool:
         if not text:
             return []
 
-        raw_urls = re.findall(r'https?://[^\s\)\>"\']+', text)
-        SEARCH_ENGINES = {"duckduckgo.com", "google.com", "bing.com", "yahoo.com"}
+        raw_urls = re.findall(r'https?://[^\s\)\>"\'>]+', text)
         seen = set()
         clean = []
         for url in raw_urls:
             url = url.rstrip(".,;)>\"'")
-            domain = urlparse(url).netloc.replace("www.", "")
-            if domain not in SEARCH_ENGINES and url not in seen:
+            if not self._is_real_result_url(url):
+                continue
+            if url not in seen:
                 seen.add(url)
                 clean.append(url)
         return clean
