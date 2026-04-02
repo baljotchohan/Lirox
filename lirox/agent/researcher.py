@@ -331,12 +331,16 @@ Example JSON:
         findings = []
         synthesis_text = response
         
+        import re
         try:
             if "```json" in response:
                 json_part = response.split("```json")[-1].split("```")[0]
                 data = json.loads(json_part.strip())
                 findings = data.get("findings", [])
-                synthesis_text = response.replace(f"```json\n{json_part}\n```", "").strip()
+                # Use regex to robustly strip the JSON block from the generated report
+                synthesis_text = re.sub(r"```json.*?```", "", response, flags=re.DOTALL).strip()
+                # Also strip any trailing text introducing the JSON block
+                synthesis_text = re.sub(r"(?i)\s*JSON Block of Key Findings:?\s*$", "", synthesis_text).strip()
         except Exception:
             pass
 
