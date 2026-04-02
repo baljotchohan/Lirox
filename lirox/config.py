@@ -17,7 +17,7 @@ except ImportError:
     sys.exit(1)
 
 # ─── Version ─────────────────────────────────────────────────────────────────
-APP_VERSION = "0.6.1-stable"
+APP_VERSION = "0.7.0"
 
 # ─── Path Anchoring ───────────────────────────────────────────────────────────
 # Repo root is always 2 levels above this file:
@@ -107,11 +107,37 @@ SAFE_DIRS = [
 # [FIX #1] Resolve symlinks to prevent path traversal
 SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in SAFE_DIRS]
 
-# Browser
+# Browser (basic requests-based)
 BROWSER_TIMEOUT = 15    # Web request timeout (seconds)
 
 # LLM
 LLM_TIMEOUT = 60        # LLM API call timeout (seconds)
+
+# ─── Headless Browser Config (v0.7 — Lightpanda) ────────────────────────────
+
+_DEFAULT_USER_AGENT = (
+    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+    "AppleWebKit/537.36 (KHTML, like Gecko) "
+    "Chrome/124.0.0.0 Safari/537.36"
+)
+
+BROWSER_CONFIG = {
+    "lightpanda_path": os.getenv("LIGHTPANDA_PATH", str(_REPO_ROOT / "lightpanda")),
+    "port": int(os.getenv("BROWSER_PORT", 9222)),
+    "max_instances": int(os.getenv("BROWSER_MAX_INSTANCES", 5)),
+    "timeout": int(os.getenv("BROWSER_TIMEOUT", 30)),
+    "headless": os.getenv("BROWSER_HEADLESS", "true").lower() == "true",
+    "disable_images": os.getenv("BROWSER_DISABLE_IMAGES", "false").lower() == "true",
+    "user_agent": os.getenv("BROWSER_USER_AGENT", _DEFAULT_USER_AGENT),
+    "rate_limits": {
+        "per_domain": int(os.getenv("BROWSER_RATE_LIMIT_PER_DOMAIN", 10)),
+        "global": int(os.getenv("BROWSER_RATE_LIMIT_GLOBAL", 100)),
+    },
+    "blocklist": os.getenv(
+        "BROWSER_BLOCKLIST", "localhost,127.0.0.1,169.254.169.254"
+    ).split(","),
+    "cookie_dir": os.getenv("BROWSER_COOKIE_DIR", str(_REPO_ROOT / "data" / "browser_cookies")),
+}
 
 # Ensure outputs/ and data/ exist
 os.makedirs(OUTPUTS_DIR, exist_ok=True)

@@ -1,8 +1,9 @@
 """
-Lirox v0.6 — Deep Research Engine
+Lirox v0.7 — Deep Research Engine
 
 Perplexity-grade autonomous research:
 - Multi-source parallel search (Tavily, Serper, Exa, DuckDuckGo fallback)
+- Headless browser for dynamic content extraction (v0.7)
 - Source quality scoring and ranking
 - Content extraction and deduplication
 - Cross-source LLM synthesis
@@ -60,6 +61,14 @@ class Researcher:
         self.provider = provider
         self.tier_limit = tier_limit # [FIX #7] Injection
         self.search_apis = get_available_search_apis()
+
+        # v0.7: Headless browser for enhanced extraction
+        self.headless_browser = None
+        try:
+            from lirox.tools.browser_tool import HeadlessBrowserTool
+            self.headless_browser = HeadlessBrowserTool()
+        except ImportError:
+            pass
 
     def research(self, query: str, depth: str = "standard") -> ResearchReport:
         # Determine source counts based on depth
@@ -293,7 +302,20 @@ class Researcher:
         def extract(src: ResearchSource) -> ResearchSource:
             if src.content and len(src.content) > 500:
                 return src # Already extracted (e.g. by Tavily)
-            
+
+            # v0.7: Try headless browser first for richer content
+            if self.headless_browser and self.headless_browser._browser_available:
+                try:
+                    result = self.headless_browser.fetch_page(src.url, extract="markdown", timeout=15)
+                    if result.get("status") == "success":
+                        content = result.get("data", {}).get("markdown", "")
+                        if content and len(content) > 100:
+                            src.content = content[:5000]
+                            return src
+                except Exception:
+                    pass  # Fall through to requests-based extraction
+
+            # Fallback: requests-based extraction
             try:
                 src.content = self.browser.summarize_page(src.url)
             except Exception as e:
@@ -302,6 +324,41 @@ class Researcher:
 
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
             return list(executor.map(extract, sources))
+
+    def research_with_browser(self, url: str) -> ResearchSource:
+        """
+        v0.7: Research a specific URL using headless browser for live data.
+        Used for verifying real-time claims (stock prices, live scores, etc).
+        """
+        from urllib.parse import urlparse as _urlparse
+        domain = _urlparse(url).netloc.replace("www.", "")
+
+        if self.headless_browser and self.headless_browser._browser_available:
+            result = self.headless_browser.fetch_page(url, extract="all", timeout=20)
+            if result.get("status") == "success":
+                data = result.get("data", {})
+                content = data.get("markdown", "")
+                return ResearchSource(
+                    url=url,
+                    title=result.get("metadata", {}).get("title", ""),
+                    domain=domain,
+                    content=content[:5000],
+                    score=0.9,  # High score for direct browser fetch
+                    snippet=content[:200],
+                    search_query="[direct browser extraction]"
+                )
+
+        # Fallback
+        content = self.browser.summarize_page(url)
+        return ResearchSource(
+            url=url,
+            title="",
+            domain=domain,
+            content=content,
+            score=0.7,
+            snippet=content[:200],
+            search_query="[direct fetch]"
+        )
 
     def _synthesize(self, query: str, sources: List[ResearchSource], provider: str) -> Tuple[str, List[Dict]]:
         system_prompt = """You are a research synthesis engine. Your job is to synthesize 

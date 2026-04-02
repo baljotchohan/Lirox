@@ -60,3 +60,8 @@ Thumbs.db
 outputs/
 scheduled_tasks.json
 test_tasks.json
+
+# Browser data (v0.7)
+data/browser_cookies/
+data/browser_sessions.json
+lightpanda

@@ -157,6 +157,12 @@ def process_input(agent, user_input, verbose=False):
             success_message(f"Remembered: {fact}")
             router.learn_from_choice("memory", "save_fact")
         return
+
+    elif intent == "browser":
+        # v0.7: Browser-specific task
+        run_autonomous_task(agent, user_input)
+        router.learn_from_choice("browser", "autonomous")
+        return
     
     else:  # chat
         spinner = AgentSpinner("Processing...")
@@ -244,6 +250,20 @@ def run_autonomous_task(agent, goal):
     if reflection.get("reflection", {}).get("suggestion"):
         print(f"\n[{CLR_WARN}] AGENT REFLECTION: {reflection['reflection']['suggestion']}\n")
 
+def _check_browser_status():
+    """v0.7: Helper for diagnostics — check browser subsystem."""
+    try:
+        from lirox.tools.browser_tool import get_browser_status
+        status = get_browser_status()
+        if status['binary_available']:
+            return f"[bold green]Lightpanda Available[/] ({status.get('binary_path', 'N/A')})"
+        else:
+            return "[bold yellow]Binary Not Found[/] (optional — install Lightpanda for headless browser)"
+    except ImportError:
+        return "[dim]Not installed[/]"
+    except Exception as e:
+        return f"[bold red]Error: {str(e)}[/]"
+
 def run_diagnostics(agent):
     info_panel("INITIATING CORE DIAGNOSTICS...")
     steps = [
@@ -251,7 +271,8 @@ def run_diagnostics(agent):
         ("Provider Mapping", lambda: "Available: " + ", ".join(available_providers())),
         ("Profile Persistence", lambda: "Operator: " + agent.profile.data.get('user_name', 'None')),
         ("Tool Authorization", lambda: "FileSystem/Terminal: [bold green]Operational[/]"),
-        ("Kernel Version", lambda: f"v{APP_VERSION} [bold green]Downloaded/Latest[/]")
+        ("Kernel Version", lambda: f"v{APP_VERSION} [bold green]Downloaded/Latest[/]"),
+        ("Headless Browser", lambda: _check_browser_status()),
     ]
     for i, (name, fn) in enumerate(steps, 1):
         try:
@@ -453,13 +474,17 @@ def handle_command(agent, command):
     elif base == "/help":
         help_text = (
             "COMMAND REFERENCE\n\n"
-            "── Research (v0.6) ──────────────────────────────────\n"
+            "── Research (v0.6) ─────────────────────────────────────────\n"
             "  /research \"Q\"    Deep research any topic\n"
             "  /research \"Q\" --depth deep    Extended 12-source research\n"
             "  /sources         View sources from last research\n"
             "  /tier            Show current research tier & APIs\n"
             "  /add-search-api  Add Tavily/Serper/Exa search keys\n\n"
-            "── Agent ────────────────────────────────────────────\n"
+            "── Browser (v0.7) ─────────────────────────────────────────\n"
+            "  /fetch <url>     Fetch & extract page content\n"
+            "  /scrape <url>    Extract structured data from page\n"
+            "  /browser         Show headless browser subsystem status\n\n"
+            "── Agent ────────────────────────────────────────────────\n"
             "  /profile    Show agent identity and profile\n"
             "  /memory     Show memory core statistics\n"
             "  /test       Run kernel diagnostics suite\n"
@@ -474,6 +499,116 @@ def handle_command(agent, command):
             "  /exit       Safely terminate the kernel"
         )
         info_panel(help_text)
+
+    elif base == "/fetch":
+        # v0.7: /fetch <url> — Quick page fetch with headless browser
+        url = command[len("/fetch "):].strip().strip('"\'')
+        if not url or not url.startswith("http"):
+            info_panel("Usage: /fetch <url>\nExample: /fetch https://news.ycombinator.com")
+            return
+
+        spinner = AgentSpinner("Fetching page with headless browser...")
+        spinner.start()
+        try:
+            from lirox.tools.browser_tool import HeadlessBrowserTool
+            hb = HeadlessBrowserTool()
+            result = hb.fetch_page(url, extract="markdown")
+            spinner.stop()
+
+            if result.get("status") == "success":
+                content = result.get("data", {}).get("markdown", "")
+                method = result.get("metadata", {}).get("method", "unknown")
+                duration = result.get("metadata", {}).get("duration", 0)
+                title = result.get("metadata", {}).get("title", "")
+
+                from lirox.ui.display import CLR_ACCENT
+                console.print(f"\n[bold]{title}[/bold]" if title else "")
+                console.print(f"[dim]Method: {method} | Duration: {duration}s | URL: {url}[/dim]\n")
+                # Show first 3000 chars
+                console.print(f"[{CLR_ACCENT}]{content[:3000]}[/]")
+                if len(content) > 3000:
+                    console.print(f"\n[dim]... ({len(content)} chars total, truncated)[/dim]")
+                console.print()
+            else:
+                error_panel("FETCH ERROR", result.get("error", "Unknown error"))
+        except Exception as e:
+            spinner.stop()
+            error_panel("FETCH ERROR", str(e))
+
+    elif base == "/scrape":
+        # v0.7: /scrape <url> — Extract structured data
+        url = command[len("/scrape "):].strip().strip('"\'')
+        if not url or not url.startswith("http"):
+            info_panel(
+                "Usage: /scrape <url>\n"
+                "Extracts all tables, links, and text from the target page.\n"
+                "Example: /scrape https://example.com"
+            )
+            return
+
+        spinner = AgentSpinner("Scraping page with headless browser...")
+        spinner.start()
+        try:
+            from lirox.tools.browser_tool import HeadlessBrowserTool
+            hb = HeadlessBrowserTool()
+            result = hb.fetch_page(url, extract="all")
+            spinner.stop()
+
+            if result.get("status") == "success":
+                data = result.get("data", {})
+                method = result.get("metadata", {}).get("method", "unknown")
+                duration = result.get("metadata", {}).get("duration", 0)
+
+                console.print(f"\n[dim]Method: {method} | Duration: {duration}s[/dim]")
+
+                if data.get("tables"):
+                    console.print(f"\n[bold cyan]📊 Tables Found: {len(data['tables'])}[/]")
+                    for i, table in enumerate(data['tables'][:3]):
+                        console.print(f"  Table {i+1}: {len(table)} rows")
+                        if table:
+                            console.print(f"  Columns: {', '.join(table[0].keys())}")
+
+                if data.get("links"):
+                    console.print(f"\n[bold cyan]🔗 Links Found: {len(data['links'])}[/]")
+                    for link in data['links'][:10]:
+                        console.print(f"  • {link.get('text', 'N/A')[:50]} → {link.get('url', '')[:60]}")
+
+                if data.get("markdown"):
+                    word_count = len(data['markdown'].split())
+                    console.print(f"\n[bold cyan]📄 Content: {word_count} words[/]")
+                    console.print(f"[dim]{data['markdown'][:500]}...[/dim]")
+
+                console.print()
+            else:
+                error_panel("SCRAPE ERROR", result.get("error", "Unknown error"))
+        except Exception as e:
+            spinner.stop()
+            error_panel("SCRAPE ERROR", str(e))
+
+    elif base == "/browser":
+        # v0.7: Show headless browser subsystem status
+        try:
+            from lirox.tools.browser_tool import get_browser_status
+            status = get_browser_status()
+
+            binary_status = "[bold green]✓ Available[/]" if status['binary_available'] else "[bold red]✗ Not Found[/]"
+            running = "[bold green]✓ Running[/]" if status.get('browser_running') else "[dim]Idle[/]"
+
+            text = (
+                f"HEADLESS BROWSER SUBSYSTEM (v0.7)\n\n"
+                f"  Binary:    {binary_status}\n"
+                f"  Path:      {status.get('binary_path', 'N/A')}\n"
+                f"  Status:    {running}\n"
+                f"  Port:      {status.get('port', 'N/A')}\n"
+                f"  Sessions:  {status.get('active_sessions', 0)}/{status.get('max_instances', 5)} active\n"
+                f"  Available: {status.get('available_sessions', 0)} pooled\n"
+            )
+            if status.get('browser_running'):
+                text += f"  PID:       {status.get('browser_pid', 'N/A')}\n"
+
+            info_panel(text)
+        except Exception as e:
+            error_panel("BROWSER STATUS ERROR", str(e))
     else:
         print(f"Unknown command: {base}. Type /help for assistance.")
 

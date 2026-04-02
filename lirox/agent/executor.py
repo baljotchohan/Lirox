@@ -1,14 +1,15 @@
 """
-Lirox v0.5 — Enhanced Executor
+Lirox v0.7 — Enhanced Executor
 
 Executes structured plans step-by-step with:
 - Parallel execution of independent steps (ThreadPoolExecutor)
-- Tool routing (terminal, browser, file_io, llm)
+- Tool routing (terminal, browser/headless, file_io, llm)
 - Dependency checking between steps
 - Context chaining (step N output → step N+1 input) — up to 4000 chars
 - Retry logic with exponential backoff
 - Per-step status tracking and execution trace
 - Output validation — detects tool failures even when no exception is thrown
+- Headless browser for dynamic content & real-time data (v0.7)
 """
 
 import time
@@ -47,11 +48,26 @@ FAILURE_PATTERNS = [
 class Executor:
     """Executes structured plans step-by-step with parallel independent steps."""
 
+    # Keywords that REQUIRE headless browser (dynamic JS rendering)
+    HEADLESS_KEYWORDS = [
+        "dynamic", "javascript", "react", "spa", "real-time", "realtime",
+        "live data", "form fill", "login", "scrape dynamic", "interactive",
+        "render", "single page", "angular", "vue", "stock price", "live score",
+        "headless", "automate", "fill form", "submit form",
+    ]
+
     def __init__(self):
         self.browser  = BrowserTool()
         self.file_io  = FileIOTool()
         self.last_trace = []
         self._results_lock = threading.Lock()
+
+        # v0.7: Headless browser tool (Lightpanda)
+        try:
+            from lirox.tools.browser_tool import HeadlessBrowserTool
+            self.headless_browser = HeadlessBrowserTool()
+        except ImportError:
+            self.headless_browser = None
 
     def _is_output_failure(self, output: str) -> Tuple[bool, str]:
         """Check if tool output indicates failure despite no exception."""
@@ -293,6 +309,13 @@ class Executor:
     def _run_browser_step(self, step: Dict[str, Any], context: str, provider: str, system_prompt: Optional[str]) -> str:
         task_lower = step["task"].lower()
 
+        # v0.7: Detect if this task needs a headless browser
+        needs_headless = any(kw in task_lower for kw in self.HEADLESS_KEYWORDS)
+
+        # If headless is needed and available, route there
+        if needs_headless and self.headless_browser and self.headless_browser._browser_available:
+            return self._run_headless_browser_step(step, context, provider, system_prompt)
+
         if any(k in task_lower for k in ["research", "deep dive", "everything about", "latest on"]):
             query_prompt = (
                 f"Extract a comprehensive research query from this task. "
@@ -334,6 +357,15 @@ class Executor:
         urls_in_context = self.browser.extract_urls_from_text(context) if context else []
 
         if any(k in task_lower for k in ["extract", "compare", "from pages", "summarize", "analyze results"]) and urls_in_context:
+            # v0.7: Use headless for URL extraction if available
+            if self.headless_browser and self.headless_browser._browser_available:
+                results = []
+                for url in urls_in_context[:4]:
+                    fetch = self.headless_browser.fetch_page(url, extract="markdown")
+                    content = fetch.get("data", {}).get("markdown", "")
+                    results.append(f"--- Data from {url} ---\n{content[:3000]}\n")
+                return "\n".join(results)
+
             top_urls = urls_in_context[:4]
             extracted = []
             for url in top_urls:
@@ -346,6 +378,11 @@ class Executor:
             url_match = re.search(r'https?://\S+', step["task"])
             if url_match:
                 url = url_match.group(0).rstrip(".,;)")
+                # v0.7: prefer headless for direct URL fetch
+                if self.headless_browser and self.headless_browser._browser_available:
+                    fetch = self.headless_browser.fetch_page(url, extract="markdown")
+                    content = fetch.get("data", {}).get("markdown", "")
+                    return f"Content from {url}:\n{content[:5000]}"
                 content = self.browser.summarize_page(url)
                 return f"Content from {url}:\n{content}"
 
@@ -360,6 +397,70 @@ class Executor:
         if results:
             formatted = [f"- {r['title']}: {r['snippet']}" for r in results]
             return f"Search for '{query}':\n" + "\n".join(formatted)
+
+        return f"No results found for: {query}"
+
+    def _run_headless_browser_step(self, step: Dict[str, Any], context: str, provider: str, system_prompt: Optional[str]) -> str:
+        """v0.7: Route tasks requiring dynamic/JS rendering to the headless browser."""
+        task_lower = step["task"].lower()
+
+        # Extract URL from task
+        import re
+        url_match = re.search(r'https?://\S+', step["task"])
+
+        # Form fill + submit
+        if any(k in task_lower for k in ["form fill", "fill form", "login", "submit form"]):
+            if url_match:
+                url = url_match.group(0).rstrip(".,;)")
+                # Use LLM to extract form field mappings
+                form_prompt = (
+                    f"Extract form field CSS selectors and values from this task. "
+                    f"Return JSON: {{\"fields\": {{\"selector\": \"value\"}}, \"submit\": \"submit_selector\"}}\n\n"
+                    f"Task: {step['task']}\n"
+                    f"Context: {context[:500] if context else 'None'}"
+                )
+                result = self.headless_browser.interact_with_page(url, [
+                    {"action": "extract", "type": "markdown"}
+                ])
+                return result.get("extracted_data", {}).get("markdown", "No content extracted")
+
+        # Scrape / extract structured data
+        if any(k in task_lower for k in ["scrape", "extract data", "structured data"]):
+            if url_match:
+                url = url_match.group(0).rstrip(".,;)")
+                fetch = self.headless_browser.fetch_page(url, extract="all")
+                data = fetch.get("data", {})
+                parts = []
+                if data.get("markdown"):
+                    parts.append(data["markdown"][:5000])
+                if data.get("tables"):
+                    import json
+                    parts.append(f"Tables: {json.dumps(data['tables'][:3], indent=2)[:3000]}")
+                return "\n\n".join(parts) if parts else "No data extracted"
+
+        # Real-time data / dynamic content
+        if url_match:
+            url = url_match.group(0).rstrip(".,;)")
+            fetch = self.headless_browser.fetch_page(url, extract="markdown")
+            content = fetch.get("data", {}).get("markdown", "")
+            return f"[Headless Browser] Content from {url}:\n{content[:5000]}" if content else "No content extracted"
+
+        # No URL — search first, then fetch with headless
+        search_prompt = (
+            f"Extract a concise search query from this task. Return ONLY the query.\n\n"
+            f"Task: {step['task']}"
+        )
+        query = generate_response(search_prompt, provider, system_prompt=system_prompt).strip().strip("\"'")
+        results = self.browser.search_web(query, num_results=3)
+        if results:
+            # Fetch top result with headless browser
+            top_url = results[0].get("url", "")
+            if top_url:
+                fetch = self.headless_browser.fetch_page(top_url, extract="markdown")
+                content = fetch.get("data", {}).get("markdown", "")
+                result_text = f"Search: {query}\nTop result: {results[0]['title']} ({top_url})\n\n"
+                result_text += content[:5000] if content else "Unable to extract content"
+                return result_text
 
         return f"No results found for: {query}"
 

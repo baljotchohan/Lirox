@@ -1,5 +1,5 @@
 """
-Lirox v0.6 — Smart Command Intent Router
+Lirox v0.7 — Smart Command Intent Router
 
 Automatically detects user intent and routes to appropriate handler.
 Learns over time what the user typically wants.
@@ -40,6 +40,14 @@ class IntentRouter:
         r"^(how|why|when|where|what|who|which)", r"tell\s+me",
         r"what\s+do\s+you", r"can\s+you", r"help\s+", r"advice",
         r"opinion", r"think\s+(about|of)", r"suggest",
+    ]
+
+    # v0.7: Browser-specific intent patterns
+    BROWSER_PATTERNS = [
+        r"scrape\s+", r"fetch\s+(page|url|site)", r"automate\s+",
+        r"fill\s+form", r"login\s+to", r"extract\s+from\s+(page|site|url)",
+        r"monitor\s+", r"watch\s+for\s+changes", r"headless",
+        r"browser\s+", r"render\s+", r"dynamic\s+content",
     ]
     
     def __init__(self):
@@ -96,7 +104,12 @@ class IntentRouter:
         memory_score = self._score_patterns(user_lower, self.MEMORY_PATTERNS)
         if memory_score > 0.6:
             return ("memory", None, memory_score)
-        
+
+        # v0.7: Check browser intent
+        browser_score = self._score_patterns(user_lower, self.BROWSER_PATTERNS)
+        if browser_score > 0.5:
+            return ("browser", None, browser_score)
+
         # Check chat intent
         chat_score = self._score_patterns(user_lower, self.CHAT_PATTERNS)
         if chat_score > 0.4:
@@ -135,6 +148,8 @@ class IntentRouter:
             return "💡 Tip: Type /sources to view source details or /tier for research tier info"
         elif last_intent == "task":
             return "💡 Tip: Type /trace to see execution logs or /memory to save findings"
+        elif last_intent == "browser":
+            return "💡 Tip: Type /browser for headless browser status or /fetch <url> to extract page content"
         return None
 
 
