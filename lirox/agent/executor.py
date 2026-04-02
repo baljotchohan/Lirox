@@ -442,7 +442,9 @@ class Executor:
             if dep_result.get("status") == "success":
                 output = dep_result.get("output", "")
                 if len(output) > CONTEXT_MAX_CHARS:
-                    output = output[:CONTEXT_MAX_CHARS] + "... [truncated]"
+                    # [FIX #4] Explicit Truncation Logging
+                    removed_chars = len(output) - CONTEXT_MAX_CHARS
+                    output = output[:CONTEXT_MAX_CHARS] + f"\n\n... [TRUNCATED: {removed_chars} chars removed]"
                 context_parts.append(f"[Step {dep_id} output]: {output}")
 
         return "\n\n".join(context_parts)

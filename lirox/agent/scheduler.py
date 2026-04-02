@@ -30,6 +30,11 @@ class TaskScheduler:
         self._thread = None
         self._next_id = max((t["id"] for t in self.tasks), default=0) + 1
         self.execute_callback = None
+        
+        # [FIX #5] Restore loaded persisted tasks effectively
+        for task in self.tasks:
+            if task.get("status") == "scheduled":
+                self._register_task(task)
 
     def _load(self):
         if os.path.exists(self.storage_file):

@@ -14,6 +14,7 @@ Features:
 import os
 import hashlib
 import requests
+import concurrent.futures
 from typing import List, Dict, Optional, Generator
 
 DEFAULT_SYSTEM = (
@@ -341,11 +342,15 @@ def is_task_request(user_input: str, provider: str = "auto") -> bool:
 
 # ─── Core Response Generation ────────────────────────────────────────────────
 
-def generate_response(prompt: str, provider: str = "auto", system_prompt: str = None) -> str:
+def generate_response(prompt: str, provider: str = "auto", system_prompt: str = None, timeout: Optional[int] = None) -> str:
     """
     Generate a response from the best available provider.
     Includes automatic fallback chain if primary fails.
     """
+    if timeout is None:
+        from lirox.config import LLM_TIMEOUT
+        timeout = LLM_TIMEOUT
+
     if provider == "auto":
         provider = smart_router(prompt)
 
@@ -366,17 +371,33 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
             return f"No API key configured for: {provider}"
         provider = fallback
 
+    # Helper method for timeout wrapping
+    def _execute_with_timeout(func, *args):
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(func, *args)
+            try:
+                # [FIX #3] Block thread on timeout
+                return future.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                raise TimeoutError(f"LLM API timed out after {timeout}s")
+
     # Primary attempt
-    response = _call_provider(provider, prompt, system_prompt)
+    try:
+        response = _execute_with_timeout(_call_provider, provider, prompt, system_prompt)
+    except TimeoutError as e:
+        return f"Error: {str(e)}"
 
     # Execution-time fallback chain
     if is_error_response(response):
         avail = available_providers()
         fallbacks = [p for p in _PROVIDER_PRIORITY if p in avail and p != provider]
         for fb in fallbacks:
-            retry = _call_provider(fb, prompt, system_prompt)
-            if not is_error_response(retry):
-                return retry
+            try:
+                retry = _execute_with_timeout(_call_provider, fb, prompt, system_prompt)
+                if not is_error_response(retry):
+                    return retry
+            except TimeoutError:
+                continue
 
     return response
 

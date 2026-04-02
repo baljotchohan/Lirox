@@ -39,10 +39,12 @@ class Memory:
             "content":   content,
             "timestamp": datetime.now().isoformat()
         })
-        # If history exceeds 50 items, keep index 0 (system prompt) and the last 20 messages
-        if len(self.history) > 50:
+        # [FIX #6] Limit memory by MEMORY_LIMIT
+        if len(self.history) > MEMORY_LIMIT:
             first_msg = self.history[0]
-            self.history = [first_msg] + self.history[-20:]
+            # Retain roughly half of MEMORY_LIMIT elements
+            keep = max(10, MEMORY_LIMIT // 2)
+            self.history = [first_msg] + self.history[-keep:]
 
         with open(self.storage_file, "w") as f:
             json.dump(self.history, f, indent=4)
@@ -115,7 +117,10 @@ class Memory:
         return "\n".join(lines)
 
     def get_stats(self) -> dict:
-        """Return memory statistics."""
+        return self.get_memory_stats()
+
+    def get_memory_stats(self) -> dict:
+        """[FIX #6] Return memory statistics."""
         if not self.history:
             return {
                 "total_messages":     0,

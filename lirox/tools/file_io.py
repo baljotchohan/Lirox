@@ -7,6 +7,7 @@ paths + user-accessible directories (Desktop, Documents, Downloads).
 """
 
 import os
+from pathlib import Path
 
 from lirox.utils.errors import ToolExecutionError
 from lirox.config import SAFE_DIRS
@@ -16,8 +17,8 @@ class FileIOTool:
     """Safe file operations tool with sandboxing."""
 
     def __init__(self):
-        # Resolve safe directories to absolute paths at init
-        self.safe_dirs = [os.path.abspath(d) for d in SAFE_DIRS]
+        # [FIX #1] Use Path.resolve() to handle symlinks correctly
+        self.safe_dirs = [Path(d).resolve() for d in SAFE_DIRS]
         # Ensure outputs/ directory exists
         os.makedirs("outputs", exist_ok=True)
 
@@ -34,15 +35,14 @@ class FileIOTool:
     def _is_safe_path(self, file_path: str) -> tuple[bool, str]:
         """Validates if the requested file path is within allowed sandboxed directories."""
         try:
-            abs_path = os.path.abspath(file_path)
+            # [FIX #1] Resolve target and check via is_relative_to()
+            target = Path(file_path).expanduser().resolve()
             for safe_dir in self.safe_dirs:
-                safe_abs = os.path.abspath(safe_dir)
-                # commonpath ensures structural path hierarchy, preventing 'startswith' string spoofing
-                if os.path.commonpath([abs_path, safe_abs]) == safe_abs:
+                if target.is_relative_to(safe_dir):
                     return True, "ok"
-            return False, f"Path traversal blocked: {file_path} is outside safe directories."
-        except Exception as e:
-            return False, f"Path resolution error: {str(e)}"
+            return False, f"Path outside safe dirs: {target}"
+        except (ValueError, OSError) as e:
+            return False, f"Path resolution error: {e}"
 
     def read_file(self, path):
         """

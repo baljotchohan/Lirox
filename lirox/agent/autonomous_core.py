@@ -68,9 +68,13 @@ class LiroxLoop:
         self.orchestrator = Orchestrator()
         self.memory = Memory()
 
-    def run(self):
+    def run(self, max_iterations: int = 10):
         print("🚀 Lirox Autonomous System Started")
-        while True:
+        self.active = True
+        iteration = 0
+        
+        while self.active and iteration < max_iterations:
+            iteration += 1
             goals = self.memory.get_active_goals()
             
             # SELF TASK GENERATION
@@ -82,11 +86,22 @@ class LiroxLoop:
             for goal_obj in goals:
                 goal = goal_obj["goal"]
                 try:
-                    self.orchestrator.run_goal(goal)
+                    results = self.orchestrator.run_goal(goal)
+                    if isinstance(results, dict) and any(r.get("status") == "failed" for r in results.values()):
+                        print(f"[System] Execution failed on iteration {iteration}. Retrying...")
+                        time.sleep(2 * iteration) # [FIX #1] Exponential backoff
+                    else:
+                        # Continue processing goals or break loop depending on architecture...
+                        pass
                 except Exception as e:
                     print(f"[Error] {e}")
+                    time.sleep(3) # [FIX #1] Error cooldown
             
             time.sleep(30)  # loop delay
+            
+        if iteration >= max_iterations:
+            print("[!] Safety Abort: Max autonomous iterations reached.")
+            self.active = False
 
 def decide_tool(task, llm):
     response = llm(f"Which tool should be used for this task: {task}?")

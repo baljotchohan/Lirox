@@ -35,30 +35,38 @@ class UserProfile:
         self.data = self._load()
 
     def _load(self):
-        if os.path.exists(self.storage_file):
-            try:
-                with open(self.storage_file, "r") as f:
-                    data = json.load(f)
-                    merged = dict(self.DEFAULT)
-                    merged.update(data)
-                    return merged
-            except (json.JSONDecodeError, IOError):
-                pass
-        
-        profile = dict(self.DEFAULT)
-        profile["created_at"] = datetime.now().isoformat()
-        return profile
+        with self._lock: # [FIX #2] Lock during reads
+            if os.path.exists(self.storage_file):
+                try:
+                    with open(self.storage_file, "r") as f:
+                        data = json.load(f)
+                        merged = dict(self.DEFAULT)
+                        merged.update(data)
+                        return merged
+                except (json.JSONDecodeError, IOError):
+                    pass
+            
+            profile = dict(self.DEFAULT)
+            profile["created_at"] = datetime.now().isoformat()
+            return profile
 
     def save(self):
         """Saves profile data to disk safely across multiple threads."""
         with self._lock: # Acquire lock before opening file
+            temp_file = self.storage_file + ".tmp"
             try:
                 self.data["last_updated"] = datetime.now().isoformat()
-                with open(self.storage_file, "w") as f:
+                with open(temp_file, "w") as f:
                     json.dump(self.data, f, indent=4)
+                # [FIX #2] Atomic file replacement
+                os.replace(temp_file, self.storage_file)
             except Exception as e:
                 # Log error silently or pass to error handler
-                pass
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except OSError:
+                        pass
 
     def update(self, key: str, value):
         self.data[key] = value

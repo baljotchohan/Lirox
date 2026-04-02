@@ -6,7 +6,10 @@ Learns over time what the user typically wants.
 """
 
 import re
+import os
+import json
 from typing import Tuple
+from lirox.config import PROJECT_ROOT
 
 
 class IntentRouter:
@@ -42,6 +45,28 @@ class IntentRouter:
     def __init__(self):
         self.user_intent_history = []
         self.command_frequency = {}
+        # [FIX #9] Intent persistence logic
+        self.storage_file = os.path.join(PROJECT_ROOT, "intent_patterns.json")
+        self._load_patterns()
+        
+    def _load_patterns(self):
+        """Load persistent intent patterns."""
+        if os.path.exists(self.storage_file):
+            try:
+                with open(self.storage_file, "r") as f:
+                    data = json.load(f)
+                    self.user_intent_history = data.get("history", [])
+                    self.command_frequency = data.get("frequencies", {})
+            except Exception:
+                pass
+                
+    def _save_patterns(self):
+        """Save intent patterns incrementally to disk."""
+        try:
+            with open(self.storage_file, "w") as f:
+                json.dump({"history": self.user_intent_history, "frequencies": self.command_frequency}, f, indent=4)
+        except Exception:
+            pass
     
     def detect_intent(self, user_input: str) -> Tuple[str, str, float]:
         """
@@ -102,6 +127,7 @@ class IntentRouter:
         key = f"{intent}:{command}"
         self.command_frequency[key] = self.command_frequency.get(key, 0) + 1
         self.user_intent_history.append((intent, command))
+        self._save_patterns() # [FIX #9] Persist data
     
     def suggest_next_command(self, last_intent: str) -> str:
         """Suggest what command user might want next."""

@@ -55,9 +55,10 @@ class ResearchReport:
 
 
 class Researcher:
-    def __init__(self, browser: BrowserTool, provider: str = "auto"):
+    def __init__(self, browser: BrowserTool, provider: str = "auto", tier_limit: int = 1):
         self.browser = browser
         self.provider = provider
+        self.tier_limit = tier_limit # [FIX #7] Injection
         self.search_apis = get_available_search_apis()
 
     def research(self, query: str, depth: str = "standard") -> ResearchReport:
@@ -140,6 +141,10 @@ class Researcher:
             return [query]
 
     def _search_all(self, sub_queries: List[str]) -> List[ResearchSource]:
+        # [FIX #7] Strict tier check for paid APIs
+        if self.tier_limit < 1:
+            self.search_apis = [] # Drop all paid APIs
+
         all_sources = []
         with ThreadPoolExecutor(max_workers=len(sub_queries) * max(1, len(self.search_apis))) as executor:
             futures = []

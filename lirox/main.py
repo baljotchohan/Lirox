@@ -220,9 +220,11 @@ def run_autonomous_task(agent, goal):
     # Risk evaluation via policy engine
     from lirox.agent.policy import policy_engine
     risk = policy_engine.evaluate_risk(plan)
-    if not risk["auto_execute"]:
-        console.print(f"[bold yellow]⚠ Risk: {risk['reason']}[/]")
-        if not confirm_prompt("Proceed with execution?"):
+    
+    # [FIX #8] Mandatory confirmation loop for elevated risks
+    if not risk["auto_execute"] or risk.get("risk_level") in ["medium", "high"]:
+        console.print(f"[bold yellow]⚠ Risk Level ({risk.get('risk_level', 'unknown')}): {risk['reason']}[/]")
+        if not confirm_prompt("Proceed with autonomous execution?"):
             info_panel("Aborted by operator.")
             return
 

@@ -104,6 +104,9 @@ SAFE_DIRS = [
     os.path.join(_HOME, "Downloads"),
 ]
 
+# [FIX #1] Resolve symlinks to prevent path traversal
+SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in SAFE_DIRS]
+
 # Browser
 BROWSER_TIMEOUT = 15    # Web request timeout (seconds)
 
