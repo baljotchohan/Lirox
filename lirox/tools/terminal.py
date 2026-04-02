@@ -28,24 +28,26 @@ def is_safe(cmd):
     """
     Two-layer safety check:
     1. Block dangerous commands and injection patterns
-    2. Check that the base command is on the allowlist
+    2. Check that every command in a chain/pipe is on the allowlist
     """
     cmd_lower = cmd.lower().strip()
 
-    # Check blocklist (exact dangerous patterns)
+    # 1. Check blocklist (exact dangerous patterns)
     for blocked in BLOCK_COMMANDS:
         if blocked in cmd_lower:
-            return False, f"Blocked command: '{blocked}'"
+            return False, f"Blocked command/flag: '{blocked}'"
 
-    # Check injection patterns
+    # 2. Check injection patterns (substitution, eval, device writes)
     for pattern in INJECTION_PATTERNS:
         if pattern in cmd:
-            return False, f"Blocked pattern: '{pattern}'"
+            return False, f"Blocked injection pattern: '{pattern}'"
 
-    # Extract the base command (first word) — handle chains
-    # For chained commands (&&, ;) check ALL base commands
-    # Split on && and ; to get individual commands
-    sub_commands = cmd.replace("&&", ";").split(";")
+    # 3. Comprehensive Chain/Pipe Parsing
+    # We split by all shell delimiters to ensure NO command escapes validation
+    import re
+    # Split by: &&, ||, ;, |
+    delimiters = r' && | || |;|\|'
+    sub_commands = re.split(delimiters, cmd)
 
     for sub_cmd in sub_commands:
         sub_cmd = sub_cmd.strip()
@@ -53,13 +55,20 @@ def is_safe(cmd):
             continue
 
         try:
+            # shlex.split handles quotes correctly (e.g. echo "rm -rf /")
             parts = shlex.split(sub_cmd)
-            base_cmd = parts[0] if parts else ""
-        except ValueError:
-            return False, "Malformed command"
+            # Filter out variable assignments like VAR=val
+            potential_cmd = [p for p in parts if '=' not in p]
+            base_cmd = potential_cmd[0] if potential_cmd else ""
+        except (ValueError, IndexError):
+            return False, "Malformed command structure"
 
         if base_cmd and base_cmd not in ALLOWED_COMMANDS:
-            return False, f"'{base_cmd}' is not in the allowed commands list"
+            # Special case for absolute paths: check the basename
+            import os
+            basename = os.path.basename(base_cmd)
+            if basename not in ALLOWED_COMMANDS:
+                return False, f"'{base_cmd}' is not in the allowed commands list"
 
     return True, "ok"
 

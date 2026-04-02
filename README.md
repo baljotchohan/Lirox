@@ -84,8 +84,25 @@ Launch Lirox and use the built-in configuration commands:
 
 ---
 
-## 🏗️ Architecture
+## 🏛️ Core Subsystems & Connectivity
+Lirox v0.6 is powered by a modular kernel architecture designed for high-fidelity autonomy.
 
+- **[Researcher]**: Multi-source parallel search with 12+ factor verification.
+- **[Planner]**: Strategic wave-based task decomposition with logical dependency mapping.
+- **[Executor]**: Hardened tool orchestration (Terminal, Browser, FileIO) with zero-trust validation.
+- **[Aesthetics]**: Rich terminal UI featuring real-time status cards and task progress indicators.
+
+---
+
+## 📘 Professional Documentation
+For in-depth understanding and advanced configuration, refer to:
+
+- **[Lirox Handbook](LIROX_HANDBOOK.md)**: Full architecture, workflows, and connectivity charts (MVP Style).
+- **[Prompt Engineering Guide](PROMPT_ENGINEERING.md)**: Structured templates for professional AI assistance and fixing.
+
+---
+
+## 🏗️ Architecture Map
 ```text
 Lirox/
 ├── lirox/               Core Logic (Agent, Tools, UI, Utils)

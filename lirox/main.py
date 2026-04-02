@@ -429,26 +429,23 @@ def run_setup(agent):
 def run_api_setup():
     info_panel("API CHANNEL CONFIGURATION")
     print("Add keys to activate providers (empty to skip):")
-    providers = ["gemini", "groq", "openai", "openrouter", "deepseek", "anthropic", "nvidia"]
+    
+    import getpass
+    from dotenv import set_key
     from lirox.config import PROJECT_ROOT
     env_path = os.path.join(PROJECT_ROOT, ".env")
-    current_keys = {}
-    if os.path.exists(env_path):
-        with open(env_path, "r") as f:
-            for line in f:
-                if "=" in line:
-                    k, v = line.strip().split("=", 1)
-                    current_keys[k.strip()] = v.strip()
+    
+    providers = ["gemini", "groq", "openai", "openrouter", "deepseek", "anthropic", "nvidia"]
+    
     for p in providers:
-        key = input(f"  {p.upper()} API KEY: ").strip()
+        # Use getpass to mask API keys during entry
+        key = getpass.getpass(f"  {p.upper()} API KEY: ").strip()
         if key:
             env_var = f"{p.upper()}_API_KEY"
-            current_keys[env_var] = key
+            set_key(env_path, env_var, key)
             os.environ[env_var] = key  # Update current process immediately
-    with open(env_path, "w") as f:
-        for k, v in current_keys.items():
-            f.write(f"{k}={v}\n")
-    success_message("Protocol updated. Provider mapping reloaded.")
+    
+    success_message("Protocol updated securely. Provider mapping reloaded.")
 
 def run_deep_research(agent, query: str, depth: str = "standard"):
     """v0.6 Research with tier enforcement and advanced UI."""
