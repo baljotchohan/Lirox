@@ -13,7 +13,8 @@ Executes structured plans step-by-step with:
 
 import time
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
+import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Dict, Optional, Tuple, Any
 from lirox.tools.terminal import run_command
 from lirox.tools.browser import BrowserTool
@@ -164,7 +165,9 @@ class Executor:
                 for step in wave
                 if self._check_dependencies(step, results)
             }
-            for future in as_completed(futures):
+            done, not_done = concurrent.futures.wait(futures.keys(), timeout=120)
+
+            for future in done:
                 step = futures[future]
                 try:
                     step_id, result = future.result()
@@ -174,6 +177,13 @@ class Executor:
                         "status": "failed", "output": "",
                         "error": str(e), "duration": 0
                     }
+
+            for future in not_done:
+                step = futures[future]
+                wave_results[step["id"]] = {
+                    "status": "failed", "output": "Failed: Timeout (120s)",
+                    "error": "Timeout", "duration": 120
+                }
 
         # Merge wave results into main results dict (thread-safe)
         with self._results_lock:

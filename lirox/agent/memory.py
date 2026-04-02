@@ -39,9 +39,10 @@ class Memory:
             "content":   content,
             "timestamp": datetime.now().isoformat()
         })
-        # Keep only the last N messages (limit × 2 for user/ai pairs)
-        if len(self.history) > MEMORY_LIMIT * 2:
-            self.history = self.history[-(MEMORY_LIMIT * 2):]
+        # If history exceeds 50 items, keep index 0 (system prompt) and the last 20 messages
+        if len(self.history) > 50:
+            first_msg = self.history[0]
+            self.history = [first_msg] + self.history[-20:]
 
         with open(self.storage_file, "w") as f:
             json.dump(self.history, f, indent=4)
