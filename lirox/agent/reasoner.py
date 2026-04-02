@@ -36,18 +36,19 @@ class Reasoner:
             f"Context: {context or 'None'}\n\n"
             f"MANDATORY OUTPUT FORMAT:\n"
             f"PHASE 1: STRATEGIC ANALYSIS\n"
-            f"(Analyze the core requirements and system state)\n\n"
+            f"(Analyze core requirements and state. Use ├─ or • for sub-points. No '*' or '**')\n\n"
             f"PHASE 2: EXECUTION LOGIC\n"
-            f"(Steps, tools, and technical approach)\n\n"
+            f"(Technical steps and tool flow. Use ├─ or •. No markdown symbols)\n\n"
             f"PHASE 3: RISK & CONTINGENCY\n"
-            f"(Anticipated obstacles and how to bypass them)\n\n"
-            f"Be deep, technical, and logical. Use bullet points."
+            f"(Obstacles and bypass strategies. Use ├─ or •. No markdown symbols)\n\n"
+            f"Be deep, technical, and professional. Avoid all markdown asterisks."
         )
         try:
             self.thought_trace = generate_response(
                 prompt, self.provider,
                 system_prompt="You are a brilliant, logical AI strategist. "
-                              "Break your logic into Phase 1, Phase 2, and Phase 3 exactly."
+                              "Break your logic into Phase 1, Phase 2, and Phase 3. "
+                              "NEVER use '*' or '**' for formatting. Use ├─ symbols instead."
             )
             return self.thought_trace
         except Exception:
@@ -181,12 +182,19 @@ class Reasoner:
         avg_conf   = sum(e["confidence"] for e in eval_list) / max(len(eval_list), 1)
         reflection["overall_confidence"] = round(avg_conf, 2)
 
-        if reflection["failed"] > 0 and avg_conf < 0.5:
+        # Hallucination Check: Detect if the narrative says failure while steps say success
+        all_text_results = " ".join([str(e["notes"]).lower() for e in eval_list])
+        failure_signals = ["could not", "failed to find", "no data", "limitation", "unreachable", "blocked"]
+        detected_failure = any(s in all_text_results for s in failure_signals)
+
+        if (reflection["failed"] > 0 and avg_conf < 0.5) or detected_failure:
             reflection["suggestion"] = (
-                "Consider retrying with a more powerful model or clarifying the instructions."
+                "⚠️ Critical Failure Detected: The goal was not achieved despite tool execution. "
+                "Consider manual investigation or using /research with a deeper tier."
             )
+            reflection["on_track"] = False
         else:
-            reflection["suggestion"] = "Execution appears solid. No immediate correction needed."
+            reflection["suggestion"] = "✅ Execution appears solid. Mission protocol successfully finalized."
 
         self.last_reasoning = {"evaluations": eval_list, "reflection": reflection}
 

@@ -197,6 +197,16 @@ class AgentSpinner:
     def _render(self):
         return Columns([self.spinner, Text(f" {self.message}", style=CLR_ACCENT)])
 
+def _clean_thought_text(text: str) -> str:
+    """Strip residual markdown markers and unwanted asterisks/hashes."""
+    import re
+    # Remove bold/italic markers
+    text = re.sub(r'\*+', '', text)
+    # Remove header markers
+    text = re.sub(r'#+\s*', '', text)
+    # Restore some structure if needed, but keep it clean
+    return text.strip()
+
 
 def thinking_panel(goal: str, thought_trace: str):
     """Render a sophisticated reasoning panel with phase-based layouts."""
@@ -204,6 +214,9 @@ def thinking_panel(goal: str, thought_trace: str):
     current_phase = None
 
     for line in thought_trace.split("\n"):
+        line = _clean_thought_text(line)
+        if not line: continue
+        
         if "PHASE 1" in line.upper(): current_phase = "PHASE 1"
         elif "PHASE 2" in line.upper(): current_phase = "PHASE 2"
         elif "PHASE 3" in line.upper(): current_phase = "PHASE 3"

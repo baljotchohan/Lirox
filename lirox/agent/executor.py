@@ -305,11 +305,20 @@ class Executor:
             results = self.browser.search_web(search_query, num_results=5)
             if not results:
                 return f"No search results found for: {search_query}"
+            
+            # v0.6: Proactively look for numeric data in snippets
+            snippets = " ".join([r["snippet"] for r in results])
+            numeric_hits = self.browser.find_numeric_data(snippets, labels=[search_query])
+            
             formatted = [
                 f"{i}. {r['title']} ({r['domain']})\n   {r['url']}\n   {r['snippet']}"
                 for i, r in enumerate(results, 1)
             ]
-            return f"Search Results for '{search_query}':\n" + "\n\n".join(formatted)
+            
+            output = f"Search Results for '{search_query}':\n" + "\n\n".join(formatted)
+            if numeric_hits:
+                output = f"📈 POTENTIAL DATA HITS: {', '.join(numeric_hits)}\n\n" + output
+            return output
 
         # Use the improved URL extractor from BrowserTool
         urls_in_context = self.browser.extract_urls_from_text(context) if context else []

@@ -170,18 +170,26 @@ class BrowserTool:
             clean = re.sub(r'\s+', ' ', clean).strip()
             return clean
 
-    def extract_data(self, html, selector):
+    def find_numeric_data(self, text: str, labels: list = None) -> list:
         """
-        Extract structured data from HTML using a CSS selector.
-
-        Returns: List of text content from matching elements.
+        Specialized extraction for financial/real-time data (prices, indices).
+        Looks for patterns like 'Nifty 50: 22,000' or '$50.00'.
         """
-        if not BeautifulSoup:
-            return ["Error: beautifulsoup4 not installed. Run: pip install beautifulsoup4"]
+        if not text: return []
+        patterns = [
+            r'(\$|₹|USD|INR)\s?\d{1,3}(?:,\d{3})*(?:\.\d+)?', # Currency
+            r'(\d{1,3}(?:,\d{3})*(?:\.\d+)?)\s?(points|%)'     # Percentage/Points
+        ]
+        if labels:
+            for label in labels:
+                patterns.append(rf'{re.escape(label)}[:\s-]+(\d{{1,3}}(?:,\d{{3}})*(?:\.\d+)?)')
 
-        soup = BeautifulSoup(html, "html.parser")
-        elements = soup.select(selector)
-        return [el.get_text(strip=True) for el in elements if el.get_text(strip=True)]
+        found = []
+        for p in patterns:
+            matches = re.finditer(p, text, re.IGNORECASE)
+            for m in matches:
+                found.append(m.group(0))
+        return list(set(found))[:5]
 
     # ─── Web Search ──────────────────────────────────────────────────────────
 
