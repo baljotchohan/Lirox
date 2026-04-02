@@ -76,6 +76,10 @@ class IntentRouter:
         chat_score = self._score_patterns(user_lower, self.CHAT_PATTERNS)
         if chat_score > 0.4:
             return ("chat", None, chat_score)
+            
+        # Check custom trading intent (Bonus Workflow)
+        if any(kw in user_lower for kw in ["nifty", "options", "strike", "iron condor"]):
+            return ("TRADE_ANALYSIS", None, 1.0)
         
         # Default
         default = "task" if task_score > 0.2 else "chat"

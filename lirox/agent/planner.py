@@ -228,7 +228,16 @@ class Planner:
 
         # Rebuild tools_required from steps
         all_tools = set()
-        for step in plan["steps"]:
+        for step in plan.get("steps", []):
+            tools = step.get("tools")
+            
+            # Check for NoneType, empty lists, or missing keys
+            if not tools or not isinstance(tools, list):
+                if isinstance(tools, str):
+                    step["tools"] = [tools]
+                else:
+                    step["tools"] = ["llm"] # Safe fallback
+                    
             all_tools.update(step["tools"])
         plan["tools_required"] = list(all_tools)
 
@@ -237,3 +246,14 @@ class Planner:
     def get_last_plan(self):
         """Return the last generated plan (for /execute-plan command)."""
         return self.last_plan
+
+    def _generate_trade_plan(self, prompt: str):
+        system_prompt = """
+        You are an expert Options Trading Assistant. 
+        Break the user's request into parallel execution waves:
+        Wave 0: Fetch current Nifty 50 Spot Price, India VIX, and upcoming expiry date. (Tools: browser)
+        Wave 1: Calculate 1 Standard Deviation expected move based on VIX. (Tools: python_terminal)
+        Wave 2: Determine optimal Call/Put strikes for selling premium (e.g. Iron Condor). (Tools: llm)
+        """
+        # Pass this to your LLM utility to get the JSON plan...
+        return self.create_plan(prompt, system_prompt=system_prompt)

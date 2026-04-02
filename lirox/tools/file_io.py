@@ -31,29 +31,18 @@ class FileIOTool:
         # Make absolute
         return os.path.abspath(path)
 
-    def _is_safe_path(self, path):
-        """
-        Check if a path is within allowed directories.
-        Prevents directory traversal attacks (../ sequences).
-
-        Returns:
-            (bool, str): (is_safe, reason)
-        """
-        # Block obvious traversal attempts in the raw path
-        if ".." in path and not os.path.isabs(path):
-            return False, "Directory traversal (..) is not allowed"
-
+    def _is_safe_path(self, file_path: str) -> tuple[bool, str]:
+        """Validates if the requested file path is within allowed sandboxed directories."""
         try:
-            abs_path = self._resolve_path(path)
-        except Exception:
-            return False, "Invalid path format"
-
-        # Check if resolved path is within any safe directory
-        for safe_dir in self.safe_dirs:
-            if abs_path.startswith(safe_dir):
-                return True, "ok"
-
-        return False, f"Access denied: path is outside allowed directories ({abs_path})"
+            abs_path = os.path.abspath(file_path)
+            for safe_dir in self.safe_dirs:
+                safe_abs = os.path.abspath(safe_dir)
+                # commonpath ensures structural path hierarchy, preventing 'startswith' string spoofing
+                if os.path.commonpath([abs_path, safe_abs]) == safe_abs:
+                    return True, "ok"
+            return False, f"Path traversal blocked: {file_path} is outside safe directories."
+        except Exception as e:
+            return False, f"Path resolution error: {str(e)}"
 
     def read_file(self, path):
         """

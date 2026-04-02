@@ -92,6 +92,7 @@ def main():
     # Interactive Loop
     show_status_card(agent.profile.data, available_providers())
     
+    last_interrupt_time = 0
     while True:
         try:
             line = input(f"[{agent.profile.data.get('agent_name', 'Lirox')}] ✦ ").strip()
@@ -111,7 +112,13 @@ def main():
             process_input(agent, line, verbose=args.verbose)
 
         except KeyboardInterrupt:
-            print("\nInterrupt received. Use /exit to shut down safely.")
+            current_time = time.time()
+            if current_time - last_interrupt_time < 2.0:
+                print("\n[!] Force quitting Lirox...")
+                sys.exit(0)
+            else:
+                print("\n[!] Interrupt received. Press Ctrl+C again within 2 seconds to force quit, or type /exit.")
+                last_interrupt_time = current_time
         except Exception as e:
             error_panel("KERNEL ERROR", str(e))
 

@@ -7,6 +7,7 @@ v0.5 Pivot: Professional CLI-only hardened prompt system.
 
 import json
 import os
+import threading
 from datetime import datetime
 from lirox.config import PROJECT_ROOT
 
@@ -30,6 +31,7 @@ class UserProfile:
         if storage_file is None:
             storage_file = os.path.join(PROJECT_ROOT, "profile.json")
         self.storage_file = storage_file
+        self._lock = threading.Lock() # Initialize the lock
         self.data = self._load()
 
     def _load(self):
@@ -48,9 +50,15 @@ class UserProfile:
         return profile
 
     def save(self):
-        self.data["last_updated"] = datetime.now().isoformat()
-        with open(self.storage_file, "w") as f:
-            json.dump(self.data, f, indent=4)
+        """Saves profile data to disk safely across multiple threads."""
+        with self._lock: # Acquire lock before opening file
+            try:
+                self.data["last_updated"] = datetime.now().isoformat()
+                with open(self.storage_file, "w") as f:
+                    json.dump(self.data, f, indent=4)
+            except Exception as e:
+                # Log error silently or pass to error handler
+                pass
 
     def update(self, key: str, value):
         self.data[key] = value
