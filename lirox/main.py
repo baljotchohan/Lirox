@@ -241,6 +241,9 @@ def run_autonomous_task(agent, goal):
     results, summary = agent.executor.execute_plan(plan, provider="auto", system_prompt=system_prompt)
     reflection = agent.reasoner.generate_reasoning_summary(plan, results)
     
+    # Clean any JSON metadata from the summary before display
+    summary, _ = extract_meta(summary)
+    
     is_success = "error" not in summary.lower() and "failed" not in summary.lower()
     agent.profile.track_task_execution(goal, is_success, time.time() - start_time)
     
@@ -248,7 +251,10 @@ def run_autonomous_task(agent, goal):
     success_message(summary)
     
     if reflection.get("reflection", {}).get("suggestion"):
-        print(f"\n[{CLR_WARN}] AGENT REFLECTION: {reflection['reflection']['suggestion']}\n")
+        suggestion = reflection['reflection']['suggestion']
+        # Clean: remove redundant emoji prefixes
+        suggestion = suggestion.replace("✅ ", "").replace("⚠️ ", "")
+        console.print(f"\n[{CLR_WARN}]💡 {suggestion}[/]\n")
 
 def _check_browser_status():
     """v0.7: Helper for diagnostics — check browser subsystem."""

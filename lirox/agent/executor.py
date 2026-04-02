@@ -523,7 +523,11 @@ class Executor:
         reasoning_prompt = (
             f"Complete this task step and provide a concise, useful result.\n\n"
             f"Task: {step['task']}\n"
-            f"Expected output: {step.get('expected_output', 'A clear result')}\n"
+            f"Expected output: {step.get('expected_output', 'A clear result')}\n\n"
+            f"RULES:\n"
+            f"- Respond in plain text only. No JSON, no code blocks, no markdown.\n"
+            f"- Be direct and factual. Get to the point immediately.\n"
+            f"- If presenting data, use clean formatting (not JSON).\n"
         )
         if context:
             reasoning_prompt += f"\nContext from previous steps:\n{context[:3000]}"
@@ -571,7 +575,7 @@ class Executor:
             status   = result.get("status", "unknown")
             duration = result.get("duration", 0)
             icon = "✓" if status == "success" else "✗" if status == "failed" else "⊘"
-            lines.append(f"{icon} Step {step_id}: {step['task'][:60]} ({duration}s)")
+            lines.append(f"{icon} Step {step_id}: {step['task'][:70]} ({duration}s)")
             if status == "success":
                 successes += 1
 
@@ -596,17 +600,37 @@ class Executor:
                 )
             try:
                 summary_prompt = (
-                    f"Summarize what was accomplished in 2-3 sentences. "
-                    f"Be HONEST — if steps failed or were blocked, say so.\n\n"
+                    f"Summarize what was accomplished in 2-3 clear sentences. "
+                    f"Be HONEST — if steps failed or were blocked, say so clearly.\n\n"
                     f"Goal: {plan.get('goal', '')}\n"
-                    f"Results ({successes}/{total} succeeded):\n" + "\n".join(all_outputs)
+                    f"Results ({successes}/{total} succeeded):\n" + "\n".join(all_outputs) +
+                    f"\n\nCRITICAL RULES:\n"
+                    f"- Write ONLY plain English sentences. No JSON, no code blocks.\n"
+                    f"- Do NOT include metadata, mode, intent, tool_preference, or any machine-readable data.\n"
+                    f"- Do NOT wrap your response in ```json or ``` blocks.\n"
+                    f"- State the key result (e.g. the price, the data found) clearly.\n"
+                    f"- Keep it under 4 sentences. Be professional and direct."
                 )
                 narrative = generate_response(summary_prompt, provider, system_prompt=system_prompt)
-                summary += f"\n\n### 📝 Narrative Insight\n\n{narrative}"
+
+                # Strip any JSON blocks that leaked through
+                narrative = self._strip_json_blocks(narrative)
+
+                summary += f"\n\n### 📝 Result\n\n{narrative}"
             except Exception:
                 pass
 
         return summary
+
+    @staticmethod
+    def _strip_json_blocks(text: str) -> str:
+        """Remove any JSON/code blocks that leaked into plain text output."""
+        import re
+        # Remove ```json ... ``` blocks
+        text = re.sub(r'```(?:json)?\s*\n?\{[^}]*\}\s*\n?```', '', text, flags=re.DOTALL)
+        # Remove standalone JSON objects at the end
+        text = re.sub(r'\n\s*\{\s*"\w+"\s*:.*\}\s*$', '', text, flags=re.DOTALL)
+        return text.strip()
 
     def _add_trace(self, step: Dict[str, Any], result: Dict[Any, Any]):
         self.last_trace.append({

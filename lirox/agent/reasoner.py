@@ -189,12 +189,12 @@ class Reasoner:
 
         if (reflection["failed"] > 0 and avg_conf < 0.5) or detected_failure:
             reflection["suggestion"] = (
-                "⚠️ Critical Failure Detected: The goal was not achieved despite tool execution. "
-                "Consider manual investigation or using /research with a deeper tier."
+                "Some steps did not produce expected results. "
+                "Consider running /research with a deeper tier or investigating manually."
             )
             reflection["on_track"] = False
         else:
-            reflection["suggestion"] = "✅ Execution appears solid. Mission protocol successfully finalized."
+            reflection["suggestion"] = "Execution complete. All steps finalized successfully."
 
         self.last_reasoning = {"evaluations": eval_list, "reflection": reflection}
 
