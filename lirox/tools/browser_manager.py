@@ -392,7 +392,7 @@ class BrowserSessionManager:
 
             if session.metrics.error_count > self.MAX_ERRORS_BEFORE_DESTROY:
                 # Too many errors — destroy and recreate
-                logger.warning(
+                logger.debug(
                     f"Session {session.session_id} has {session.metrics.error_count} "
                     "errors, destroying"
                 )

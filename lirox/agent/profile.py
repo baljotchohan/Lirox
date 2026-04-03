@@ -189,18 +189,11 @@ TOOLS & CAPABILITIES
 3. 🌐 Browser: Search/fetch web pages (Low/Medium Risk)
 4. 🧠 Reasoning: Deep analysis and writing via LLM (No side effects)
 
-OUTPUT REQUIREMENT
-Always include LIROX_META block at the end:
-```json
-{{
-  "mode": "chat" | "task_suggestion" | "plan" | "execution_summary" | "research",
-  "intent": "one sentence summary",
-  "risk_level": "low" | "medium" | "high",
-  "tool_preference": ["llm", "browser", "file_io", "terminal"],
-  "memory_candidate_facts": ["fact1", "fact2"],
-  "next_clarifying_questions": ["q1", "q2"]
-}}
-```
+OUTPUT FORMAT & BEHAVIOR
+- Respond directly, concisely, and use plain clean text. DO NOT use any Markdown asterisks (*, **, or ***) for bolding, italics, or lists.
+- Think about the user's intent and provide smart, predictive answers based on real data.
+- NEVER prefix your response with your name or CLI markers like "[jarves] ✦", "[Agent]", or similar prompt indicators.
+- DO NOT output any raw JSON metadata or `LIROX_META` blocks. Just provide the direct answer.
 """
 
     def is_setup(self) -> bool:
@@ -276,20 +269,11 @@ MEMORY / LEARNING (CURRENT CAPABILITY)
 RESEARCH CAPABILITY (v0.6)
 You are a research-capable autonomous agent. When asked factual questions, you proactively search the web, synthesize multiple sources, and cite your findings. You NEVER make up facts. When uncertain, you say so and recommend using /research for deeper analysis. Research outputs include confidence scores and source citations.
 
-OUTPUT REQUIREMENT FOR RELIABILITY (MANDATORY)
-At the end of EVERY response, include a small machine-readable block that the host can optionally parse:
-
-Return:
-1) Normal operator-facing answer.
-2) Then a fenced JSON block called LIROX_META with this schema:
-{{
-  "mode": "chat" | "task_suggestion" | "plan" | "execution_summary",
-  "intent": "one sentence",
-  "risk_level": "low" | "medium" | "high",
-  "tool_preference": ["llm", "browser", "file_io", "terminal"],
-  "memory_candidate_facts": ["string", "..."],
-  "next_clarifying_questions": ["string", "..."]
-}}
+OUTPUT FORMAT & BEHAVIOR (MANDATORY)
+- Respond directly and concisely with plain clean text. DO NOT use any Markdown asterisks (*, **, or ***).
+- Provide smart, predictive answers focusing purely on real data and the user's request.
+- NEVER prefix your response with your name or CLI artifact markers like "[jarves] ✦", "[Agent]", or similar prompt indicators.
+- NEVER output raw JSON metadata or tags like `LIROX_META`. The system handles intent routing internally.
 """
 
     def summary(self) -> str:

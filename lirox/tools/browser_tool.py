@@ -197,7 +197,7 @@ class HeadlessBrowserTool:
                     },
                 }
             except Exception as e:
-                logger.warning(f"Headless fetch failed for {url}: {e}")
+                logger.debug(f"Headless fetch failed for {url}: {e}")
                 try:
                     session.metrics.error_count += 1
                     manager.release_with_error(session)

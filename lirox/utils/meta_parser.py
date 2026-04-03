@@ -2,30 +2,28 @@ import json
 import re
 
 def extract_meta(text: str) -> tuple[str, dict]:
-    """Extracts LIROX_META JSON from LLM response and returns clean text + meta."""
-    pattern = r'```json\s+(?:LIROX_META\n)?(\{.*?\})\s+```|LIROX_META:\s*({.*?})'
-    match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+    """
+    Safely extracts and completely removes LIROX_META artifacts.
+    Legacy fallback: We don't ask for this anymore, but if it hallucinates it, we strip it out.
+    """
+    # Specifically target LIROX_META: and any following json block.
+    # Often it hallucinated like: LIROX_META:\n```json\n{...}\n```
+    pattern = r'(?:LIROX_META:?)?\s*```json\s*(\{.*?\})\s*```'
     
-    if not match:
-        # Fallback for non-fenced or simple blocks
+    match = re.search(pattern, text, re.DOTALL | re.IGNORECASE)
+    meta = {}
+    
+    if match:
         try:
-            # Look for the last { and last }
-            start = text.rfind('{')
-            end = text.rfind('}')
-            if start != -1 and end != -1 and end > start:
-                json_str = text[start:end+1]
-                meta = json.loads(json_str)
-                clean_text = text[:start].strip()
-                return clean_text, meta
+            meta = json.loads(match.group(1))
+            text = text[:match.start()] + text[match.end():]
         except Exception:
             pass
-        return text, {}
-
-    json_str = match.group(1) or match.group(2)
-    try:
-        meta = json.loads(json_str)
-        # Remove the match from the text
-        clean_text = text[:match.start()].strip() + "\n" + text[match.end():].strip()
-        return clean_text.strip(), meta
-    except Exception:
-        return text, {}
+            
+    # As a secondary cleanup, if "LIROX_META:" is just hanging around without JSON, strip it.
+    text = re.sub(r'LIROX_META:?\s*', '', text, flags=re.IGNORECASE)
+    
+    # Strip any stray `[jarves] ✦` tags that slip through
+    text = re.sub(r'\[.*?\]\s*✦\s*', '', text)
+    
+    return text.strip(), meta

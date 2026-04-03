@@ -69,6 +69,7 @@ class LightpandaBridge:
         self._ws = None
         self._msg_id = 0
         self._ws_url = None
+        self._target_id = None
         self._connected = False
 
     # ─── Connection Lifecycle ─────────────────────────────────────────────────
@@ -117,36 +118,66 @@ class LightpandaBridge:
                     try:
                         await self._send_command(domain, timeout=5)
                     except Exception as e:
-                        logger.warning(f"Failed to enable {domain}: {e}")
+                        logger.debug(f"Failed to enable {domain}: {e}")
 
-                logger.info(f"Connected to Lightpanda CDP at {ws_url} (attempt {attempt + 1})")
+                logger.debug(f"Connected to Lightpanda CDP at {ws_url} (attempt {attempt + 1})")
                 return  # Success
 
             except Exception as e:
                 last_error = e
                 self._connected = False
                 self._ws = None
-                logger.warning(f"CDP connection attempt {attempt + 1} failed: {e}")
+                logger.debug(f"CDP connection attempt {attempt + 1} failed: {e}")
 
         raise ConnectionError(f"WebSocket connection failed after {retries} attempts: {last_error}")
 
     async def disconnect(self) -> None:
-        """Cleanly disconnect from CDP."""
+        """Cleanly disconnect from CDP and close the browser target."""
         if self._ws and self._connected:
             try:
                 await self._ws.close()
             except Exception:
                 pass
+            
+            # Close the specific browser tab to prevent leaks
+            if self._target_id and HAS_AIOHTTP:
+                try:
+                    async with aiohttp.ClientSession() as session:
+                        url = f"http://{self.host}:{self.port}/json/close/{self._target_id}"
+                        # Some versions use GET for close, others might just close automatically
+                        await session.get(url, timeout=aiohttp.ClientTimeout(total=3))
+                except Exception:
+                    pass
+                    
             self._connected = False
             self._ws = None
+            self._target_id = None
             logger.info("Disconnected from Lightpanda CDP")
 
     async def _get_debugger_url(self) -> Optional[str]:
-        """Fetch the WebSocket debugger URL from Lightpanda's /json endpoint."""
+        """Create a new tab and fetch its WebSocket debugger URL via /json/new."""
         if not HAS_AIOHTTP:
-            # Fallback: construct URL directly (common pattern)
             return f"ws://{self.host}:{self.port}"
 
+        try:
+            async with aiohttp.ClientSession() as session:
+                url = f"http://{self.host}:{self.port}/json/new"
+                async with session.put(url, timeout=aiohttp.ClientTimeout(total=5)) as resp:
+                    if resp.status == 200:
+                        data = await resp.json()
+                        self._target_id = data.get("id")
+                        return data.get("webSocketDebuggerUrl")
+                    
+                    # Fallback if PUT fails
+                    async with session.post(url, timeout=aiohttp.ClientTimeout(total=5)) as resp_post:
+                        if resp_post.status == 200:
+                            data = await resp_post.json()
+                            self._target_id = data.get("id")
+                            return data.get("webSocketDebuggerUrl")
+        except Exception as e:
+            logger.debug(f"/json/new failed: {e}, falling back to default /json")
+
+        # Ultimate fallback to default shared target
         try:
             async with aiohttp.ClientSession() as session:
                 url = f"http://{self.host}:{self.port}/json"
@@ -154,14 +185,12 @@ class LightpandaBridge:
                     if resp.status == 200:
                         data = await resp.json()
                         if isinstance(data, list) and data:
+                            self._target_id = data[0].get("id")
                             return data[0].get("webSocketDebuggerUrl")
-                        return f"ws://{self.host}:{self.port}"
-                    else:
-                        # Some Lightpanda versions serve WS directly
-                        return f"ws://{self.host}:{self.port}"
         except Exception:
-            # Direct WebSocket connection attempt
-            return f"ws://{self.host}:{self.port}"
+            pass
+
+        return f"ws://{self.host}:{self.port}"
 
     # ─── CDP Communication ────────────────────────────────────────────────────
 
