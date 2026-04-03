@@ -22,7 +22,7 @@ class FileIOTool:
         # Ensure outputs/ directory exists
         os.makedirs("outputs", exist_ok=True)
 
-    def _resolve_path(self, path):
+    def _resolve_path(self, path: str) -> str:
         """
         Resolve a path, expanding ~ and making it absolute.
         Returns the absolute resolved path.
@@ -44,7 +44,7 @@ class FileIOTool:
         except (ValueError, OSError) as e:
             return False, f"Path resolution error: {e}"
 
-    def read_file(self, path):
+    def read_file(self, path: str) -> str:
         """
         Read a file safely.
 
@@ -76,7 +76,7 @@ class FileIOTool:
         except Exception as e:
             raise ToolExecutionError("file_io", f"Error reading {path}: {str(e)}")
 
-    def write_file(self, path, content):
+    def write_file(self, path: str, content: str) -> str:
         """
         Write content to a file safely. Creates parent directories if needed.
 
@@ -112,7 +112,7 @@ class FileIOTool:
         except Exception as e:
             raise ToolExecutionError("file_io", f"Error writing {path}: {str(e)}")
 
-    def append_file(self, path, content):
+    def append_file(self, path: str, content: str) -> str:
         """
         Append content to an existing file (or create it).
 
@@ -141,7 +141,7 @@ class FileIOTool:
         except Exception as e:
             raise ToolExecutionError("file_io", f"Error appending to {path}: {str(e)}")
 
-    def list_files(self, directory="."):
+    def list_files(self, directory: str = ".") -> list:
         """
         List files in a directory (non-recursive).
 
@@ -171,7 +171,7 @@ class FileIOTool:
         except Exception as e:
             raise ToolExecutionError("file_io", f"Error listing {directory}: {str(e)}")
 
-    def file_exists(self, path):
+    def file_exists(self, path: str) -> bool:
         """Check if a file exists (within safe paths)."""
         safe, _ = self._is_safe_path(path)
         if not safe:

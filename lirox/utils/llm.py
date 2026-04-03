@@ -40,7 +40,7 @@ def _hash_prompt(text: str) -> str:
 
 # ─── Provider Implementations ─────────────────────────────────────────────────
 
-def openai_call(prompt, system_prompt=None, model="gpt-4o"):
+def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "gpt-4o") -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return "OpenAI API key missing."
@@ -61,7 +61,7 @@ def openai_call(prompt, system_prompt=None, model="gpt-4o"):
         return f"OpenAI Error: {str(e)}"
 
 
-def gemini_call(prompt, system_prompt=None):
+def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         return "Gemini API key missing."
@@ -96,7 +96,7 @@ def gemini_call(prompt, system_prompt=None):
             return f"Gemini Error: {str(e)}"
 
 
-def groq_call(prompt, system_prompt=None, model="llama-3.3-70b-versatile"):
+def groq_call(prompt: str, system_prompt: Optional[str] = None, model: str = "llama-3.3-70b-versatile") -> str:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return "Groq API key missing."
@@ -117,7 +117,7 @@ def groq_call(prompt, system_prompt=None, model="llama-3.3-70b-versatile"):
         return f"Groq Error: {str(e)}"
 
 
-def openrouter_call(prompt, system_prompt=None, model="mistralai/mistral-7b-instruct:free"):
+def openrouter_call(prompt: str, system_prompt: Optional[str] = None, model: str = "mistralai/mistral-7b-instruct:free") -> str:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         return "OpenRouter API key missing."
@@ -143,7 +143,7 @@ def openrouter_call(prompt, system_prompt=None, model="mistralai/mistral-7b-inst
         return f"OpenRouter Error: {str(e)}"
 
 
-def deepseek_call(prompt, system_prompt=None, model="deepseek-chat"):
+def deepseek_call(prompt: str, system_prompt: Optional[str] = None, model: str = "deepseek-chat") -> str:
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
         return "DeepSeek API key missing."
@@ -164,7 +164,7 @@ def deepseek_call(prompt, system_prompt=None, model="deepseek-chat"):
         return f"DeepSeek Error: {str(e)}"
 
 
-def nvidia_call(prompt, system_prompt=None, model="meta/llama-3.1-405b-instruct"):
+def nvidia_call(prompt: str, system_prompt: Optional[str] = None, model: str = "meta/llama-3.1-405b-instruct") -> str:
     api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
         return "NVIDIA API key missing."
@@ -185,7 +185,7 @@ def nvidia_call(prompt, system_prompt=None, model="meta/llama-3.1-405b-instruct"
         return f"NVIDIA Error: {str(e)}"
 
 
-def anthropic_call(prompt, system_prompt=None, model="claude-3-5-haiku-20241022"):
+def anthropic_call(prompt: str, system_prompt: Optional[str] = None, model: str = "claude-3-5-haiku-20241022") -> str:
     """
     Anthropic Claude provider.
     Uses the raw HTTP API so the `anthropic` SDK package is optional.
@@ -422,14 +422,15 @@ def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> 
     import time
     
     # Enforce API rate limits
-    api_limiter.wait_if_needed()
+    if not api_limiter.is_allowed(provider):
+        return f"Rate limit exceeded for provider: {provider}"
     
     # Enforce system resource limits
     while not sys_monitor.check_resources():
         time.sleep(5)
         
     # Record this call
-    api_limiter.record_call()
+    api_limiter.record_call(provider)
 
     if provider == "openai":    return openai_call(prompt, system_prompt)
     if provider == "gemini":    return gemini_call(prompt, system_prompt)

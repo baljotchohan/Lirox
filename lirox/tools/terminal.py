@@ -86,20 +86,31 @@ def is_safe(cmd):
     return True, "ok"
 
 
-def run_command(cmd):
-    """Execute a terminal command safely."""
+def run_command(cmd: str) -> str:
+    """
+    Execute a terminal command safely using shlex parsing (no shell=True).
+    
+    [FIX #1] Prevents shell injection by using subprocess array form.
+    """
     safe, reason = is_safe(cmd)
     if not safe:
         return f"[Blocked] {reason}"
 
     try:
+        # [FIX #1] Parse command into safe array form (NO shell=True)
+        parsed_args = shlex.split(cmd)
+        
         result = subprocess.run(
-            cmd, shell=True, capture_output=True,
-            text=True, timeout=60  # Increased timeout for longer ops
+            parsed_args,
+            capture_output=True,
+            text=True,
+            timeout=60
         )
         output = result.stdout if result.returncode == 0 else result.stderr
         return output.strip() if output.strip() else "[Command completed with no output]"
     except subprocess.TimeoutExpired:
         return "Error: Command timed out after 60 seconds."
+    except ValueError as e:
+        return f"[ParseError] Invalid command syntax: {str(e)}"
     except Exception as e:
         return f"Error executing command: {str(e)}"

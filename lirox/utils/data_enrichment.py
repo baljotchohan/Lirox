@@ -104,6 +104,12 @@ class DataEnrichmentEngine:
         enriched = self._deduplicate_enriched(enriched)
         enriched = self._validate_consistency(enriched)
         
+        # v0.8 Phase 2: High-precision fact verification
+        if len(enriched) > 1:
+            verification = self._verify_claims_cross_source(enriched, query)
+            for source in enriched:
+                source.verification_status = verification.get("consensus", "verified")
+        
         return enriched
     
     def _enrich_single_source(self, source: Dict, query: str,
@@ -231,6 +237,45 @@ class DataEnrichmentEngine:
                     print(f"[WARNING] {source.domain}: Content mismatch detected (overlap: {overlap:.0%})")
         
         return sources
+
+    def _verify_claims_cross_source(self, sources: List[EnrichedSource], query: str) -> Dict:
+        """
+        v0.8 Phase 2: Cross-source LLM-based fact verification.
+        Extracts claims and checks for consensus/contradiction.
+        """
+        combined_content = ""
+        for i, s in enumerate(sources, 1):
+            content = (s.full_content or s.snippet)[:1500]
+            combined_content += f"\n[SOURCE {i}] ({s.domain}): {content}\n"
+
+        prompt = f"""You are a fact-verification engine.
+        Original Query: {query}
+        Sources Content:
+        {combined_content}
+
+        Identify the top 3-5 core claims being made across these sources.
+        For each claim, determine:
+        1. Whether it is supported by most sources (Consensus).
+        2. Whether there are contradictions.
+        3. A veracity score (0.0 to 1.0).
+
+        Return ONLY a JSON block:
+        {{
+          "claims": [
+            {{"claim": "...", "consensus": "high/medium/low", "contradictions": ["domain1.com"], "veracity": 0.9}}
+          ],
+          "consensus": "verified/partial/unverified"
+        }}
+        """
+        response = generate_response(prompt, "auto")
+        try:
+            if "```json" in response:
+                json_str = response.split("```json")[-1].split("```")[0].strip()
+            else:
+                json_str = response.strip()
+            return json.loads(json_str)
+        except Exception:
+            return {"claims": [], "consensus": "unverified"}
     
     def merge_enriched_results(self, 
                               enriched_sources: List[EnrichedSource],

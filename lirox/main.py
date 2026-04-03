@@ -79,6 +79,9 @@ def main():
     parser.add_argument("--verbose", action="store_true", help="Show internal mission metadata")
     args = parser.parse_args()
 
+    from lirox.utils.startup_validator import StartupValidator
+    StartupValidator.validate_all()
+
     agent = LiroxAgent()
     show_welcome()
 

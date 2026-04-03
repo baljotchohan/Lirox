@@ -1,5 +1,5 @@
 """
-Lirox v0.7.1 — Headless Browser Tool
+Lirox v0.8.0 — Headless Browser Tool
 
 High-level browser API registered with the Lirox executor.
 Provides fetch_page, interact_with_page, extract_structured_data,
@@ -107,7 +107,7 @@ class HeadlessBrowserTool:
         mgr = _get_manager()
         return mgr is not None and mgr.is_available
 
-    def _get_fallback(self):
+    def _get_fallback(self) -> Any:
         """Get the traditional requests-based browser tool as fallback."""
         if self._fallback is None:
             from lirox.tools.browser import BrowserTool
@@ -155,6 +155,46 @@ class HeadlessBrowserTool:
         result = self._fetch_with_requests(url, extract)
         result["metadata"]["duration"] = round(time.time() - start, 2)
         result["metadata"]["method"] = "requests"
+        return result
+
+    def fetch_focused_fragment(self, url: str, query: str) -> Dict[str, Any]:
+        """
+        v0.8 Phase 2: Fragment-level extraction.
+        Fetches the page and isolates only the most relevant sections.
+        """
+        result = self.fetch_page(url, extract="markdown")
+        if result.get("status") != "success":
+            return result
+        
+        content = result.get("data", {}).get("markdown", "")
+        if len(content) < 2000:
+            return result
+            
+        # Split into paragraphs/chunks
+        chunks = content.split("\n\n")
+        keywords = [k.lower() for k in query.split() if len(k) > 3]
+        
+        scored_chunks = []
+        for chunk in chunks:
+            if len(chunk) < 50: continue
+            score = sum(1 for k in keywords if k in chunk.lower())
+            scored_chunks.append((score, chunk))
+            
+        # Pick top 3 chunks (or more up to ~3000 chars)
+        top_chunks = sorted(scored_chunks, key=lambda x: x[0], reverse=True)
+        selected = []
+        total_len = 0
+        for score, chunk in top_chunks:
+            if total_len > 3000: break
+            selected.append(chunk)
+            total_len += len(chunk)
+            
+        focused_content = "\n\n".join(selected)
+        
+        result["data"]["markdown"] = focused_content
+        result["metadata"]["fragmented"] = True
+        result["metadata"]["original_length"] = len(content)
+        
         return result
 
     def _fetch_with_headless(self, url: str, extract: str,

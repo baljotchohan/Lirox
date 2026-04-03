@@ -1,9 +1,9 @@
 """
-Lirox v0.7 — Deep Research Engine
+Lirox v0.8.0 — Deep Research Engine
 
 Perplexity-grade autonomous research:
 - Multi-source parallel search (Tavily, Serper, Exa, DuckDuckGo fallback)
-- Headless browser for dynamic content extraction (v0.7)
+- Headless browser for dynamic content extraction (v0.8.0)
 - Source quality scoring and ranking
 - Content extraction and deduplication
 - Cross-source LLM synthesis
@@ -79,15 +79,15 @@ class Researcher:
         else: # standard
             target_sources = 6
 
-        # 1. Decompose Query
+        # 1. Decompose Query (Expansion 2.0)
         sub_queries = self._decompose_query(query)
         
-        # 2. Search All
+        # 2. Search All (Categorized)
         raw_sources = self._search_all(sub_queries)
         
-        # 3. Deduplicate and take top N
+        # 3. Deduplicate and Rank (Advanced Ranking)
         best_sources = self._deduplicate_sources(raw_sources)
-        best_sources = sorted(best_sources, key=lambda x: x.score, reverse=True)[:target_sources]
+        best_sources = self._rank_results(best_sources, query)[:target_sources]
         
         # Assign citation IDs
         for i, source in enumerate(best_sources):
@@ -124,50 +124,67 @@ class Researcher:
         )
         return report
 
-    def _decompose_query(self, query: str) -> List[str]:
-        prompt = f"""Break this research query into 3-5 distinct sub-queries that will provide comprehensive coverage of the topic.
+    def _decompose_query(self, query: str) -> Dict[str, List[str]]:
+        """
+        v0.8 Phase 2: Multi-Query Expansion 2.0.
+        Decomposes query into categorized sub-queries (Background, Real-time, Technical, etc.)
+        """
+        prompt = f"""Deconstruct this research query into 3-5 specialized sub-queries categorized by intent.
+        Categories: "background", "real_time", "technical", "opinion"
         Query: {query}
         
         Return ONLY valid JSON with this schema:
         {{
-          "sub_queries": ["query1", "query2", ...]
+          "sub_queries": [
+            {{"category": "background", "query": "..."}},
+            {{"category": "real_time", "query": "..."}}
+          ]
         }}
         """
         response = generate_response(prompt, self.provider)
         try:
-            # Extract JSON block
             if "```json" in response:
-                json_str = response.split("```json")[1].split("```")[0].strip()
-            elif "```" in response:
-                json_str = response.split("```")[1].split("```")[0].strip()
+                json_str = response.split("```json")[-1].split("```")[0].strip()
             else:
                 json_str = response.strip()
             
             data = json.loads(json_str)
-            return data.get("sub_queries", [query])
+            return data.get("sub_queries", [{"category": "background", "query": query}])
         except Exception:
-            # Fallback
-            return [query]
+            return [{"category": "background", "query": query}]
 
-    def _search_all(self, sub_queries: List[str]) -> List[ResearchSource]:
-        # [FIX #7] Strict tier check for paid APIs
+    def _is_realtime_data_query(self, query: str) -> bool:
+        """Detect if the query requires live/real-time verification."""
+        realtime_keywords = [
+            "current", "price", "live", "score", "today", "now", "latest",
+            "stock", "market", "breaking", "update", "value"
+        ]
+        return any(kw in query.lower() for kw in realtime_keywords)
+
+    def _search_all(self, sub_queries: List[Dict]) -> List[ResearchSource]:
+        """v0.8 Phase 2: Categorized parallel search."""
         if self.tier_limit < 1:
-            self.search_apis = [] # Drop all paid APIs
+            self.search_apis = []
 
         all_sources = []
-        with ThreadPoolExecutor(max_workers=len(sub_queries) * max(1, len(self.search_apis))) as executor:
+        with ThreadPoolExecutor(max_workers=len(sub_queries) * 2) as executor:
             futures = []
-            for query in sub_queries:
-                if "tavily" in self.search_apis:
-                    futures.append(executor.submit(self._search_tavily, query))
-                if "serper" in self.search_apis:
-                    futures.append(executor.submit(self._search_serper, query))
-                if "exa" in self.search_apis:
-                    futures.append(executor.submit(self._search_exa, query))
+            for item in sub_queries:
+                q_text = item.get("query", "")
+                q_category = item.get("category", "background")
                 
-                # Fallback if no paid APIs
+                # Intelligent routing: use advanced search for real-time/technical
+                depth = "advanced" if q_category in ["real_time", "technical"] else "basic"
+                
+                if "tavily" in self.search_apis:
+                    futures.append(executor.submit(self._search_tavily, q_text, depth=depth))
+                if "serper" in self.search_apis:
+                    futures.append(executor.submit(self._search_serper, q_text))
+                if "exa" in self.search_apis:
+                    futures.append(executor.submit(self._search_exa, q_text))
+                
                 if not self.search_apis:
-                    futures.append(executor.submit(self._search_duckduckgo, query))
+                    futures.append(executor.submit(self._search_duckduckgo, q_text))
 
             for future in as_completed(futures):
                 try:
@@ -192,13 +209,13 @@ class Researcher:
             ))
         return sources
 
-    def _search_tavily(self, query: str) -> List[ResearchSource]:
+    def _search_tavily(self, query: str, depth: str = "advanced") -> List[ResearchSource]:
         api_key = os.getenv("TAVILY_API_KEY")
         if not api_key: return []
         try:
             response = requests.post(
                 "https://api.tavily.com/search",
-                json={"api_key": api_key, "query": query, "search_depth": "advanced", "max_results": 5},
+                json={"api_key": api_key, "query": query, "search_depth": depth, "max_results": 5},
                 timeout=10
             )
             response.raise_for_status()
@@ -298,12 +315,48 @@ class Researcher:
 
         return list(domain_best.values())
 
+    def _rank_results(self, sources: List[ResearchSource], query: str) -> List[ResearchSource]:
+        """
+        v0.8 Phase 2: Advanced Result Ranking.
+        Scores based on Domain Authority, Recency (if applicable), and Relevance.
+        """
+        HIGH_TRUST = {
+            "wikipedia.org", "github.com", "arxiv.org", "reuters.com", "bloomberg.com",
+            "nytimes.com", "theguardian.com", "wsj.com", "gov", "edu", "stackoverflow.com"
+        }
+        LOW_TRUST = {"quora.com", "medium.com", "reddit.com", "pinterest.com", "youtube.com"}
+
+        is_realtime = self._is_realtime_data_query(query)
+        
+        for s in sources:
+            base_score = s.score or 0.5
+            
+            # 1. Domain Trust
+            if any(t in s.domain for t in HIGH_TRUST):
+                base_score += 0.25
+            elif any(t in s.domain for t in LOW_TRUST):
+                base_score -= 0.15
+            
+            # 2. Relevancy Boost (Snippet keywords)
+            keywords = [k for k in query.lower().split() if len(k) > 3]
+            overlap = sum(1 for k in keywords if k in s.title.lower() or k in s.snippet.lower())
+            base_score += (overlap / max(1, len(keywords))) * 0.2
+            
+            # 3. Recency Boost
+            if is_realtime and ("2026" in s.snippet or "today" in s.snippet.lower()):
+                base_score += 0.2
+                
+            s.score = min(1.0, max(0.0, base_score))
+            
+        return sorted(sources, key=lambda x: x.score, reverse=True)
+
     def _extract_all_content(self, sources: List[ResearchSource], max_workers: int = 4) -> List[ResearchSource]:
         def extract(src: ResearchSource) -> ResearchSource:
-            if src.content and len(src.content) > 500:
+            needs_live_data = self._is_realtime_data_query(src.search_query)
+            if src.content and len(src.content) > 500 and not needs_live_data:
                 return src # Already extracted (e.g. by Tavily)
 
-            # v0.7: Try headless browser first for richer content
+            # v0.7: Try headless browser first for richer or live content
             if self.headless_browser and self.headless_browser._browser_available:
                 try:
                     result = self.headless_browser.fetch_page(src.url, extract="markdown", timeout=15)
