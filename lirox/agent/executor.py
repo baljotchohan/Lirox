@@ -13,6 +13,7 @@ Executes structured plans step-by-step with:
 """
 
 import time
+import logging
 import threading
 import concurrent.futures
 from concurrent.futures import ThreadPoolExecutor
@@ -25,6 +26,7 @@ from lirox.utils.errors import ToolExecutionError, should_retry
 from lirox.ui.display import execute_panel, update_plan_step, AgentSpinner
 from lirox.config import MAX_RETRIES, RETRY_BACKOFF, CONTEXT_MAX_CHARS, PARALLEL_MAX_WORKERS
 
+logger = logging.getLogger("lirox.executor")
 
 # Patterns in tool output that indicate failure even without an exception
 FAILURE_PATTERNS = [
@@ -63,11 +65,28 @@ class Executor:
         self._results_lock = threading.Lock()
 
         # v0.7: Headless browser tool (Lightpanda)
+        self.headless_browser = None
+        self.session_manager = None
+        self.headless_available = False
+
         try:
             from lirox.tools.browser_tool import HeadlessBrowserTool
             self.headless_browser = HeadlessBrowserTool()
+            self.headless_available = True
         except ImportError:
-            self.headless_browser = None
+            pass
+
+        # v0.7.1: Session manager for CDP-based browser automation
+        try:
+            from lirox.tools.browser_manager import BrowserSessionManager
+            self.session_manager = BrowserSessionManager()
+            if self.session_manager.is_available:
+                self.headless_available = True
+                logger.info("✓ Lightpanda browser available — headless mode enabled")
+            else:
+                logger.info("⚠ Lightpanda binary not found — HTTP-only fallback mode")
+        except ImportError:
+            logger.info("⚠ Browser session manager not available — HTTP-only fallback mode")
 
     def _is_output_failure(self, output: str) -> Tuple[bool, str]:
         """Check if tool output indicates failure despite no exception."""

@@ -34,10 +34,19 @@ except ImportError:
 
 
 class CDPError(Exception):
-    """Error from Chrome DevTools Protocol."""
-    def __init__(self, code: int, message: str):
+    """Error from Chrome DevTools Protocol — includes full context for debugging."""
+    def __init__(self, code: int, message: str, method: str = "",
+                 params: dict = None, response: dict = None):
         self.code = code
-        super().__init__(f"CDP Error {code}: {message}")
+        self.method = method
+        self.params = params or {}
+        self.response = response or {}
+        self.message = message
+        super().__init__(f"CDP Error {code} [{method}]: {message}")
+
+    def __repr__(self):
+        return (f"CDPError(code={self.code}, method='{self.method}', "
+                f"message='{self.message}')")
 
 
 class LightpandaBridge:
@@ -64,37 +73,62 @@ class LightpandaBridge:
 
     # ─── Connection Lifecycle ─────────────────────────────────────────────────
 
-    async def connect(self) -> None:
-        """Connect to Lightpanda via CDP WebSocket."""
+    async def connect(self, retries: int = 3, retry_delay: float = 1.0) -> None:
+        """Connect to Lightpanda via CDP WebSocket with retry logic.
+
+        Args:
+            retries: Number of connection attempts (default 3)
+            retry_delay: Initial delay between attempts in seconds (doubles each retry)
+        """
         if not HAS_WEBSOCKETS:
             raise RuntimeError("websockets library not installed")
 
-        # Get WebSocket debugger URL from CDP /json endpoint
-        ws_url = await self._get_debugger_url()
-        if not ws_url:
-            raise ConnectionError(
-                f"Cannot connect to Lightpanda at {self.host}:{self.port}. "
-                "Is the browser running?"
-            )
+        last_error = None
 
-        self._ws_url = ws_url
-        try:
-            self._ws = await asyncio.wait_for(
-                websockets.connect(ws_url, max_size=10 * 1024 * 1024),
-                timeout=10
-            )
-            self._connected = True
+        for attempt in range(retries):
+            try:
+                if attempt > 0:
+                    delay = retry_delay * (2 ** (attempt - 1))
+                    logger.info(f"Retrying CDP connection (attempt {attempt + 1}/{retries}) after {delay:.1f}s")
+                    await asyncio.sleep(delay)
 
-            # Enable required CDP domains
-            await self._send_command("Page.enable")
-            await self._send_command("DOM.enable")
-            await self._send_command("Runtime.enable")
-            await self._send_command("Network.enable")
+                # Get WebSocket debugger URL from CDP /json endpoint
+                ws_url = await self._get_debugger_url()
+                if not ws_url:
+                    raise ConnectionError(
+                        f"Cannot connect to Lightpanda at {self.host}:{self.port}. "
+                        "Is the browser running?"
+                    )
 
-            logger.info(f"Connected to Lightpanda CDP at {ws_url}")
-        except Exception as e:
-            self._connected = False
-            raise ConnectionError(f"WebSocket connection failed: {e}")
+                self._ws_url = ws_url
+                self._ws = await asyncio.wait_for(
+                    websockets.connect(
+                        ws_url,
+                        max_size=10 * 1024 * 1024,
+                        ping_interval=20,    # Keep-alive ping every 20s
+                        ping_timeout=10,     # Fail if no pong in 10s
+                    ),
+                    timeout=10
+                )
+                self._connected = True
+
+                # Enable required CDP domains — each wrapped individually
+                for domain in ["Page.enable", "DOM.enable", "Runtime.enable", "Network.enable"]:
+                    try:
+                        await self._send_command(domain, timeout=5)
+                    except Exception as e:
+                        logger.warning(f"Failed to enable {domain}: {e}")
+
+                logger.info(f"Connected to Lightpanda CDP at {ws_url} (attempt {attempt + 1})")
+                return  # Success
+
+            except Exception as e:
+                last_error = e
+                self._connected = False
+                self._ws = None
+                logger.warning(f"CDP connection attempt {attempt + 1} failed: {e}")
+
+        raise ConnectionError(f"WebSocket connection failed after {retries} attempts: {last_error}")
 
     async def disconnect(self) -> None:
         """Cleanly disconnect from CDP."""
@@ -161,8 +195,11 @@ class LightpandaBridge:
                         if "error" in response:
                             err = response["error"]
                             raise CDPError(
-                                err.get("code", -1),
-                                err.get("message", "Unknown CDP error")
+                                code=err.get("code", -1),
+                                message=err.get("message", "Unknown CDP error"),
+                                method=method,
+                                params=params,
+                                response=response,
                             )
                         return response.get("result", {})
 

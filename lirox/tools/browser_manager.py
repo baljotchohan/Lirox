@@ -1,11 +1,13 @@
 """
-Lirox v0.7 — Browser Session Manager
+Lirox v0.7.1 — Browser Session Manager (Hardened)
 
 Manages Lightpanda browser instance lifecycle, session pooling,
 and provides sync wrappers for the async CDP bridge.
 
-This module is the primary interface between Lirox's synchronous
-executor and the async browser subsystem.
+Improvements over v0.7:
+- AsyncBridge class: prevents deadlocks with strict timeouts + task cleanup
+- Atomic session pool: thread-safe acquire/release with dead-session pruning
+- Session health tracking with configurable error thresholds
 """
 
 import asyncio
@@ -24,39 +26,73 @@ from lirox.tools.browser_security import BrowserSecurityValidator
 logger = logging.getLogger("lirox.browser.manager")
 
 
-def _get_or_create_event_loop():
-    """Get the current event loop or create a new one for the current thread."""
-    try:
-        loop = asyncio.get_event_loop()
-        if loop.is_closed():
-            raise RuntimeError("closed")
-        return loop
-    except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        return loop
+# ─── AsyncBridge ──────────────────────────────────────────────────────────────
 
+class AsyncBridge:
+    """
+    Safely bridge async coroutines to synchronous code.
 
-def _run_async(coro):
-    """Run an async coroutine from synchronous context."""
-    try:
-        loop = asyncio.get_running_loop()
-    except RuntimeError:
-        loop = None
+    Prevents deadlocks by:
+    - Using a dedicated daemon thread with its own event loop
+    - Enforcing strict timeouts on all operations
+    - Cleaning up pending tasks on timeout or error
 
-    if loop and loop.is_running():
-        # We're inside an existing event loop — use a thread
+    Usage:
+        bridge = AsyncBridge(timeout=30)
+        result = bridge.run(some_async_coroutine())
+    """
+
+    def __init__(self, timeout: int = 60):
+        self.timeout = timeout
+
+    def run(self, coro, timeout: int = None):
+        """
+        Run an async coroutine from synchronous context.
+
+        Args:
+            coro: The coroutine to execute
+            timeout: Override default timeout (seconds)
+
+        Returns:
+            The coroutine's return value
+
+        Raises:
+            TimeoutError: If the coroutine exceeds the timeout
+            Exception: Any exception raised by the coroutine
+        """
+        effective_timeout = timeout or self.timeout
+
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            loop = None
+
+        if loop and loop.is_running():
+            # We're inside an existing event loop — use a thread
+            return self._run_in_thread(coro, effective_timeout)
+        else:
+            # No running loop — safe to use run_until_complete
+            return self._run_direct(coro, effective_timeout)
+
+    def _run_in_thread(self, coro, timeout: int):
+        """Execute coroutine in a dedicated thread with its own event loop."""
         result = [None]
         exception = [None]
 
-        def run():
+        def worker():
             new_loop = asyncio.new_event_loop()
             try:
-                result[0] = new_loop.run_until_complete(coro)
+                result[0] = new_loop.run_until_complete(
+                    asyncio.wait_for(coro, timeout=timeout)
+                )
+            except asyncio.TimeoutError:
+                exception[0] = TimeoutError(
+                    f"Async operation timed out after {timeout}s"
+                )
             except Exception as e:
                 exception[0] = e
             finally:
-                # Clean up pending tasks to avoid 'Task destroyed' warnings
+                # Clean up all pending tasks to avoid 'Task destroyed' warnings
                 try:
                     pending = asyncio.all_tasks(new_loop)
                     for task in pending:
@@ -69,17 +105,53 @@ def _run_async(coro):
                     pass
                 new_loop.close()
 
-        t = threading.Thread(target=run)
+        t = threading.Thread(target=worker, daemon=True)
         t.start()
-        t.join(timeout=60)
+        t.join(timeout=timeout + 5)  # Extra 5s grace for cleanup
+
+        if t.is_alive():
+            raise TimeoutError(
+                f"Thread did not complete within {timeout + 5}s — possible deadlock"
+            )
 
         if exception[0]:
             raise exception[0]
         return result[0]
-    else:
-        loop = _get_or_create_event_loop()
-        return loop.run_until_complete(coro)
 
+    def _run_direct(self, coro, timeout: int):
+        """Execute coroutine directly using run_until_complete."""
+        loop = self._get_or_create_loop()
+        try:
+            return loop.run_until_complete(
+                asyncio.wait_for(coro, timeout=timeout)
+            )
+        except asyncio.TimeoutError:
+            raise TimeoutError(f"Async operation timed out after {timeout}s")
+
+    @staticmethod
+    def _get_or_create_loop():
+        """Get the current event loop or create a new one."""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                raise RuntimeError("closed")
+            return loop
+        except RuntimeError:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            return loop
+
+
+# Backward-compatible wrapper
+_async_bridge = AsyncBridge(timeout=60)
+
+
+def _run_async(coro, timeout: int = None):
+    """Run an async coroutine from synchronous context (compatibility shim)."""
+    return _async_bridge.run(coro, timeout=timeout)
+
+
+# ─── Session Metrics ─────────────────────────────────────────────────────────
 
 @dataclass
 class SessionMetrics:
@@ -92,6 +164,8 @@ class SessionMetrics:
     last_url: str = ""
 
 
+# ─── Browser Session ─────────────────────────────────────────────────────────
+
 class BrowserSession:
     """
     Manages a single Lightpanda browser instance.
@@ -99,10 +173,12 @@ class BrowserSession:
     """
 
     def __init__(self, session_id: str, bridge: LightpandaBridge,
-                 security: BrowserSecurityValidator):
+                 security: BrowserSecurityValidator,
+                 async_bridge: AsyncBridge = None):
         self.session_id = session_id
         self.bridge = bridge
         self.security = security
+        self._async = async_bridge or _async_bridge
         self.metrics = SessionMetrics()
         self._is_active = True
 
@@ -123,7 +199,7 @@ class BrowserSession:
             raise ValueError(f"Unsafe URL rejected: {reason}")
 
         start = time.time()
-        result = _run_async(self.bridge.navigate_to_url(url, timeout=timeout))
+        result = self._async.run(self.bridge.navigate_to_url(url, timeout=timeout))
         nav_time = time.time() - start
 
         self.metrics.last_used = time.time()
@@ -145,70 +221,70 @@ class BrowserSession:
             if not is_safe:
                 raise ValueError(f"Unsafe selector: {reason}")
             # Get inner HTML of selected element, convert to markdown
-            html = _run_async(self.bridge.get_element_text(selector))
+            html = self._async.run(self.bridge.get_element_text(selector))
             return html
 
-        return _run_async(self.bridge.get_page_markdown())
+        return self._async.run(self.bridge.get_page_markdown())
 
     def get_html(self) -> str:
         """Get full page HTML."""
-        return _run_async(self.bridge.get_page_html())
+        return self._async.run(self.bridge.get_page_html())
 
     def extract_links(self) -> List[Dict[str, str]]:
         """Extract all links from page."""
-        return _run_async(self.bridge.extract_links())
+        return self._async.run(self.bridge.extract_links())
 
     def extract_tables(self) -> List[List[Dict]]:
         """Extract all tables from page."""
-        return _run_async(self.bridge.extract_tables())
+        return self._async.run(self.bridge.extract_tables())
 
     def extract_images(self) -> List[Dict[str, str]]:
         """Extract all images from page."""
-        return _run_async(self.bridge.extract_images())
+        return self._async.run(self.bridge.extract_images())
 
     def click(self, selector: str) -> bool:
         """Click element matching CSS selector."""
         is_safe, reason = self.security.validate_selector(selector)
         if not is_safe:
             raise ValueError(f"Unsafe selector: {reason}")
-        return _run_async(self.bridge.click_element(selector))
+        return self._async.run(self.bridge.click_element(selector))
 
     def type_text(self, selector: str, text: str) -> bool:
         """Type text into input element."""
         is_safe, reason = self.security.validate_selector(selector)
         if not is_safe:
             raise ValueError(f"Unsafe selector: {reason}")
-        return _run_async(self.bridge.type_in_element(selector, text))
+        return self._async.run(self.bridge.type_in_element(selector, text))
 
     def wait_for_selector(self, selector: str, timeout: int = 10000) -> bool:
         """Wait for selector to appear in DOM."""
         is_safe, reason = self.security.validate_selector(selector)
         if not is_safe:
             raise ValueError(f"Unsafe selector: {reason}")
-        return _run_async(self.bridge.wait_for_selector(selector, timeout))
+        return self._async.run(self.bridge.wait_for_selector(selector, timeout))
 
     def evaluate_js(self, script: str) -> Any:
         """Execute JavaScript in page context with security validation."""
         is_safe, reason = self.security.validate_javascript(script)
         if not is_safe:
             raise ValueError(f"Unsafe JavaScript: {reason}")
-        return _run_async(self.bridge.evaluate_script(script))
+        return self._async.run(self.bridge.evaluate_script(script))
 
     def take_screenshot(self, path: str) -> Optional[str]:
         """Take screenshot for debugging."""
-        return _run_async(self.bridge.take_screenshot(path))
+        return self._async.run(self.bridge.take_screenshot(path))
 
     def get_page_state(self) -> Dict[str, Any]:
         """Get comprehensive page state."""
-        return _run_async(self.bridge.get_page_metrics())
+        return self._async.run(self.bridge.get_page_metrics())
 
     def get_cookies(self) -> List[Dict]:
         """Get current page cookies."""
-        return _run_async(self.bridge.get_cookies())
+        return self._async.run(self.bridge.get_cookies())
 
     def set_cookies(self, cookies: List[Dict]) -> None:
         """Restore cookies."""
-        _run_async(self.bridge.set_cookies(cookies))
+        self._async.run(self.bridge.set_cookies(cookies))
 
     def fill_form(self, fields: Dict[str, str]) -> Dict[str, bool]:
         """Fill multiple form fields."""
@@ -216,27 +292,35 @@ class BrowserSession:
             is_safe, reason = self.security.validate_selector(selector)
             if not is_safe:
                 raise ValueError(f"Unsafe selector '{selector}': {reason}")
-        return _run_async(self.bridge.fill_form(fields))
+        return self._async.run(self.bridge.fill_form(fields))
 
     def submit_form(self, selector: str) -> bool:
         """Submit a form."""
         is_safe, reason = self.security.validate_selector(selector)
         if not is_safe:
             raise ValueError(f"Unsafe selector: {reason}")
-        return _run_async(self.bridge.submit_form(selector))
+        return self._async.run(self.bridge.submit_form(selector))
 
     def close(self) -> None:
         """Close this session."""
         self._is_active = False
         try:
-            _run_async(self.bridge.disconnect())
+            self._async.run(self.bridge.disconnect(), timeout=5)
         except Exception:
             pass
 
 
+# ─── Session Manager ──────────────────────────────────────────────────────────
+
 class BrowserSessionManager:
     """
     Manages pool of Lightpanda browser sessions.
+
+    Thread-safe session acquisition and release with:
+    - Atomic state transitions (no race conditions)
+    - Dead session cleanup
+    - Error threshold-based session recycling
+    - Duplicate-entry prevention on release
 
     Usage:
         manager = BrowserSessionManager()
@@ -249,6 +333,8 @@ class BrowserSessionManager:
                 manager.release_session(session)
     """
 
+    MAX_ERRORS_BEFORE_DESTROY = 5
+
     def __init__(self, max_instances: int = 5,
                  browser_path: str = "./lightpanda",
                  port: int = 9222,
@@ -258,6 +344,7 @@ class BrowserSessionManager:
         self.timeout = timeout
         self.launcher = BrowserLauncher(browser_path)
         self.security = BrowserSecurityValidator()
+        self._async = AsyncBridge(timeout=timeout)
         self._sessions: Dict[str, BrowserSession] = {}
         self._available_sessions: List[str] = []
         self._lock = threading.Lock()
@@ -278,7 +365,7 @@ class BrowserSessionManager:
             return False
 
         try:
-            success = _run_async(self.launcher.launch(port=self.port))
+            success = self._async.run(self.launcher.launch(port=self.port))
             self._browser_started = success
             return success
         except Exception as e:
@@ -288,6 +375,9 @@ class BrowserSessionManager:
     def acquire_session(self, session_id: str = None) -> Optional[BrowserSession]:
         """
         Acquire a browser session from the pool.
+
+        Thread-safe with atomic state transitions.
+        Dead sessions are cleaned up automatically.
 
         Args:
             session_id: Optional specific session to reuse
@@ -303,20 +393,37 @@ class BrowserSessionManager:
             if session_id and session_id in self._sessions:
                 session = self._sessions[session_id]
                 if session.is_active:
-                    if session_id in self._available_sessions:
-                        self._available_sessions.remove(session_id)
+                    # Atomic removal — filter instead of .remove() to avoid crashes
+                    self._available_sessions = [
+                        s for s in self._available_sessions if s != session_id
+                    ]
+                    logger.debug(f"Reusing session: {session_id}")
                     return session
+                else:
+                    # Dead session — clean it up
+                    logger.warning(f"Session {session_id} is dead, removing from pool")
+                    del self._sessions[session_id]
+                    self._available_sessions = [
+                        s for s in self._available_sessions if s != session_id
+                    ]
 
             # Try to reuse any available session
             while self._available_sessions:
                 sid = self._available_sessions.pop(0)
                 if sid in self._sessions and self._sessions[sid].is_active:
+                    logger.debug(f"Acquired available session: {sid}")
                     return self._sessions[sid]
+                else:
+                    # Dead session in available pool — clean up
+                    if sid in self._sessions:
+                        logger.warning(f"Cleaning dead session from pool: {sid}")
+                        del self._sessions[sid]
 
             # Create new session if under limit
             if len(self._sessions) < self.max_instances:
                 return self._create_session()
 
+        logger.warning("No sessions available and at max capacity")
         return None
 
     def _create_session(self) -> Optional[BrowserSession]:
@@ -330,9 +437,11 @@ class BrowserSessionManager:
                 port=self.port,
                 default_timeout=self.timeout
             )
-            _run_async(bridge.connect())
+            self._async.run(bridge.connect())
 
-            session = BrowserSession(session_id, bridge, self.security)
+            session = BrowserSession(
+                session_id, bridge, self.security, self._async
+            )
             self._sessions[session_id] = session
 
             logger.info(f"Created browser session: {session_id}")
@@ -343,19 +452,24 @@ class BrowserSessionManager:
             return None
 
     def release_session(self, session: BrowserSession) -> None:
-        """Return a session to the pool."""
+        """Return a session to the pool (thread-safe)."""
         with self._lock:
-            if session.session_id in self._sessions:
-                if session.metrics.error_count > 5:
-                    # Too many errors — destroy and recreate
-                    logger.warning(
-                        f"Session {session.session_id} has {session.metrics.error_count} "
-                        "errors, destroying"
-                    )
-                    session.close()
-                    del self._sessions[session.session_id]
-                else:
+            if session.session_id not in self._sessions:
+                return
+
+            if session.metrics.error_count > self.MAX_ERRORS_BEFORE_DESTROY:
+                # Too many errors — destroy and recreate
+                logger.warning(
+                    f"Session {session.session_id} has {session.metrics.error_count} "
+                    "errors, destroying"
+                )
+                session.close()
+                del self._sessions[session.session_id]
+            else:
+                # Prevent duplicate entries in available pool
+                if session.session_id not in self._available_sessions:
                     self._available_sessions.append(session.session_id)
+                    logger.debug(f"Released session: {session.session_id}")
 
     def release_with_error(self, session: BrowserSession) -> None:
         """Release session after an error occurred."""
@@ -374,7 +488,7 @@ class BrowserSessionManager:
             self._available_sessions.clear()
 
         try:
-            _run_async(self.launcher.kill())
+            self._async.run(self.launcher.kill(), timeout=10)
         except Exception:
             pass
 
@@ -395,6 +509,7 @@ class BrowserSessionManager:
                 "active_sessions": active,
                 "available_sessions": len(self._available_sessions),
                 "max_instances": self.max_instances,
+                "security_tokens": self.security.get_token_status(),
             }
 
     def __del__(self):
@@ -404,6 +519,8 @@ class BrowserSessionManager:
         except Exception:
             pass
 
+
+# ─── Session Store ────────────────────────────────────────────────────────────
 
 class SessionStore:
     """Persist browser session state (cookies, metadata) across restarts."""

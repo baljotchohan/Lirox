@@ -108,6 +108,32 @@ class BrowserTool:
     def __init__(self, timeout=15):
         self.timeout = timeout
         self.session = requests.Session()
+
+        # Connection pooling — reuse TCP connections across requests
+        try:
+            from requests.adapters import HTTPAdapter
+            try:
+                from urllib3.util.retry import Retry
+                retry_strategy = Retry(
+                    total=3,
+                    backoff_factor=0.5,
+                    status_forcelist=[429, 500, 502, 503, 504],
+                    allowed_methods=["GET", "HEAD"],
+                )
+            except ImportError:
+                retry_strategy = None
+
+            adapter = HTTPAdapter(
+                pool_connections=10,
+                pool_maxsize=10,
+                max_retries=retry_strategy or 3,
+            )
+            self.session.mount("https://", adapter)
+            self.session.mount("http://", adapter)
+            logger.debug("HTTP connection pooling enabled (10 connections)")
+        except ImportError:
+            logger.warning("HTTPAdapter not available — connection pooling disabled")
+
         self._rotate_ua()
 
     def _rotate_ua(self):

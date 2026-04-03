@@ -49,7 +49,7 @@ def show_welcome():
 
 # ─── Status Cards ───────────────────────────────────────────────────────────
 
-def show_status_card(profile_data, providers):
+def show_status_card(profile_data, providers, token_status=None):
     table = Table(box=None, padding=(0, 2))
     table.add_column("Kernel Status", style=CLR_LIROX)
     table.add_column("Operator Domain", style=CLR_ACCENT)
@@ -65,10 +65,24 @@ def show_status_card(profile_data, providers):
     
     prov_str = ", ".join(available_styled_providers(providers))
     
+    # Token usage bar for rate-limit visibility
+    token_line = ""
+    if token_status:
+        avail = token_status.get("available", 0)
+        used = token_status.get("used", 0)
+        capacity = token_status.get("capacity", 100)
+        fill = int((avail / capacity) * 10) if capacity > 0 else 0
+        bar = "█" * fill + "░" * (10 - fill)
+        token_line = (
+            f"\n[{CLR_DIM}]Tokens:[/] [{CLR_SUCCESS}]{bar}[/] "
+            f"[white]{avail}[/][{CLR_DIM}]/{capacity} avail[/]  "
+            f"[{CLR_WARN}]{used}[/] [{CLR_DIM}]used[/]"
+        )
+    
     console.print(Panel(
         table,
         title=f"[{CLR_LIROX}] INITIALIZING CORE [/]",
-        subtitle=f"[{CLR_DIM}] Channels: {prov_str or 'None'} [/]",
+        subtitle=f"[{CLR_DIM}] Channels: {prov_str or 'None'} [/]{token_line}",
         border_style=CLR_LIROX,
         padding=(1, 2)
     ))
