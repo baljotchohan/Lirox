@@ -64,6 +64,31 @@ class LiroxAgent:
         
         return response
 
+    def show_plan(self, goal: str, provider: str = "auto") -> dict:
+        """Create and show a plan for a goal without executing it."""
+        thought = self.reasoner.generate_thought_trace(goal)
+        plan = self.planner.create_plan(goal, context=thought)
+        return plan
+
+    def execute_last_plan(self, provider: str = "auto") -> str:
+        """Execute the last generated plan."""
+        plan = self.planner.get_last_plan()
+        if not plan:
+            return "No plan found. Call /plan first."
+        
+        system_prompt = self._get_system_prompt()
+        results, summary = self.executor.execute_plan(plan, provider, system_prompt)
+        self.reasoner.generate_reasoning_summary(plan, results)
+        return summary
+
+    def get_last_trace(self) -> str:
+        """Retrieve the execution trace of the last task."""
+        return self.executor.get_trace()
+
+    def get_last_reasoning(self) -> str:
+        """Retrieve the reasoning summary of the last task."""
+        return self.reasoner.last_reasoning_text or "No reasoning data available."
+
     def process_task(self, goal: str, provider: str = "auto") -> dict:
         """
         Full autonomous task cycle:

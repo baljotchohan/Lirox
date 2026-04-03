@@ -678,6 +678,23 @@ class Executor:
         text = re.sub(r'\n\s*\{\s*"\w+"\s*:.*\}\s*$', '', text, flags=re.DOTALL)
         return text.strip()
 
+    def get_trace(self) -> str:
+        """Return a formatted string of the execution trace."""
+        if not self.last_trace:
+            return "--- No execution trace available ---"
+        
+        lines = ["### 📜 EXECUTION TRACE", ""]
+        for t in self.last_trace:
+            lines.append(f"**Step {t['step_id']}**: {t['task']}")
+            lines.append(f"- Status: {t['status']}")
+            lines.append(f"- Tools: {', '.join(t['tools'])}")
+            lines.append(f"- Duration: {t['duration']}s")
+            if t['error']:
+                lines.append(f"- Error: {t['error']}")
+            lines.append("")
+        
+        return "\n".join(lines)
+
     def _add_trace(self, step: Dict[str, Any], result: Dict[Any, Any]):
         self.last_trace.append({
             "step_id":       step["id"],
@@ -689,8 +706,6 @@ class Executor:
             "duration":      result.get("duration", 0),
             "attempts":      result.get("attempt", result.get("attempts", 1)),
         })
-
-        return "\n".join(lines)
 
     def get_browser_token_status(self) -> Optional[Dict[str, Any]]:
         """v0.7.1: Retrieve the current token rate-limit status for UI display."""

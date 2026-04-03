@@ -1,0 +1,467 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.5, pytest-9.0.2, pluggy-1.5.0 -- /opt/anaconda3/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/baljotchohan/Desktop/LIROX/Lirox
+plugins: mock-3.15.1, httpx-0.36.0, asyncio-1.3.0, cov-7.0.0, anyio-4.13.0
+asyncio: mode=Mode.STRICT, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 70 items
+
+tests/test_v0_3.py::TestErrorHandling::test_should_retry_timeout PASSED  [  1%]
+tests/test_v0_3.py::TestErrorHandling::test_should_retry_rate_limit PASSED [  2%]
+tests/test_v0_3.py::TestErrorHandling::test_should_not_retry_auth PASSED [  4%]
+tests/test_v0_3.py::TestErrorHandling::test_should_retry_tool_error_flag PASSED [  5%]
+tests/test_v0_3.py::TestErrorHandling::test_with_retry_succeeds_first_try PASSED [  7%]
+tests/test_v0_3.py::TestErrorHandling::test_with_retry_retries_on_transient PASSED [  8%]
+tests/test_v0_3.py::TestErrorHandling::test_with_retry_gives_up_on_permanent PASSED [ 10%]
+tests/test_v0_3.py::TestPlanner::test_creates_structured_plan PASSED     [ 11%]
+tests/test_v0_3.py::TestPlanner::test_handles_markdown_fenced_json PASSED [ 12%]
+tests/test_v0_3.py::TestPlanner::test_fallback_on_bad_json PASSED        [ 14%]
+tests/test_v0_3.py::TestPlanner::test_stores_last_plan PASSED            [ 15%]
+tests/test_v0_3.py::TestPlanner::test_guess_tool_terminal PASSED         [ 17%]
+tests/test_v0_3.py::TestPlanner::test_guess_tool_browser PASSED          [ 18%]
+tests/test_v0_3.py::TestPlanner::test_guess_tool_file PASSED             [ 20%]
+tests/test_v0_3.py::TestPlanner::test_guess_tool_default_llm PASSED      [ 21%]
+tests/test_v0_3.py::TestExecutor::test_runs_llm_step PASSED              [ 22%]
+tests/test_v0_3.py::TestExecutor::test_runs_terminal_step PASSED         [ 24%]
+tests/test_v0_3.py::TestExecutor::test_skips_when_dependency_fails PASSED [ 25%]
+tests/test_v0_3.py::TestExecutor::test_trace_generation PASSED           [ 27%]
+tests/test_v0_3.py::TestExecutor::test_detects_blocked_output_as_failure PASSED [ 28%]
+tests/test_v0_3.py::TestExecutor::test_detects_error_output_as_failure PASSED [ 30%]
+tests/test_v0_3.py::TestExecutor::test_clean_output_passes_validation PASSED [ 31%]
+tests/test_v0_3.py::TestExecutor::test_blocked_terminal_marks_failed PASSED [ 32%]
+tests/test_v0_3.py::TestReasoner::test_evaluates_successful_step PASSED  [ 34%]
+tests/test_v0_3.py::TestReasoner::test_evaluates_failed_step PASSED      [ 35%]
+tests/test_v0_3.py::TestReasoner::test_reflects_on_progress PASSED       [ 37%]
+tests/test_v0_3.py::TestReasoner::test_generates_reasoning_summary FAILED [ 38%]
+tests/test_v0_3.py::TestReasoner::test_reset_clears_state PASSED         [ 40%]
+tests/test_v0_3.py::TestBrowserTool::test_blocks_unsafe_localhost PASSED [ 41%]
+tests/test_v0_3.py::TestBrowserTool::test_blocks_internal_ip PASSED      [ 42%]
+tests/test_v0_3.py::TestBrowserTool::test_blocks_non_http PASSED         [ 44%]
+tests/test_v0_3.py::TestBrowserTool::test_allows_https PASSED            [ 45%]
+tests/test_v0_3.py::TestBrowserTool::test_extract_text_strips_tags PASSED [ 47%]
+tests/test_v0_3.py::TestBrowserTool::test_extract_data_with_selector PASSED [ 48%]
+tests/test_v0_3.py::TestBrowserTool::test_search_web_returns_results PASSED [ 50%]
+tests/test_v0_3.py::TestFileIOTool::test_write_and_read_file ERROR       [ 51%]
+tests/test_v0_3.py::TestFileIOTool::test_blocks_directory_traversal ERROR [ 52%]
+tests/test_v0_3.py::TestFileIOTool::test_append_file ERROR               [ 54%]
+tests/test_v0_3.py::TestFileIOTool::test_list_files ERROR                [ 55%]
+tests/test_v0_3.py::TestFileIOTool::test_file_exists ERROR               [ 57%]
+tests/test_v0_3.py::TestFileIOTool::test_resolves_tilde_path ERROR       [ 58%]
+tests/test_v0_3.py::TestMemory::test_save_and_retrieve PASSED            [ 60%]
+tests/test_v0_3.py::TestMemory::test_search_memory PASSED                [ 61%]
+tests/test_v0_3.py::TestMemory::test_get_stats PASSED                    [ 62%]
+tests/test_v0_3.py::TestMemory::test_clear_memory PASSED                 [ 64%]
+tests/test_v0_3.py::TestScheduler::test_schedule_and_list_task PASSED    [ 65%]
+tests/test_v0_3.py::TestScheduler::test_cancel_task PASSED               [ 67%]
+tests/test_v0_3.py::TestScheduler::test_multiple_tasks PASSED            [ 68%]
+tests/test_v0_3.py::TestTerminalSafety::test_allows_sleep PASSED         [ 70%]
+tests/test_v0_3.py::TestTerminalSafety::test_allows_git PASSED           [ 71%]
+tests/test_v0_3.py::TestTerminalSafety::test_allows_chained_commands PASSED [ 72%]
+tests/test_v0_3.py::TestTerminalSafety::test_blocks_dangerous_rm PASSED  [ 74%]
+tests/test_v0_3.py::TestTerminalSafety::test_blocks_command_substitution PASSED [ 75%]
+tests/test_v0_3.py::TestTerminalSafety::test_allows_find_command PASSED  [ 77%]
+tests/test_v0_3.py::TestTerminalSafety::test_blocks_eval PASSED          [ 78%]
+tests/test_v0_3.py::TestTerminalSafety::test_allows_rm_single_file PASSED [ 80%]
+tests/test_v0_3.py::TestTerminalSafety::test_blocks_rm_rf_root PASSED    [ 81%]
+tests/test_v0_3.py::TestErrorResponseDetection::test_detects_api_key_missing PASSED [ 82%]
+tests/test_v0_3.py::TestErrorResponseDetection::test_detects_unknown_provider PASSED [ 84%]
+tests/test_v0_3.py::TestErrorResponseDetection::test_detects_timeout_error PASSED [ 85%]
+tests/test_v0_3.py::TestErrorResponseDetection::test_detects_generic_error PASSED [ 87%]
+tests/test_v0_3.py::TestErrorResponseDetection::test_allows_normal_response PASSED [ 88%]
+tests/test_v0_3.py::TestErrorResponseDetection::test_detects_empty_response PASSED [ 90%]
+tests/test_v0_3.py::TestTaskRequestDetection::test_keyword_match_returns_true PASSED [ 91%]
+tests/test_v0_3.py::TestTaskRequestDetection::test_keyword_match_install PASSED [ 92%]
+tests/test_v0_3.py::TestTaskRequestDetection::test_llm_error_defaults_to_false PASSED [ 94%]
+tests/test_v0_3.py::TestTaskRequestDetection::test_llm_exception_defaults_to_false PASSED [ 95%]
+tests/test_v0_3.py::TestOSDetection::test_executor_no_hardcoded_macos PASSED [ 97%]
+tests/test_v0_3.py::TestIntegrationSmoke::test_plan_execute_trace_flow FAILED [ 98%]
+tests/test_v0_3.py::TestIntegrationSmoke::test_execute_without_plan_shows_warning PASSED [100%]
+
+==================================== ERRORS ====================================
+__________ ERROR at setup of TestFileIOTool.test_write_and_read_file ___________
+
+self = <test_v0_3.TestFileIOTool object at 0x105c0b4d0>
+
+    def setup_method(self):
+        """Create temp directory for tests."""
+        self.test_dir = tempfile.mkdtemp()
+        self.orig_dir = os.getcwd()
+        os.chdir(self.test_dir)
+        os.makedirs("outputs", exist_ok=True)
+        self.patcher = patch("lirox.tools.file_io._PROJECT_ROOT_DIR", Path(self.test_dir))
+>       self.patcher.start()
+
+/Users/baljotchohan/Desktop/LIROX/Lirox/tests/test_v0_3.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1654: in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <unittest.mock._patch object at 0x1067690f0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'lirox.tools.file_io' from '/Users/baljotchohan/Desktop/LIROX/Lirox/lirox/tools/file_io.py'> does not have the attribute '_PROJECT_ROOT_DIR'
+
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1467: AttributeError
+_______ ERROR at setup of TestFileIOTool.test_blocks_directory_traversal _______
+
+self = <test_v0_3.TestFileIOTool object at 0x105c0b610>
+
+    def setup_method(self):
+        """Create temp directory for tests."""
+        self.test_dir = tempfile.mkdtemp()
+        self.orig_dir = os.getcwd()
+        os.chdir(self.test_dir)
+        os.makedirs("outputs", exist_ok=True)
+        self.patcher = patch("lirox.tools.file_io._PROJECT_ROOT_DIR", Path(self.test_dir))
+>       self.patcher.start()
+
+/Users/baljotchohan/Desktop/LIROX/Lirox/tests/test_v0_3.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1654: in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <unittest.mock._patch object at 0x1067d0210>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'lirox.tools.file_io' from '/Users/baljotchohan/Desktop/LIROX/Lirox/lirox/tools/file_io.py'> does not have the attribute '_PROJECT_ROOT_DIR'
+
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1467: AttributeError
+______________ ERROR at setup of TestFileIOTool.test_append_file _______________
+
+self = <test_v0_3.TestFileIOTool object at 0x105c983e0>
+
+    def setup_method(self):
+        """Create temp directory for tests."""
+        self.test_dir = tempfile.mkdtemp()
+        self.orig_dir = os.getcwd()
+        os.chdir(self.test_dir)
+        os.makedirs("outputs", exist_ok=True)
+        self.patcher = patch("lirox.tools.file_io._PROJECT_ROOT_DIR", Path(self.test_dir))
+>       self.patcher.start()
+
+/Users/baljotchohan/Desktop/LIROX/Lirox/tests/test_v0_3.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1654: in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <unittest.mock._patch object at 0x106769010>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'lirox.tools.file_io' from '/Users/baljotchohan/Desktop/LIROX/Lirox/lirox/tools/file_io.py'> does not have the attribute '_PROJECT_ROOT_DIR'
+
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1467: AttributeError
+_______________ ERROR at setup of TestFileIOTool.test_list_files _______________
+
+self = <test_v0_3.TestFileIOTool object at 0x105c982b0>
+
+    def setup_method(self):
+        """Create temp directory for tests."""
+        self.test_dir = tempfile.mkdtemp()
+        self.orig_dir = os.getcwd()
+        os.chdir(self.test_dir)
+        os.makedirs("outputs", exist_ok=True)
+        self.patcher = patch("lirox.tools.file_io._PROJECT_ROOT_DIR", Path(self.test_dir))
+>       self.patcher.start()
+
+/Users/baljotchohan/Desktop/LIROX/Lirox/tests/test_v0_3.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1654: in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <unittest.mock._patch object at 0x106769470>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'lirox.tools.file_io' from '/Users/baljotchohan/Desktop/LIROX/Lirox/lirox/tools/file_io.py'> does not have the attribute '_PROJECT_ROOT_DIR'
+
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1467: AttributeError
+______________ ERROR at setup of TestFileIOTool.test_file_exists _______________
+
+self = <test_v0_3.TestFileIOTool object at 0x105c95910>
+
+    def setup_method(self):
+        """Create temp directory for tests."""
+        self.test_dir = tempfile.mkdtemp()
+        self.orig_dir = os.getcwd()
+        os.chdir(self.test_dir)
+        os.makedirs("outputs", exist_ok=True)
+        self.patcher = patch("lirox.tools.file_io._PROJECT_ROOT_DIR", Path(self.test_dir))
+>       self.patcher.start()
+
+/Users/baljotchohan/Desktop/LIROX/Lirox/tests/test_v0_3.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1654: in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <unittest.mock._patch object at 0x1067d0e50>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'lirox.tools.file_io' from '/Users/baljotchohan/Desktop/LIROX/Lirox/lirox/tools/file_io.py'> does not have the attribute '_PROJECT_ROOT_DIR'
+
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1467: AttributeError
+__________ ERROR at setup of TestFileIOTool.test_resolves_tilde_path ___________
+
+self = <test_v0_3.TestFileIOTool object at 0x105bc67a0>
+
+    def setup_method(self):
+        """Create temp directory for tests."""
+        self.test_dir = tempfile.mkdtemp()
+        self.orig_dir = os.getcwd()
+        os.chdir(self.test_dir)
+        os.makedirs("outputs", exist_ok=True)
+        self.patcher = patch("lirox.tools.file_io._PROJECT_ROOT_DIR", Path(self.test_dir))
+>       self.patcher.start()
+
+/Users/baljotchohan/Desktop/LIROX/Lirox/tests/test_v0_3.py:469: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1654: in start
+    result = self.__enter__()
+             ^^^^^^^^^^^^^^^^
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1497: in __enter__
+    original, local = self.get_original()
+                      ^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+self = <unittest.mock._patch object at 0x1067d17f0>
+
+    def get_original(self):
+        target = self.getter()
+        name = self.attribute
+    
+        original = DEFAULT
+        local = False
+    
+        try:
+            original = target.__dict__[name]
+        except (AttributeError, KeyError):
+            original = getattr(target, name, DEFAULT)
+        else:
+            local = True
+    
+        if name in _builtins and isinstance(target, ModuleType):
+            self.create = True
+    
+        if not self.create and original is DEFAULT:
+>           raise AttributeError(
+                "%s does not have the attribute %r" % (target, name)
+            )
+E           AttributeError: <module 'lirox.tools.file_io' from '/Users/baljotchohan/Desktop/LIROX/Lirox/lirox/tools/file_io.py'> does not have the attribute '_PROJECT_ROOT_DIR'
+
+/opt/anaconda3/lib/python3.13/unittest/mock.py:1467: AttributeError
+=================================== FAILURES ===================================
+________________ TestReasoner.test_generates_reasoning_summary _________________
+
+self = <test_v0_3.TestReasoner object at 0x105b8fe10>
+
+    def test_generates_reasoning_summary(self):
+        """Reasoner generates readable summary."""
+        from lirox.agent.reasoner import Reasoner
+        reasoner = Reasoner()
+    
+        step = {"id": 1, "task": "Test step", "tools": ["llm"], "expected_output": "done"}
+        result = {"status": "success", "output": "done"}
+        plan = {"goal": "test goal", "steps": [step]}
+    
+        reasoner.evaluate_step(step, result, plan, {1: result})
+        summary = reasoner.generate_reasoning_summary(plan, {1: result})
+    
+>       assert "REASONING SUMMARY" in summary
+E       AssertionError: assert 'REASONING SUMMARY' in {'evaluations': [{'action': 'continue', 'confidence': 0.7, 'notes': 'Step completed successfully', 'step_id': 1, ...}], 'reflection': {'completed': 1, 'completion_pct': 100, 'failed': 0, 'issues_detected': [], ...}}
+
+tests/test_v0_3.py:371: AssertionError
+______________ TestIntegrationSmoke.test_plan_execute_trace_flow _______________
+
+self = <test_v0_3.TestIntegrationSmoke object at 0x105cc0410>
+mock_reasoner_llm = <MagicMock name='generate_response' id='4403677904'>
+mock_planner_llm = <MagicMock name='generate_response' id='4403678240'>
+mock_executor_llm = <MagicMock name='generate_response' id='4403678576'>
+
+    @patch("lirox.agent.executor.generate_response")
+    @patch("lirox.agent.planner.generate_response")
+    @patch("lirox.agent.reasoner.generate_response")
+    def test_plan_execute_trace_flow(self, mock_reasoner_llm, mock_planner_llm, mock_executor_llm):
+        """Full /plan → /execute-plan → /trace flow works without crash."""
+        # Mock planner to return a valid JSON plan
+        mock_planner_llm.return_value = json.dumps({
+            "goal": "Test task",
+            "steps": [
+                {"id": 1, "task": "Analyze the requirements", "tools": ["llm"], "depends_on": [], "expected_output": "Analysis"},
+                {"id": 2, "task": "Write summary", "tools": ["llm"], "depends_on": [1], "expected_output": "Summary"}
+            ],
+            "estimated_time": "2 minutes",
+            "tools_required": ["llm"]
+        })
+    
+        # Mock executor LLM calls
+        mock_executor_llm.return_value = "Step completed successfully with detailed output."
+        mock_reasoner_llm.return_value = "ANALYSIS: Step completed\nACTION: continue"
+    
+        from lirox.agent.core import LiroxAgent
+    
+        # Create agent (will use mocked LLM)
+        agent = LiroxAgent()
+    
+        # 1) /plan — should generate and store plan
+        plan = agent.show_plan("Test task")
+        assert plan is not None
+        assert "steps" in plan
+        assert len(plan["steps"]) == 2
+    
+        # 2) /execute-plan — should execute stored plan
+        result = agent.execute_last_plan()
+        assert result is not None
+        assert "EXECUTION SUMMARY" in result or "Step" in result
+    
+        # 3) /trace — should show execution trace
+        trace = agent.get_last_trace()
+        assert "EXECUTION TRACE" in trace
+        assert "Step 1" in trace
+        assert "Step 2" in trace
+    
+        # 4) /reasoning — should show reasoning
+        reasoning = agent.get_last_reasoning()
+>       assert "REASONING SUMMARY" in reasoning
+E       AssertionError: assert 'REASONING SUMMARY' in '### 💭 Reasoning Summary | Confidence: 0%\n\n\n**Current Status**: 2/2 steps complete\n**Final Suggestion**: Execution complete. All steps finalized successfully.'
+
+/Users/baljotchohan/Desktop/LIROX/Lirox/tests/test_v0_3.py:842: AssertionError
+----------------------------- Captured stdout call -----------------------------
+  ⚙️ Phase 1: Analyze the requirements
+  ✅ Phase 1: Analyze the requirements
+  ⚙️ Phase 2: Write summary
+  ✅ Phase 2: Write summary
+------------------------------ Captured log call -------------------------------
+WARNING  lirox.executor::0 Lightpanda binary not found — HTTP-only fallback mode
+=========================== short test summary info ============================
+FAILED tests/test_v0_3.py::TestReasoner::test_generates_reasoning_summary - A...
+FAILED tests/test_v0_3.py::TestIntegrationSmoke::test_plan_execute_trace_flow
+ERROR tests/test_v0_3.py::TestFileIOTool::test_write_and_read_file - Attribut...
+ERROR tests/test_v0_3.py::TestFileIOTool::test_blocks_directory_traversal - A...
+ERROR tests/test_v0_3.py::TestFileIOTool::test_append_file - AttributeError: ...
+ERROR tests/test_v0_3.py::TestFileIOTool::test_list_files - AttributeError: <...
+ERROR tests/test_v0_3.py::TestFileIOTool::test_file_exists - AttributeError: ...
+ERROR tests/test_v0_3.py::TestFileIOTool::test_resolves_tilde_path - Attribut...
+==================== 2 failed, 62 passed, 6 errors in 0.46s ====================
