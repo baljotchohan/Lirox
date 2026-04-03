@@ -82,52 +82,91 @@ class UnifiedExecutor:
         """
         
         execution_start = datetime.now()
-        
+
         try:
-            # Step 1: Route query
+            # Step 1: Route query (also pre-fetches free data shortcut)
             routing = self.router.route(user_input)
-            
+
             if self.verbose:
                 print(f"\n[UNIFIED EXECUTOR]")
                 print(f"Mode: {routing['mode']} (confidence: {routing['confidence']:.0%})")
-            
-            # Step 2: Execute based on mode
+
+            # ── Phase 5 shortcut: if free real-time data was fetched, return it NOW
+            #    without running the LLM pipeline (prevents hallucination of prices).
+            free_data = routing.get("free_data")
+            if free_data:
+                # Local system query (e.g. "how many files on desktop")
+                if free_data.get("status") == "local":
+                    # Run as CHAT — LLM will use terminal tool or system knowledge
+                    result = self._execute_chat(
+                        f"[LOCAL TASK] Use the system terminal to answer: {user_input}",
+                        system_prompt,
+                    )
+                    result["mode"] = "chat"
+                    result["routing_confidence"] = routing["confidence"]
+                    result["fallback_mode"] = routing["fallback_mode"]
+                    result["execution_time"] = (datetime.now() - execution_start).total_seconds()
+                    self.last_execution = result
+                    return result
+
+                # Real live data (stocks, crypto, weather, etc.)
+                if free_data.get("status") == "success" and free_data.get("answer"):
+                    source = free_data.get("source", "free_api")
+                    answer = free_data["answer"]
+                    is_live = free_data.get("live", False)
+                    note = " (live data)" if is_live else ""
+                    result = {
+                        "status": "success",
+                        "mode": "free_data",
+                        "answer": answer,
+                        "sources": [{"source": source, "note": f"Real-time via {source}{note}"}],
+                        "confidence": 0.97,
+                        "verification_status": "verified",
+                        "routing_confidence": routing["confidence"],
+                        "fallback_mode": routing["fallback_mode"],
+                        "execution_time": (datetime.now() - execution_start).total_seconds(),
+                        "source": source,
+                    }
+                    self.last_execution = result
+                    return result
+
+            # Step 2: Execute based on mode (no free data shortcut available)
             if routing["mode"] == "chat":
                 result = self._execute_chat(user_input, system_prompt)
-            
+
             elif routing["mode"] == "research":
                 result = self._execute_research(
                     user_input,
                     routing["parameters"],
                     system_prompt
                 )
-            
+
             elif routing["mode"] == "browser":
                 result = self._execute_browser(user_input, routing["parameters"])
-            
+
             elif routing["mode"] == "hybrid":
                 result = self._execute_hybrid(
                     user_input,
                     routing["parameters"],
                     system_prompt
                 )
-            
+
             else:
                 result = self._execute_chat(user_input, system_prompt)
-            
+
             # Add metadata
             result["mode"] = routing["mode"]
             result["routing_confidence"] = routing["confidence"]
             result["fallback_mode"] = routing["fallback_mode"]
             result["execution_time"] = (datetime.now() - execution_start).total_seconds()
-            
+
             self.last_execution = result
             return result
-        
+
         except Exception as e:
             if self.verbose:
                 print(f"[EXECUTION ERROR] {str(e)}")
-            
+
             return {
                 "status": "error",
                 "error": str(e),

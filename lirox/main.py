@@ -161,15 +161,49 @@ def process_input(agent, user_input, verbose=False):
         from lirox.ui.display import CLR_ACCENT
         console.print(f"\n[{CLR_ACCENT}]{formatted_response}[/]\n")
 
-        # Save to memory
+        # Save to memory + learning engine
         agent.memory.save_memory("user", user_input)
-        agent.memory.save_memory("assistant", result.get("answer", ""))
+        answer = result.get("answer", "")
+        agent.memory.save_memory("assistant", answer)
+        try:
+            agent.learning.on_interaction(user_input, answer)
+        except Exception:
+            pass
 
     except Exception as e:
         error_panel("EXECUTION ERROR", str(e))
 
 
 def run_autonomous_task(agent, goal):
+    # Phase 5 shortcut: answer data queries instantly via free APIs (no LLM hallucination)
+    from lirox.tools.free_data import get_free_data, is_local_system_query
+    _data_triggers = [
+        "price", "weather", "temperature", "forecast", "github",
+        "bitcoin", "ethereum", "btc", "eth", "crypto",
+        # Stock / index triggers
+        "nifty", "sensex", "bank nifty", "dow jones", "nasdaq",
+        "s&p", "stock price", "share price", "index level",
+        "reliance", "tcs", "infosys", "tesla", "apple",
+    ]
+    goal_lower = goal.lower()
+    if is_local_system_query(goal):
+        # Route to LLM chat — it will use system knowledge / terminal tool
+        pass  # fall through to normal execution
+    elif any(kw in goal_lower for kw in _data_triggers):
+        data = get_free_data(goal)
+        if data.get("status") == "success":
+            answer = data.get("answer", "")
+            source = data.get("source", "")
+            from lirox.ui.display import CLR_ACCENT
+            console.print(f"\n[{CLR_ACCENT}]{answer}[/]")
+            console.print(f"\n[dim]Source: {source} (live data)[/]\n")
+            try:
+                agent.learning.on_interaction(goal, answer)
+            except Exception:
+                pass
+            return
+
+
     if goal.lower().startswith("research") or " research " in goal.lower():
         run_deep_research(agent, goal)
         return

@@ -1,8 +1,8 @@
 """
-Lirox v0.5 — User Profile System (CLI-First)
+Lirox v0.8.5 — User Profile System (CLI-First)
 
 Storage anchored to PROJECT_ROOT (not CWD).
-v0.5 Pivot: Professional CLI-only hardened prompt system.
+v0.8.5: Advanced prompt system with learning context boost integration.
 """
 
 import json
@@ -136,7 +136,7 @@ class UserProfile:
         return [word for word, _ in counter.most_common(5)]
 
     def to_advanced_system_prompt(self) -> str:
-        """v0.6 Advanced Prompt with learned preferences and predictions."""
+        """v0.8.5 Advanced Prompt with learned preferences and predictions."""
         p = self.data
         agent = p.get('agent_name', 'Lirox')
         user = p.get('user_name', 'Operator')
@@ -150,7 +150,7 @@ class UserProfile:
             successful = [t for t in p["task_history"][-20:] if t.get("success")]
             successful_tasks = [t["task"] for t in successful[:5]]
         
-        return f"""You are {agent} v0.6 (Advanced CLI Agent) — a sophisticated autonomous agent.
+        return f"""You are {agent} v0.8.5 (Autonomous AI Agent OS) — a sophisticated autonomous agent.
 
 OPERATING CONTEXT
 - Terminal-based agent assisting {user} with research, task automation, and information synthesis
@@ -200,7 +200,7 @@ OUTPUT FORMAT & BEHAVIOR
         return self.data.get("agent_name") is not None and self.data.get("user_name") != "Operator"
 
     def to_system_prompt(self) -> str:
-        """v0.4.2 Professional CLI-First Prompt Generation."""
+        """v0.8.5 Professional CLI-First Prompt Generation."""
         p = self.data
         agent = p.get('agent_name', 'Lirox')
         user = p.get('user_name', 'Operator')
@@ -209,7 +209,7 @@ OUTPUT FORMAT & BEHAVIOR
         goals = "; ".join(p['goals']) if p['goals'] else "No active goals."
 
         # Template from User Request
-        return f"""You are {agent} v0.4.2 (CLI-First) — a local-first autonomous agent running inside a terminal.
+        return f"""You are {agent} v0.8.5 (CLI-First Autonomous Agent) — a local-first autonomous agent running inside a terminal.
 
 OPERATING CONTEXT
 - You are used through a CLI where the operator ({user}) types messages and commands.
