@@ -27,119 +27,52 @@ logger = logging.getLogger("lirox.browser.manager")
 
 
 # ─── AsyncBridge ──────────────────────────────────────────────────────────────
+import concurrent.futures
 
 class AsyncBridge:
     """
     Safely bridge async coroutines to synchronous code.
-
-    Prevents deadlocks by:
-    - Using a dedicated daemon thread with its own event loop
-    - Enforcing strict timeouts on all operations
-    - Cleaning up pending tasks on timeout or error
-
-    Usage:
-        bridge = AsyncBridge(timeout=30)
-        result = bridge.run(some_async_coroutine())
+    
+    Uses a SINGLE persistent dedicated background thread and event loop.
+    This guarantees that all asyncio objects (like websockets or CDP sessions)
+    are bound to the SAME loop, avoiding 'future attached to different loop' errors,
+    even when calls originate from multiple different synchronous threads.
     """
 
     def __init__(self, timeout: int = 60):
         self.timeout = timeout
+        self._loop = None
+        self._thread = None
+        self._lock = threading.Lock()
+        self._ensure_running()
+
+    def _ensure_running(self):
+        with self._lock:
+            if self._thread is None or not self._thread.is_alive():
+                self._loop = asyncio.new_event_loop()
+                self._thread = threading.Thread(target=self._run_loop, daemon=True)
+                self._thread.start()
+
+    def _run_loop(self):
+        asyncio.set_event_loop(self._loop)
+        self._loop.run_forever()
 
     def run(self, coro, timeout: int = None):
-        """
-        Run an async coroutine from synchronous context.
-
-        Args:
-            coro: The coroutine to execute
-            timeout: Override default timeout (seconds)
-
-        Returns:
-            The coroutine's return value
-
-        Raises:
-            TimeoutError: If the coroutine exceeds the timeout
-            Exception: Any exception raised by the coroutine
-        """
+        self._ensure_running()
         effective_timeout = timeout or self.timeout
 
+        async def _wrapper():
+            return await asyncio.wait_for(coro, timeout=effective_timeout)
+
+        future = asyncio.run_coroutine_threadsafe(_wrapper(), self._loop)
+        
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = None
-
-        if loop and loop.is_running():
-            # We're inside an existing event loop — use a thread
-            return self._run_in_thread(coro, effective_timeout)
-        else:
-            # No running loop — safe to use run_until_complete
-            return self._run_direct(coro, effective_timeout)
-
-    def _run_in_thread(self, coro, timeout: int):
-        """Execute coroutine in a dedicated thread with its own event loop."""
-        result = [None]
-        exception = [None]
-
-        def worker():
-            new_loop = asyncio.new_event_loop()
-            try:
-                result[0] = new_loop.run_until_complete(
-                    asyncio.wait_for(coro, timeout=timeout)
-                )
-            except asyncio.TimeoutError:
-                exception[0] = TimeoutError(
-                    f"Async operation timed out after {timeout}s"
-                )
-            except Exception as e:
-                exception[0] = e
-            finally:
-                # Clean up all pending tasks to avoid 'Task destroyed' warnings
-                try:
-                    pending = asyncio.all_tasks(new_loop)
-                    for task in pending:
-                        task.cancel()
-                    if pending:
-                        new_loop.run_until_complete(
-                            asyncio.gather(*pending, return_exceptions=True)
-                        )
-                except Exception:
-                    pass
-                new_loop.close()
-
-        t = threading.Thread(target=worker, daemon=True)
-        t.start()
-        t.join(timeout=timeout + 5)  # Extra 5s grace for cleanup
-
-        if t.is_alive():
-            raise TimeoutError(
-                f"Thread did not complete within {timeout + 5}s — possible deadlock"
-            )
-
-        if exception[0]:
-            raise exception[0]
-        return result[0]
-
-    def _run_direct(self, coro, timeout: int):
-        """Execute coroutine directly using run_until_complete."""
-        loop = self._get_or_create_loop()
-        try:
-            return loop.run_until_complete(
-                asyncio.wait_for(coro, timeout=timeout)
-            )
-        except asyncio.TimeoutError:
-            raise TimeoutError(f"Async operation timed out after {timeout}s")
-
-    @staticmethod
-    def _get_or_create_loop():
-        """Get the current event loop or create a new one."""
-        try:
-            loop = asyncio.get_event_loop()
-            if loop.is_closed():
-                raise RuntimeError("closed")
-            return loop
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            return loop
+            return future.result(timeout=effective_timeout + 5)
+        except concurrent.futures.TimeoutError:
+            future.cancel()
+            raise TimeoutError(f"Async operation timed out after {effective_timeout}s")
+        except Exception as e:
+            raise e
 
 
 # Backward-compatible wrapper
