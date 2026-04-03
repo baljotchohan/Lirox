@@ -1,5 +1,5 @@
 """
-Lirox v0.8.0 — Smart Router (Intent Classification & Mode Selection)
+Lirox v0.8.5 — Smart Router (Intent Classification & Mode Selection)
 
 The intelligent decision engine that classifies queries and selects execution mode:
 - CHAT MODE: Direct LLM response

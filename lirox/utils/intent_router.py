@@ -1,5 +1,5 @@
 """
-Lirox v0.8.0 — Smart Command Intent Router
+Lirox v0.8.5 — Smart Command Intent Router
 
 Automatically detects user intent and routes to appropriate handler.
 Learns over time what the user typically wants.

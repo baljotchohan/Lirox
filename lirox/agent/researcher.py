@@ -1,9 +1,9 @@
 """
-Lirox v0.8.0 — Deep Research Engine
+Lirox v0.8.5 — Deep Research Engine
 
 Perplexity-grade autonomous research:
 - Multi-source parallel search (Tavily, Serper, Exa, DuckDuckGo fallback)
-- Headless browser for dynamic content extraction (v0.8.0)
+- Headless browser for dynamic content extraction (v0.8.5)
 - Source quality scoring and ranking
 - Content extraction and deduplication
 - Cross-source LLM synthesis

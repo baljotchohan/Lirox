@@ -80,16 +80,24 @@ _LION_FRAMES = [
 
 
 def show_welcome():
-    """Phase 10: Animated lion ASCII reveal across 3 frames."""
+    """v1.0 — Animated lion launch."""
     import time
-    try:
-        with Live(console=console, refresh_per_second=10, transient=False) as live:
-            for i, frame in enumerate(_LION_FRAMES):
-                live.update(Text.from_markup(frame))
-                time.sleep(0.12 if i < 2 else 0)
-    except Exception:
-        # Fallback: static logo
-        console.print(LOGO)
+    from rich.live import Live
+    from rich.text import Text
+    
+    frames = [
+        f"[{CLR_LIROX}]\n        /\\_/\\\n       ( o.o )\n        > ^ <\n[/]",
+        f"[{CLR_LIROX}]\n      /\\_____/\\\n     /  o   o  \\\n    (  =  ^  =  )\n     \\  -----  /\n[/]",
+        f"[{CLR_LIROX}]\n     /\\_________/\\\n    /  O       O  \\\n   |    __===__    |\n   |   / ROAR! \\   |\n    \\  \\_______/  /\n     \\___________/\n   ~~~~~~~~~~~~~~~~~~~~\n[/]",
+    ]
+    
+    with Live(console=console, refresh_per_second=6, transient=True) as live:
+        for frame in frames:
+            live.update(Text.from_markup(frame))
+            time.sleep(0.4)
+    
+    console.print(LOGO)
+    console.print(f"  [{CLR_DIM}]Autonomous AI Agent — Skill-based architecture[/]\n")
 
 
 # ─── Status Cards ───────────────────────────────────────────────────────────

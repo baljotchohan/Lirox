@@ -1,179 +1,170 @@
-# 🦁 Lirox Agent OS (v0.8.0)
-### *The Autonomous Professional Research Engine*
+<div align="center">
+  <pre>
+        /\_/\  
+       ( o.o ) 
+        > ^ <  
+  </pre>
+  <h1>LIROX Autonomous OS</h1>
+  <p><strong>v1.0 — Skill-Based CLI Autonomous Agent</strong></p>
+</div>
 
-[![Status](https://img.shields.io/badge/Status-Autonomous-FFC107?style=flat-square)](https://github.com/baljotchohan/Lirox)
-[![Version](https://img.shields.io/badge/Version-v0.8.0-white?style=flat-square)](https://github.com/baljotchohan/Lirox)
-[![Platform](https://img.shields.io/badge/Platform-macOS-black?style=flat-square)](https://github.com/baljotchohan/Lirox)
-
-**Lirox** is a local-first autonomous AI agent OS designed for high-fidelity research and secure system orchestration. Powered by a modular kernel architecture, it transforms standard LLMs into professional operators capable of deep web research, real-time data verification, and sophisticated multi-step task execution.
-
-### 🛡️ v0.8.0 "Hardened" Release Highlights
-- **Security Hardening**: Closed shell injection vectors, implemented strict SSRF blocklists, and added provider-level rate limiting.
-- **Advanced Intelligence**: New Multi-Query Expansion 2.0 and complexity-aware search routing.
-- **High Precision**: Fragment-level content extraction and cross-source fact verification for maximum accuracy.
-- **Observability**: Fully structured JSON logging for all kernel operations.
+Lirox is a powerful, terminal-first autonomous AI agent designed with a highly modular, pluggable **Skill-Based Architecture**. It processes natural language instructions, routes them to specific tool modules (Skills), and executes sophisticated real-world actions ranging from file orchestration and Bash operations to deep multi-source research.
 
 ---
 
-## 🏛️ Autonomous Architecture
+## 🌟 Key Features (v1.0)
+
+- **Pluggable Skill Architecture**: Completely decoupled tool execution. Skills self-register and declare their intent and risk profiles. Adding a new behavior is as simple as dropping a new file in the `skills/` folder.
+- **Intelligent Routing**: Natural language directly maps to the best tool without needing expensive LLM chains for simple task delegations.
+- **Risk & Permission Guardrails**: Explicit clearance limits. High-risk skills (like `bash` execution or file manipulations) require active user confirmation before deployment.
+- **Multi-Source Research**: Built-in verification logic fetches, scrapes, ranks, and synthesizes data.
+- **Interactive Onboarding**: Fluid console-driven wizard for seamless model integration and profile configuration.
+- **Stateful Memory & Learning**: Learns operator preferences over interactions. Tracks active context silently. 
+
+---
+
+## ⚙️ How It Works (The Skill Engine)
+
+Lirox intercepts queries and dynamically scores them against the registered capabilities of its Tool Pool.
 
 ```mermaid
 graph TD
-    User([Operator Input]) --> Intent[Intent Router]
-    Intent --> Planner[Planner: Strategic Wave Decomposition]
-    Planner --> Executor[Executor: Hardened Orchestration]
-    Executor --> Tools{Security Sandbox}
+    UI[Terminal CLI Input] -->|User Query| Router[Skill Registry & Router]
     
-    Tools --> Browser[Browser: Headless CDP / Requests]
-    Tools --> Terminal[Terminal: Safe System Access]
-    Tools --> FileIO[FileIO: Local Data Control]
+    %% Routing Engine
+    Router -->|Scores Keywords| Pool{Skill Pool}
     
-    Browser --> Researcher[Researcher: Verify-and-Retry]
-    Researcher --> Synthesis[Synthesis: Cited Fact Reporting]
-    Synthesis --> Executor
+    Pool -->|Best Match| SK_B[Bash Skill]
+    Pool -->|Best Match| SK_F[File Ops Skills]
+    Pool -->|Best Match| SK_R[Research/Web Skills]
+    Pool -->|No Match| SK_C[Chat / LLM Fallback]
     
-    Executor --> Loop{Goal Achieved?}
-    Loop -- No --> Planner
-    Loop -- Yes --> Result([Mission Complete])
+    %% Risk Management
+    SK_B -.-> |Risk: HIGH| Confirm[User Permission Prompt]
+    Confirm -->|Accept| Execute[Skill Execution Environment]
+    Confirm -->|Deny| Cancel[Cancel Operation]
+    
+    SK_F --> Execute
+    SK_R --> Execute
+    SK_C --> Execute
 
-    subgraph "Persistent Core"
-        Memory[(Neural Memory)]
-        Profile[(Operator Context)]
-    end
-    
-    Planner -.-> Memory
-    Executor -.-> Memory
+    %% State and Output
+    Execute --> Context[Profile & Memory Context Injection]
+    Context --> Formatter[Response Synthesizer]
+    Formatter --> UI
 ```
 
 ---
 
-## 🧠 Unified Executor & Smart Routing (v0.8.0)
-Lirox v0.8 replaces static command processing with a **Unified Executor** powered by a **Smart Router**. It seamlessly categorizes queries and selects the optimal execution path.
+## 🛠️ The Skill Pool
 
-```mermaid
-flowchart TD
-    Input([User Query]) --> Router{Smart Router}
-    Router -- Chat --> LLM[Direct Response]
-    Router -- Research --> RE[Deep Research Synthesis]
-    Router -- Browser --> BE[Headless Page Scraping]
-    Router -- Hybrid --> HB[Research + Verification]
+These core modules are integrated natively into Lirox out of the box:
 
-    RE --> DE[Data Enrichment Engine]
-    HB --> DE
-    
-    DE --> RF[Response Formatter]
-    LLM --> RF
-    BE --> RF
-    RF --> Output([Structured Result])
-```
-
-## 🛡️ Professional-Grade Verification
-Lirox v0.8 expands on "Verify-and-Retry" logic with the new **Data Enrichment Engine**, ensuring financial and real-time data is natively checked against actual web content. Unlike generic agents, Lirox does not just summarize; it **extracts and validates**.
-
-### Data Verification Flow
-```mermaid
-sequenceDiagram
-    participant E as Executor
-    participant B as Browser Tool
-    participant S as Search Engine
-    participant P as Reliable Source (e.g. Yahoo Finance)
-
-    E->>B: Lookup "current BTC price"
-    B->>S: Search for "current BTC price"
-    S-->>B: Return Top 5 Results
-    B->>P: Fetch Raw HTML (Source #1)
-    P-->>B: Return Data
-    Note over B: SmartExtractor scans for numeric patterns
-    alt Valid Data Found
-        B-->>E: Return Verified Data Spot
-    else Generic/Empty Snippet
-        B->>B: Trigger Autonomous Retry
-        B->>S: Search for "BTC real-time value"
-        S-->>B: Return New Results
-        B->>P: Re-scan Deep Content
-        B-->>E: Return Best Verified Result
-    end
-```
+| Skill | Risk Level | Description |
+|---|---|---|
+| **Bash** | 🔴 HIGH | Safely execute bash commands within the CLI. Unlocks total environment control. |
+| **File Write** | 🔴 HIGH | Generates, structures, and writes raw code to targeted files in the ecosystem. |
+| **File Edit** | 🔴 HIGH | Search, replace, and dynamically iterate upon existing file content. |
+| **File Read**| 🟢 LOW | Peeks into current or targeted directory structures to scrape project context. |
+| **Web Search** | 🟢 LOW | Performs live internet searches to pull the latest headlines and verified information. |
+| **Web Fetch** | 🟠 MEDIUM | Employs HTTP fallbacks and headless browsing scraping to extract deep page contents. |
+| **Research** | 🟢 LOW | Multi-source deep-dive agent capable of building comprehensive synthesis reports and citations. |
+| **Chat** | 🟢 SAFE | Standard fallback operator interaction handling natural conversational logic. |
 
 ---
 
-## ✨ Premium Features
+## 🚀 Installation & Setup
 
-| **Feature** | **Description** |
-| :--- | :--- |
-| **🕵️ Deep Research** | Perplexity-grade parallel search with auto-deduplication and source quality scoring. |
-| **🛡️ Hardened Sandbox** | Zero-trust execution environment with SSRF prevention and terminal safe-guards. |
-| **🌐 Headless Browser** | Full JavaScript rendering via Lightpanda CDP bridge with session pooling. |
-| **🧠 Phase Reasoning** | Analysis, Logic, and Risk strategy traces for every major mission. |
-| **📁 Advanced FileIO** | High-efficiency codebase management and data persistence. |
-| **🦁 Personal Logic** | Adapts to your niche and operator style over time using persistent profile storage. |
+1. **Clone the Repository**
+   ```bash
+   git clone https://github.com/your-username/Lirox.git
+   cd Lirox
+   ```
+
+2. **Install the CLI Tooling**
+   Lirox utilizes `setuptools` build mechanisms.
+   ```bash
+   pip install -e .
+   ```
+
+3. **Initialize the Agent**
+   To instantly jump into the onboarding wizard allowing you to choose models, API keys, and configurations, simply run:
+   ```bash
+   lirox
+   ```
 
 ---
 
-## 🚀 Quick Start
+## 💻 Usage & Commands
 
-### 1. Clone & Prep
+Lirox acts as an OS layer directly over your bash terminal. Once inside the active session, you can assign it tasks or run direct commands:
+
 ```bash
-git clone https://github.com/baljotchohan/Lirox.git
-cd Lirox
-python -m pip install -r requirements.txt
+# Standard Conversational Input
+[Lirox] ✦ List out the files in the current directory and open the config.
+[Lirox] ✦ Write a Python script that scrapes HackerNews and save it as scraper.py.
+[Lirox] ✦ Research Sam Altman's recent investments and summarize them.
 ```
 
-### 2. Configure Your Arsenal
-Prepare your `.env` with at least one LLM key (Gemini, Groq, Anthropic, or OpenAI):
-```bash
-cp .env.example .env
-# Edit .env and add your GEMINI_API_KEY / ANTHROPIC_API_KEY
+**Slash Commands:**
+Direct terminal commands allow for overriding natural language mappings.
+
+- `/skills` - View all active skills inside the registry and their operating status.
+- `/enable <skill>` - Manually switch ON a specialized capability.
+- `/disable <skill>` - Manually switch OFF a distinct capability.
+- `/research <query>` - Force override into Deep Research mode.
+- `/web <url>` - Instantly fetch, scrape, and extract content from a specific URL.
+- `/profile` - View your agent's learning context, memory banks, and system configurations.
+- `/models` - Peek into the current active LLMs connected to your system.
+- `/test` - Run kernel integrity diagnostics to insure internal systems operate nominally.
+- `/update` - Synchronize and gracefully update the agent via origin branches.
+- `/reset` - Complete factory purge of operator profiles and memory strings.
+- `/help` - Open the reference payload for commands.
+
+---
+
+## 🏗️ Expanding Lirox (Building Custom Skills)
+
+Building a custom skill is incredibly straightforward due to the auto-discovery mechanism.
+
+1. Create a `your_custom_skill.py` directly inside `/lirox/skills/`.
+2. Subclass `BaseSkill`.
+3. Provide your `RiskLevel`, descriptive `keywords`, and the overarching `execute()` logic. 
+
+**Example Template:**
+```python
+from lirox.skills import BaseSkill, SkillResult, RiskLevel
+
+class MyCustomSkill(BaseSkill):
+    @property
+    def name(self) -> str:
+        return "my_custom"
+
+    @property
+    def description(self) -> str:
+        return "Does something amazing"
+
+    @property
+    def risk_level(self) -> RiskLevel:
+        return RiskLevel.SAFE
+
+    @property
+    def keywords(self) -> list[str]:
+        return ["custom", "amazing", "do work"]
+
+    def execute(self, query: str, context: dict = None) -> SkillResult:
+        # Your python logic here
+        return SkillResult(
+            success=True,
+            output="Executed amazingly!",
+            skill_name=self.name
+        )
 ```
 
-### 3. Launch the Kernel
-```bash
-python -m lirox.main
-```
+Lirox will automatically bind this parameter onto the router on the next boot, actively mapping it to conversational triggers.
 
 ---
 
-## 🖥️ Professional Toolset
-
-| **Command** | **Action** |
-| :--- | :--- |
-| `/research "Q"` | Multi-source deep research with citation reporting. |
-| `/fetch <url>` | Fetch page content using headless browser or requests fallback. |
-| `/scrape <url>` | Extract structured tables and links from a live page. |
-| `/profile` | Inspect the agent's learned identity and your operator context. |
-| `/test` | Run kernel performance and hardware diagnostics. |
-| `/update` | Synchronize your local kernel with the latest stable branch. |
-
----
-
-## 🌐 Browser & Real-Time Data
-
-Lirox v0.8.0 features a high-performance, secure browser engine that operates in two distinct modes. This hybrid architecture ensures that the agent can scrape data from simple static pages and complex interactive web apps alike.
-
-### Hybrid Engine Comparison
-
-| Feature | **HTTP Logic (Requests)** | **Headless CDP (Lightpanda)** |
-| :--- | :--- | :--- |
-| **Speed** | ⚡ Ultra Fast (< 500ms) | 🐢 Moderate (2s - 5s) |
-| **JS Rendering** | ❌ No | ✅ Yes (Full Engine) |
-| **Bypass Blocks** | ✅ Excellent (Native SSL) | ⚠️ Moderate (Can be detected) |
-| **Portability** | ✅ Runs Everywhere | 🛠️ Requires Binary |
-| **Security** | 🛡️ SSRF Blocklist | 🛡️ CDP Isolation |
-
-### Professional Data Extraction
-Lirox doesn't just read text; it **understands data structures**. The `RealTimeDataExtractor` engine is optimized for:
-- **Financial Metrics**: BTC/ETH prices, Stock tickers (AAPL, TSLA), and Forex rates.
-- **News Aggregation**: Harvesting titles, points, and timestamps from sources like **Hacker News** and **Wikipedia**.
-- **Market Sentiment**: Detecting percentage changes and volatility indicators directly from the source HTML.
-
----
-
-## 🏛️ Local-First Reliability
-- **Local Memory**: Your conversation history and profiles never leave your machine.
-- **Zero-Cloud Logic**: Strategy and planning are executed locally.
-- **Privacy Design**: Built strictly for outbound-only ingestion; Lirox never broadcasts your local data.
-
----
-
-Built with ❤️ by **Baljot Chohan & Antigravity**.  
-*Lirox — Empowering the next generation of autonomous operators.*
+<div align="center">
+  <i>Developed to bring structured agent logic safely to standard terminals globally.</i>
+</div>
