@@ -69,6 +69,8 @@ from lirox.utils.llm import is_task_request, available_providers
 from lirox.utils.meta_parser import extract_meta
 from lirox.config import APP_VERSION
 from lirox.utils.intent_router import router
+from lirox.agent.unified_executor import UnifiedExecutor
+from lirox.utils.response_formatter import format_for_display
 
 def main():
     parser = argparse.ArgumentParser(description="Lirox Professional CLI Agent OS")
@@ -124,78 +126,31 @@ def main():
             error_panel("KERNEL ERROR", str(e))
 
 def process_input(agent, user_input, verbose=False):
-    """v0.6 Smart Input Processor with Intent Routing & Learning."""
+    """v0.8 Smart Input Processor with Unified Router."""
     
-    # Detect intent
-    intent, suggested_command, confidence = router.detect_intent(user_input)
+    # NEW: Use unified executor for intelligent routing
+    from lirox.agent.unified_executor import UnifiedExecutor
+    from lirox.utils.response_formatter import format_for_display
     
-    if verbose:
-        console.print(f"[dim]Intent: {intent} ({int(confidence*100)}%) | Command: {suggested_command}[/]")
+    unified = UnifiedExecutor(provider="auto", verbose=verbose)
     
-    # Route based on intent
-    if intent == "command":
-        handle_command(agent, suggested_command)
-        return
-    
-    elif intent == "research":
-        if suggested_command:
-            # Auto-execute research command
-            query = suggested_command.split('"')[1] if '"' in suggested_command else user_input
-            run_deep_research(agent, query, depth="standard")
-            router.learn_from_choice("research", "/research")
-        return
-    
-    elif intent == "task":
-        run_autonomous_task(agent, user_input)
-        router.learn_from_choice("task", "autonomous")
-        return
-    
-    elif intent == "memory":
-        # Extract and save to memory
-        if "remember" in user_input.lower() or "save" in user_input.lower():
-            fact = user_input.replace("remember", "").replace("save", "").strip()
-            agent.profile.add_learned_fact(fact)
-            success_message(f"Remembered: {fact}")
-            router.learn_from_choice("memory", "save_fact")
-        return
-
-    elif intent == "browser":
-        # v0.7: Browser-specific task
-        run_autonomous_task(agent, user_input)
-        router.learn_from_choice("browser", "autonomous")
-        return
-    
-    else:  # chat
-        spinner = AgentSpinner("Processing...")
-        spinner.start()
+    try:
+        # Execute using optimal mode
+        result = unified.execute(user_input, system_prompt=agent.profile.to_advanced_system_prompt())
         
-        try:
-            is_task = is_task_request(user_input)
-            if is_task:
-                spinner.stop()
-                run_autonomous_task(agent, user_input)
-                return
-            
-            spinner.update_message("Synthesizing response...")
-            raw_response = agent.chat(user_input)
-            
-            clean_text, meta = extract_meta(raw_response)
-            spinner.stop()
-            
-            from lirox.ui.display import CLR_ACCENT
-            console.print(f"\n[{CLR_ACCENT}]{clean_text}[/]\n")
-            
-            if verbose and meta:
-                console.print(f"[dim]Meta: {json.dumps(meta, indent=2)}[/]")
-            
-            # Show helpful next steps
-            suggestion = router.suggest_next_command("chat")
-            if suggestion:
-                console.print(f"[dim]💡 {suggestion}[/]")
-                
-        except Exception as e:
-            spinner.stop()
-            error_panel("AGENT ERROR", str(e))
+        # Format and display
+        formatted_response = format_for_display(result)
+        
+        from lirox.ui.display import console, CLR_ACCENT
+        console.print(f"\n[{CLR_ACCENT}]{formatted_response}[/]\n")
+        
+        # Save to memory
+        agent.memory.save_memory("user", user_input)
+        agent.memory.save_memory("assistant", result.get("answer", ""))
+        
+    except Exception as e:
+        from lirox.ui.display import error_panel
+        error_panel("EXECUTION ERROR", str(e))
 
 def run_autonomous_task(agent, goal):
     if goal.lower().startswith("research") or " research " in goal.lower():
@@ -377,6 +332,38 @@ def handle_command(agent, command):
         run_git_update()
     elif base == "/add-api":
         run_api_setup()
+    elif base == "/smart":
+        # /smart <query> — Use intelligent routing
+        query = command[len("/smart "):].strip()
+        if not query:
+            info_panel("Usage: /smart \"your query\"\nAutomatically selects CHAT/RESEARCH/BROWSER/HYBRID mode")
+            return
+        
+        from lirox.agent.unified_executor import UnifiedExecutor
+        from lirox.utils.response_formatter import format_for_display
+        
+        unified = UnifiedExecutor(provider="auto", verbose=False)
+        result = unified.execute(query, system_prompt=agent.profile.to_advanced_system_prompt())
+        
+        formatted = format_for_display(result)
+        console.print(f"\n{formatted}\n")
+        
+        # Show routing decision
+        stats = unified.get_routing_stats()
+        info_panel(f"Mode: {result['mode']} | Confidence: {result.get('routing_confidence', 0):.0%}")
+
+    elif base == "/router-stats":
+        # Show routing statistics
+        from lirox.agent.unified_executor import UnifiedExecutor
+        unified = UnifiedExecutor()
+        stats = unified.get_routing_stats()
+        info_panel(
+            f"ROUTING STATISTICS\n\n"
+            f"Total Queries: {stats.get('total_queries', 0)}\n"
+            f"Mode Distribution: {json.dumps(stats.get('mode_distribution', {}), indent=2)}\n"
+            f"Avg Confidence: {stats.get('average_confidence', 0):.0%}\n"
+            f"Most Common: {stats.get('most_common_mode', 'N/A')}"
+        )
     elif base == "/research":
         # /research "query" [--depth quick|standard|deep]
         query_part = command[len("/research "):].strip().strip('"\'')

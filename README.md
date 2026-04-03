@@ -1,8 +1,8 @@
-# 🦁 Lirox Agent OS (v0.7.1)
+# 🦁 Lirox Agent OS (v0.8)
 ### *The Autonomous Professional Research Engine*
 
 [![Status](https://img.shields.io/badge/Status-Autonomous-FFC107?style=flat-square)](https://github.com/baljotchohan/Lirox)
-[![Version](https://img.shields.io/badge/Version-v0.7.1-white?style=flat-square)](https://github.com/baljotchohan/Lirox)
+[![Version](https://img.shields.io/badge/Version-v0.8-white?style=flat-square)](https://github.com/baljotchohan/Lirox)
 [![Platform](https://img.shields.io/badge/Platform-macOS-black?style=flat-square)](https://github.com/baljotchohan/Lirox)
 
 **Lirox** is a local-first autonomous AI agent OS designed for high-fidelity research and secure system orchestration. Powered by a modular kernel architecture, it transforms standard LLMs into professional operators capable of deep web research, real-time data verification, and sophisticated multi-step task execution.
@@ -41,8 +41,28 @@ graph TD
 
 ---
 
-## 🛡️ Professional-Grade Research
-Lirox v0.7.1 introduces a "Verify-and-Retry" logic designed specifically for financial and real-time accuracy. Unlike generic agents, Lirox does not just summarize; it **extracts and validates**.
+## 🧠 Unified Executor & Smart Routing (v0.8)
+Lirox v0.8 replaces static command processing with a **Unified Executor** powered by a **Smart Router**. It seamlessly categorizes queries and selects the optimal execution path.
+
+```mermaid
+flowchart TD
+    Input([User Query]) --> Router{Smart Router}
+    Router -- Chat --> LLM[Direct Response]
+    Router -- Research --> RE[Deep Research Synthesis]
+    Router -- Browser --> BE[Headless Page Scraping]
+    Router -- Hybrid --> HB[Research + Verification]
+
+    RE --> DE[Data Enrichment Engine]
+    HB --> DE
+    
+    DE --> RF[Response Formatter]
+    LLM --> RF
+    BE --> RF
+    RF --> Output([Structured Result])
+```
+
+## 🛡️ Professional-Grade Verification
+Lirox v0.8 expands on "Verify-and-Retry" logic with the new **Data Enrichment Engine**, ensuring financial and real-time data is natively checked against actual web content. Unlike generic agents, Lirox does not just summarize; it **extracts and validates**.
 
 ### Data Verification Flow
 ```mermaid
