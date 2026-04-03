@@ -1,5 +1,5 @@
 """
-Lirox v0.5 — Central Configuration
+Lirox v0.8.0 — Central Configuration
 
 All paths are anchored to the REPO ROOT (two levels above this file),
 so Lirox works correctly regardless of which directory it is launched from.
@@ -17,7 +17,7 @@ except ImportError:
     sys.exit(1)
 
 # ─── Version ─────────────────────────────────────────────────────────────────
-APP_VERSION = "0.7.0"
+APP_VERSION = "0.8.0"
 
 # ─── Path Anchoring ───────────────────────────────────────────────────────────
 # Repo root is always 2 levels above this file:
@@ -113,7 +113,7 @@ BROWSER_TIMEOUT = 15    # Web request timeout (seconds)
 # LLM
 LLM_TIMEOUT = 60        # LLM API call timeout (seconds)
 
-# ─── Headless Browser Config (v0.7 — Lightpanda) ────────────────────────────
+# ─── Headless Browser Config (v0.8.0 — Lightpanda) ────────────────────────────
 
 _DEFAULT_USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "

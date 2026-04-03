@@ -1,5 +1,5 @@
 """
-Lirox v0.8 — Unified Execution Bridge
+Lirox v0.8.0 — Unified Execution Bridge
 
 Routes queries to optimal execution mode and orchestrates:
 - CHAT: Direct LLM response
@@ -159,6 +159,12 @@ class UnifiedExecutor:
             )
             
             # Enrich with browser content if needed
+            verify_real_time = parameters.get("verify_sources", True)
+            if not verify_real_time and self.researcher._is_realtime_data_query(user_input):
+                verify_real_time = True
+                if self.verbose:
+                    print("  [RESEARCH] Real-time data detected — forcing browser verification")
+
             enriched_sources = self.enrichment_engine.enrich_sources(
                 sources=[{
                     "url": s.url,
@@ -167,7 +173,7 @@ class UnifiedExecutor:
                     "domain": s.domain,
                 } for s in report.sources],
                 query=user_input,
-                verify_real_time=parameters.get("verify_sources", True)
+                verify_real_time=verify_real_time
             )
             
             # Merge results
@@ -210,11 +216,18 @@ class UnifiedExecutor:
             results = []
             
             for url in urls:
-                fetch_result = self.browser_tool.fetch_page(
-                    url,
-                    extract=parameters.get("extract_type", "all"),
-                    timeout=parameters.get("timeout", 30)
-                )
+                # v0.8 Phase 2: Use focused fragment if user query passed
+                if user_input and len(user_input) > 10:
+                    fetch_result = self.browser_tool.fetch_focused_fragment(
+                        url,
+                        query=user_input
+                    )
+                else:
+                    fetch_result = self.browser_tool.fetch_page(
+                        url,
+                        extract=parameters.get("extract_type", "all"),
+                        timeout=parameters.get("timeout", 30)
+                    )
                 
                 if fetch_result.get("status") == "success":
                     results.append({

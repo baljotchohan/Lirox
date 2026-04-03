@@ -1,5 +1,5 @@
 """
-Lirox v0.7 — Enhanced Executor
+Lirox v0.8.0 — Enhanced Executor
 
 Executes structured plans step-by-step with:
 - Parallel execution of independent steps (ThreadPoolExecutor)
@@ -9,7 +9,7 @@ Executes structured plans step-by-step with:
 - Retry logic with exponential backoff
 - Per-step status tracking and execution trace
 - Output validation — detects tool failures even when no exception is thrown
-- Headless browser for dynamic content & real-time data (v0.7)
+- Headless browser for dynamic content & real-time data (v0.8.0)
 """
 
 import time
@@ -22,10 +22,11 @@ from lirox.tools.terminal import run_command
 from lirox.tools.browser import BrowserTool
 from lirox.tools.file_io import FileIOTool
 from lirox.utils.llm import generate_response
-from lirox.utils.errors import ToolExecutionError, should_retry
+from lirox.utils.errors import ToolExecutionError, should_retry, BrowserTimeoutError, BrowserException
 from lirox.ui.display import execute_panel, update_plan_step, AgentSpinner
 from lirox.config import MAX_RETRIES, RETRY_BACKOFF, CONTEXT_MAX_CHARS, PARALLEL_MAX_WORKERS
 
+from lirox.utils.structured_logger import log_with_metadata
 logger = logging.getLogger("lirox.executor")
 
 # Patterns in tool output that indicate failure even without an exception
@@ -82,11 +83,11 @@ class Executor:
             self.session_manager = BrowserSessionManager()
             if self.session_manager.is_available:
                 self.headless_available = True
-                logger.info("✓ Lightpanda browser available — headless mode enabled")
+                log_with_metadata(logger, "INFO", "Lightpanda browser available — headless mode enabled", module="executor.py")
             else:
-                logger.info("⚠ Lightpanda binary not found — HTTP-only fallback mode")
+                log_with_metadata(logger, "WARN", "Lightpanda binary not found — HTTP-only fallback mode", module="executor.py")
         except ImportError:
-            logger.info("⚠ Browser session manager not available — HTTP-only fallback mode")
+            log_with_metadata(logger, "WARN", "Browser session manager not available — HTTP-only fallback mode", module="executor.py")
 
     def _is_output_failure(self, output: str) -> Tuple[bool, str]:
         """Check if tool output indicates failure despite no exception."""
@@ -268,6 +269,18 @@ class Executor:
             except ToolExecutionError as e:
                 last_error = e
                 if e.is_retryable and attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_BACKOFF * (2 ** attempt))
+                    continue
+                break
+            except BrowserTimeoutError as e:
+                last_error = e
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(RETRY_BACKOFF * (2 ** attempt))
+                    continue
+                break
+            except BrowserException as e:
+                last_error = e
+                if getattr(e, 'is_retryable', False) and attempt < MAX_RETRIES - 1:
                     time.sleep(RETRY_BACKOFF * (2 ** attempt))
                     continue
                 break

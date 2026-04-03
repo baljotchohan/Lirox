@@ -1,11 +1,17 @@
-# 🦁 Lirox Agent OS (v0.8)
+# 🦁 Lirox Agent OS (v0.8.0)
 ### *The Autonomous Professional Research Engine*
 
 [![Status](https://img.shields.io/badge/Status-Autonomous-FFC107?style=flat-square)](https://github.com/baljotchohan/Lirox)
-[![Version](https://img.shields.io/badge/Version-v0.8-white?style=flat-square)](https://github.com/baljotchohan/Lirox)
+[![Version](https://img.shields.io/badge/Version-v0.8.0-white?style=flat-square)](https://github.com/baljotchohan/Lirox)
 [![Platform](https://img.shields.io/badge/Platform-macOS-black?style=flat-square)](https://github.com/baljotchohan/Lirox)
 
 **Lirox** is a local-first autonomous AI agent OS designed for high-fidelity research and secure system orchestration. Powered by a modular kernel architecture, it transforms standard LLMs into professional operators capable of deep web research, real-time data verification, and sophisticated multi-step task execution.
+
+### 🛡️ v0.8.0 "Hardened" Release Highlights
+- **Security Hardening**: Closed shell injection vectors, implemented strict SSRF blocklists, and added provider-level rate limiting.
+- **Advanced Intelligence**: New Multi-Query Expansion 2.0 and complexity-aware search routing.
+- **High Precision**: Fragment-level content extraction and cross-source fact verification for maximum accuracy.
+- **Observability**: Fully structured JSON logging for all kernel operations.
 
 ---
 
@@ -41,7 +47,7 @@ graph TD
 
 ---
 
-## 🧠 Unified Executor & Smart Routing (v0.8)
+## 🧠 Unified Executor & Smart Routing (v0.8.0)
 Lirox v0.8 replaces static command processing with a **Unified Executor** powered by a **Smart Router**. It seamlessly categorizes queries and selects the optimal execution path.
 
 ```mermaid
@@ -142,7 +148,7 @@ python -m lirox.main
 
 ## 🌐 Browser & Real-Time Data
 
-Lirox v0.7.1 features a high-performance, secure browser engine that operates in two distinct modes. This hybrid architecture ensures that the agent can scrape data from simple static pages and complex interactive web apps alike.
+Lirox v0.8.0 features a high-performance, secure browser engine that operates in two distinct modes. This hybrid architecture ensures that the agent can scrape data from simple static pages and complex interactive web apps alike.
 
 ### Hybrid Engine Comparison
 

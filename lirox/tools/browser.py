@@ -212,7 +212,8 @@ class BrowserTool:
                 last_error = e
                 if attempt < retries:
                     continue
-                raise ToolExecutionError("browser", f"Timeout fetching {url}", is_retryable=True)
+                from lirox.utils.errors import BrowserTimeoutError
+                raise BrowserTimeoutError("fetching", url)
             except requests.exceptions.ConnectionError as e:
                 last_error = e
                 if attempt < retries:

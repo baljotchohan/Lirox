@@ -6,58 +6,48 @@ Prevents API abuse and monitors system resources to ensure safe autonomous execu
 
 import time
 import psutil
-from typing import Dict
+from typing import Dict, Optional
+from datetime import datetime, timedelta
 from lirox.ui.display import error_panel
 
 
 class RateLimiter:
-    """Tracks API calls to prevent rate limits and ballooning costs."""
+    """Rate limit requests per provider and domain."""
     
-    def __init__(self, rpm_limit: int = 50, rpd_limit: int = 500):
-        self.rpm_limit = rpm_limit
-        self.rpd_limit = rpd_limit
-        self.calls: Dict[int, int] = {}  # timestamp -> count
-        self.total_today = 0
-        self.last_reset = time.time()
+    def __init__(self):
+        self.call_history: Dict[str, list] = {}  # {key: [timestamps]}
+        self.limits: Dict[str, int] = {
+            "openai": 3500,      # tokens per minute
+            "gemini": 10000,
+            "groq": 25000,
+            "anthropic": 50000,
+            "default": 5000
+        }
     
-    def _cleanup_old_calls(self):
-        """Remove calls older than 60 seconds."""
-        current = time.time()
-        self.calls = {t: c for t, c in self.calls.items() if current - t < 60}
+    def is_allowed(self, provider: str, tokens: int = 100) -> bool:
+        """Check if request is allowed under rate limits."""
+        key = f"{provider}_{datetime.now().minute}"
+        if key not in self.call_history:
+            self.call_history[key] = []
         
-        # Reset daily limit if 24h passed
-        if current - self.last_reset > 86400:
-            self.total_today = 0
-            self.last_reset = current
-    
-    def check_limit(self) -> bool:
-        """Check if we can make an API call."""
-        self._cleanup_old_calls()
+        # Clean old entries (older than 1 minute)
+        cutoff = datetime.now() - timedelta(minutes=1)
+        self.call_history[key] = [
+            ts for ts in self.call_history[key]
+            if ts > cutoff
+        ]
         
-        calls_last_minute = sum(self.calls.values())
+        limit = self.limits.get(provider, self.limits["default"])
+        total_tokens = sum(1 for _ in self.call_history[key]) * tokens
         
-        if calls_last_minute >= self.rpm_limit:
-            error_panel("RATE LIMIT (RPM)", f"Exceeded {self.rpm_limit} requests per minute. Pausing...")
-            return False
-            
-        if self.total_today >= self.rpd_limit:
-            error_panel("RATE LIMIT (RPD)", f"Exceeded {self.rpd_limit} requests per day. Safety stop.")
-            return False
-            
-        return True
+        return total_tokens < limit
     
-    def record_call(self):
-        """Record an API call."""
-        current = int(time.time())
-        self.calls[current] = self.calls.get(current, 0) + 1
-        self.total_today += 1
-    
-    def wait_if_needed(self):
-        """Block execution until a call is permitted."""
-        while not self.check_limit():
-            if self.total_today >= self.rpd_limit:
-                raise Exception(f"Daily rate limit of {self.rpd_limit} reached.")
-            time.sleep(5)
+    def record_call(self, provider: str) -> None:
+        """Record a provider call."""
+        key = f"{provider}_{datetime.now().minute}"
+        if key not in self.call_history:
+            self.call_history[key] = []
+        self.call_history[key].append(datetime.now())
 
 
 class ResourceMonitor:

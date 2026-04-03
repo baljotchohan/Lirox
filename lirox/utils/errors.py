@@ -76,6 +76,13 @@ class NavigationError(BrowserException):
         self.http_status = http_status
 
 
+class BrowserTimeoutError(BrowserException):
+    """Raised when browser fetching times out."""
+    def __init__(self, operation: str, url: str):
+        super().__init__(BrowserErrorType.TIMEOUT, f"Timeout during {operation}", url)
+
+
+
 class SelectorError(BrowserException):
     """Raised when CSS/XPath selector not found."""
     def __init__(self, selector: str, waited: bool = False):

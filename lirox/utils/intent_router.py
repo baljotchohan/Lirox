@@ -1,5 +1,5 @@
 """
-Lirox v0.7 — Smart Command Intent Router
+Lirox v0.8.0 — Smart Command Intent Router
 
 Automatically detects user intent and routes to appropriate handler.
 Learns over time what the user typically wants.
@@ -83,6 +83,14 @@ class IntentRouter:
         Returns:
             (intent_type, suggested_command, confidence_0_to_1)
         """
+        from lirox.utils.input_validator import InputValidator
+        try:
+            InputValidator.validate_query(user_input)
+        except Exception as e:
+            from lirox.utils.structured_logger import log_with_metadata, get_logger
+            logger = get_logger("intent_router")
+            log_with_metadata(logger, "WARN", f"Input validation failed: {str(e)}", module="intent_router", input=user_input)
+
         user_lower = user_input.lower().strip()
         
         # Check if explicit command

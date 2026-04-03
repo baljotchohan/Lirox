@@ -1,5 +1,5 @@
 """
-Lirox v0.8 — Smart Router (Intent Classification & Mode Selection)
+Lirox v0.8.0 — Smart Router (Intent Classification & Mode Selection)
 
 The intelligent decision engine that classifies queries and selects execution mode:
 - CHAT MODE: Direct LLM response
@@ -139,6 +139,7 @@ class SmartRouter:
             "fallback_mode": self._select_fallback_mode(mode_scores, best_mode),
             "timestamp": datetime.now().isoformat(),
             "query_hash": self._hash_query(user_input),
+            "complexity": self._calculate_complexity(user_input, analysis),
         }
         
         self.last_routing = routing
@@ -417,6 +418,21 @@ class SmartRouter:
         import hashlib
         return hashlib.md5(query.lower().encode()).hexdigest()[:8]
     
+    def _calculate_complexity(self, user_input: str, analysis: Dict) -> str:
+        """
+        v0.8 Phase 2: Complexity Estimation.
+        Classifies query as 'simple', 'moderate', or 'complex'.
+        """
+        score = 0
+        if analysis["word_count"] > 15: score += 2
+        if analysis["is_verification"]: score += 3
+        if analysis["is_time_sensitive"]: score += 2
+        if "?" in user_input and len(analysis["entities"]) > 2: score += 2
+        
+        if score <= 2: return "simple"
+        if score <= 5: return "moderate"
+        return "complex"
+    
     # ─── PARAMETER BUILDING ──────────────────────────────────────────────────
     
     def _build_parameters(self, mode: str, user_input: str, analysis: Dict) -> Dict:
@@ -437,10 +453,16 @@ class SmartRouter:
             }
         
         elif mode == "research":
+            complexity = routing.get("complexity", "moderate") if locals().get("routing") else self._calculate_complexity(user_input, analysis)
+            
+            # Dynamic targets based on complexity
+            targets = {"simple": 3, "moderate": 6, "complex": 12}
+            depths = {"simple": "standard", "moderate": "standard", "complex": "deep"}
+            
             return {
                 **base_params,
-                "depth": "deep" if analysis["word_count"] > 15 else "standard",
-                "target_sources": 8 if analysis["word_count"] > 15 else 5,
+                "depth": depths.get(complexity, "standard"),
+                "target_sources": targets.get(complexity, 6),
                 "include_citations": True,
                 "verify_sources": True,
             }
@@ -455,12 +477,13 @@ class SmartRouter:
             }
         
         elif mode == "hybrid":
+            complexity = self._calculate_complexity(user_input, analysis)
             return {
                 **base_params,
                 "research_first": True,
                 "verify_sources": True,
                 "browser_verification": True,
-                "target_sources": 5,
+                "target_sources": 8 if complexity == "complex" else 5,
                 "extract_type": "markdown",
                 "combine_results": True,
             }
