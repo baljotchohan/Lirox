@@ -17,7 +17,7 @@ except ImportError:
     sys.exit(1)
 
 # ─── Version ─────────────────────────────────────────────────────────────────
-APP_VERSION = "0.8.5"
+APP_VERSION = "1.0.0"
 
 # ─── Path Anchoring ───────────────────────────────────────────────────────────
 # Repo root is always 2 levels above this file:

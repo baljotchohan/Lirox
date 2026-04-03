@@ -1,8 +1,8 @@
 """
-Lirox v0.8.5 — User Profile System (CLI-First)
+Lirox v1.0 — User Profile System (CLI-First)
 
 Storage anchored to PROJECT_ROOT (not CWD).
-v0.8.5: Advanced prompt system with learning context boost integration.
+v1.0: Advanced prompt system with learning context boost integration.
 """
 
 import json
@@ -136,7 +136,7 @@ class UserProfile:
         return [word for word, _ in counter.most_common(5)]
 
     def to_advanced_system_prompt(self) -> str:
-        """v0.8.5 Advanced Prompt with learned preferences and predictions."""
+        """v1.0 Advanced Prompt with learned preferences and predictions."""
         p = self.data
         agent = p.get('agent_name', 'Lirox')
         user = p.get('user_name', 'Operator')
@@ -150,7 +150,7 @@ class UserProfile:
             successful = [t for t in p["task_history"][-20:] if t.get("success")]
             successful_tasks = [t["task"] for t in successful[:5]]
         
-        return f"""You are {agent} v0.8.5 (Autonomous AI Agent OS) — a sophisticated autonomous agent.
+        return f"""You are {agent} v1.0 (Autonomous AI Agent OS) — a sophisticated autonomous agent.
 
 OPERATING CONTEXT
 - Terminal-based agent assisting {user} with research, task automation, and information synthesis
@@ -176,7 +176,7 @@ MEMORY & LEARNING
 - LEARNED CONTEXT: {facts}
 - RECENT TASK PATTERNS: {', '.join(successful_tasks[:3]) if successful_tasks else 'None yet'}
 
-RESEARCH CAPABILITY (v0.6)
+RESEARCH CAPABILITY (v1.0)
 When asked factual questions, you proactively:
 - Search the web for current information
 - Synthesize multiple sources with citations
@@ -200,7 +200,7 @@ OUTPUT FORMAT & BEHAVIOR
         return self.data.get("agent_name") is not None and self.data.get("user_name") != "Operator"
 
     def to_system_prompt(self) -> str:
-        """v0.8.5 Professional CLI-First Prompt Generation."""
+        """v1.0 Professional CLI-First Prompt Generation."""
         p = self.data
         agent = p.get('agent_name', 'Lirox')
         user = p.get('user_name', 'Operator')
@@ -209,7 +209,7 @@ OUTPUT FORMAT & BEHAVIOR
         goals = "; ".join(p['goals']) if p['goals'] else "No active goals."
 
         # Template from User Request
-        return f"""You are {agent} v0.8.5 (CLI-First Autonomous Agent) — a local-first autonomous agent running inside a terminal.
+        return f"""You are {agent} v1.0 (CLI-First Autonomous Agent) — a local-first autonomous agent running inside a terminal.
 
 OPERATING CONTEXT
 - You are used through a CLI where the operator ({user}) types messages and commands.
@@ -266,7 +266,7 @@ MEMORY / LEARNING (CURRENT CAPABILITY)
 - Only store compact “facts” or preferences.
 - If unsure whether something is a stable preference, ask once before treating it as long-term.
 
-RESEARCH CAPABILITY (v0.6)
+RESEARCH CAPABILITY (v1.0)
 You are a research-capable autonomous agent. When asked factual questions, you proactively search the web, synthesize multiple sources, and cite your findings. You NEVER make up facts. When uncertain, you say so and recommend using /research for deeper analysis. Research outputs include confidence scores and source citations.
 
 OUTPUT FORMAT & BEHAVIOR (MANDATORY)

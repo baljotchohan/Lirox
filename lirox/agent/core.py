@@ -9,12 +9,8 @@ v0.5 Updates:
 """
 
 import threading
-from lirox.agent.planner import Planner
-from lirox.agent.executor import Executor
-from lirox.agent.reasoner import Reasoner
 from lirox.agent.memory import Memory
 from lirox.agent.profile import UserProfile
-from lirox.agent.scheduler import TaskScheduler
 from lirox.agent.learning_engine import LearningEngine
 from lirox.utils.llm import generate_response
 from lirox.utils.meta_parser import extract_meta
@@ -27,14 +23,7 @@ class LiroxAgent:
     def __init__(self):
         self.profile   = UserProfile()
         self.memory    = Memory()
-        self.planner   = Planner()
-        self.executor  = Executor()
-        self.reasoner  = Reasoner()
-        self.scheduler = TaskScheduler()
         self.learning  = LearningEngine()
-
-        # Link scheduler to this agent's task processor
-        self.scheduler.execute_callback = self.process_task
 
         # Version tracking
         self.version = APP_VERSION
@@ -70,81 +59,14 @@ class LiroxAgent:
         ).start()
 
         # Learning engine: intent/topic/satisfaction tracking
-        threading.Thread(
-            target=self.learning.on_interaction,
-            args=(user_input, clean_text),
-            daemon=True
-        ).start()
+        if hasattr(self, 'learning'):
+            threading.Thread(
+                target=self.learning.on_interaction,
+                args=(user_input, clean_text),
+                daemon=True
+            ).start()
 
         return response
-
-    def show_plan(self, goal: str, provider: str = "auto") -> dict:
-        """Create and show a plan for a goal without executing it."""
-        thought = self.reasoner.generate_thought_trace(goal)
-        plan = self.planner.create_plan(goal, context=thought)
-        return plan
-
-    def execute_last_plan(self, provider: str = "auto") -> str:
-        """Execute the last generated plan."""
-        plan = self.planner.get_last_plan()
-        if not plan:
-            return "No plan found. Call /plan first."
-        
-        system_prompt = self._get_system_prompt()
-        results, summary = self.executor.execute_plan(plan, provider, system_prompt)
-        self.reasoner.generate_reasoning_summary(plan, results)
-        return summary
-
-    def get_last_trace(self) -> str:
-        """Retrieve the execution trace of the last task."""
-        return self.executor.get_trace()
-
-    def get_last_reasoning(self) -> str:
-        """Retrieve the reasoning summary of the last task."""
-        return self.reasoner.last_reasoning_text or "No reasoning data available."
-
-    def process_task(self, goal: str, provider: str = "auto") -> dict:
-        """
-        Full autonomous task cycle:
-        1. Reason/Think (Reasoning Trace)
-        2. Plan (Step-by-step breakdown)
-        3. Execute (Parallel/Sequential tools)
-        4. Reflect (Evaluate results)
-        """
-        import time
-        start_time = time.time()
-        
-        system_prompt = self._get_system_prompt()
-        
-        # 1. Internal Reasoning Trace
-        thought = self.reasoner.generate_thought_trace(goal)
-        
-        # 2. Planning
-        plan = self.planner.create_plan(goal, context=thought)
-        
-        # 3. Execution
-        results, summary = self.executor.execute_plan(plan, provider, system_prompt)
-        
-        # 4. Evaluation & Reflection
-        reflection = self.reasoner.generate_reasoning_summary(plan, results)
-        
-        duration = time.time() - start_time
-        
-        # Save results to memory and track execution
-        self.memory.save_memory("user", f"TASK: {goal}")
-        self.memory.save_memory("assistant", f"SUMMARY: {summary}\n\nREFLECTION: {reflection.get('reflection', {}).get('suggestion', '')}")
-        
-        is_success = "error" not in summary.lower() and "failed" not in summary.lower()
-        self.profile.track_task_execution(goal, is_success, duration)
-        
-        return {
-            "goal":       goal,
-            "plan":       plan,
-            "results":    results,
-            "summary":    summary,
-            "reflection": reflection,
-            "thought":    thought
-        }
 
     def _try_learn_from_exchange(self, user_msg: str, assistant_msg: str):
         """Passive learning: extract facts about the user from the conversation."""
