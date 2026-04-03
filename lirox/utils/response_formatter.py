@@ -1,5 +1,5 @@
 """
-Lirox v0.8 — Response Formatter
+Lirox v0.8.5 — Response Formatter
 
 Formats unified executor output into rich, structured responses
 with sources, confidence, and verification status.
@@ -166,9 +166,9 @@ class ResponseFormatter:
             ConfidenceLevel.MEDIUM if confidence > 0.5 else
             ConfidenceLevel.LOW
         )
-        parts.append(f"\n### 📊 Metadata")
-        parts.append(f"**Mode:** {result.get('mode', 'unknown').upper()}")
-        parts.append(f"**Confidence:** {confidence_level.value} ({confidence:.0%})")
+        parts.append("\n[bold]📊 Metadata[/]")
+        parts.append(f"[bold]Mode:[/] {result.get('mode', 'unknown').upper()}")
+        parts.append(f"[bold]Confidence:[/] {confidence_level.value} ({confidence:.0%})")
         
         # Verification status
         verification = result.get("verification_status", "n/a").lower()
@@ -178,20 +178,20 @@ class ResponseFormatter:
             "✗" if verification == "unverified" else
             "─"
         )
-        parts.append(f"**Verification:** {verification_emoji} {verification.title()}")
+        parts.append(f"[bold]Verification:[/] {verification_emoji} {verification.title()}")
         
         # Execution time
         execution_time = result.get("execution_time", 0)
-        parts.append(f"**Time:** {execution_time:.2f}s")
+        parts.append(f"[bold]Time:[/] {execution_time:.2f}s")
         
         # Source count
         if result.get("source_count"):
-            parts.append(f"**Sources:** {result['source_count']}")
+            parts.append(f"[bold]Sources:[/] {result['source_count']}")
         
         # Fallback note
         if result.get("mode") != result.get("routing_confidence"):
             if result.get("fallback_mode"):
-                parts.append(f"**Fallback:** {result['fallback_mode']}")
+                parts.append(f"[bold]Fallback:[/] {result['fallback_mode']}")
         
         return "\n".join(parts)
 

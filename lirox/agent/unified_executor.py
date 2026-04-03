@@ -1,44 +1,61 @@
 """
-Lirox v0.8.0 — Unified Execution Bridge
+Lirox v0.8.5 — Unified Execution Bridge
 
 Routes queries to optimal execution mode and orchestrates:
 - CHAT: Direct LLM response
 - RESEARCH: Multi-source synthesis
-- BROWSER: Direct scraping
+- BROWSER: Direct scraping (with requests fallback)
 - HYBRID: Research + Browser verification
 """
 
+import re
 import json
 from typing import Dict, Optional, Tuple
 from datetime import datetime
 
 from lirox.agent.researcher import Researcher
-from lirox.tools.browser_tool import HeadlessBrowserTool
 from lirox.tools.browser import BrowserTool
 from lirox.utils.llm import generate_response
 from lirox.utils.smart_router import SmartRouter
 from lirox.utils.data_enrichment import DataEnrichmentEngine, EnrichedSource
+
+# Lazy import — don't crash if Lightpanda not installed
+try:
+    from lirox.tools.browser_tool import HeadlessBrowserTool
+    _HAS_HEADLESS = True
+except ImportError:
+    _HAS_HEADLESS = False
+    HeadlessBrowserTool = None
 
 
 class UnifiedExecutor:
     """
     Executes queries using optimal mode selected by SmartRouter.
     Coordinates research, browser, and LLM tools.
+    Falls back to requests-based browser when Lightpanda is unavailable.
     """
-    
+
     def __init__(self, provider: str = "auto", verbose: bool = False):
         self.provider = provider
         self.verbose = verbose
-        
+
         # Initialize components
         self.router = SmartRouter(provider=provider, verbose=verbose)
         self.researcher = Researcher(BrowserTool(), provider=provider)
-        self.browser_tool = HeadlessBrowserTool()
+
+        # Safe headless browser init — never crash if binary missing
+        self.browser_tool = None
+        if _HAS_HEADLESS:
+            try:
+                self.browser_tool = HeadlessBrowserTool()
+            except Exception:
+                pass
+
         self.enrichment_engine = DataEnrichmentEngine(
             browser_tool=self.browser_tool,
             verbose=verbose
         )
-        
+
         self.last_execution = None
     
     # ─── MAIN EXECUTION ENTRY POINT ──────────────────────────────────────────
@@ -65,52 +82,91 @@ class UnifiedExecutor:
         """
         
         execution_start = datetime.now()
-        
+
         try:
-            # Step 1: Route query
+            # Step 1: Route query (also pre-fetches free data shortcut)
             routing = self.router.route(user_input)
-            
+
             if self.verbose:
                 print(f"\n[UNIFIED EXECUTOR]")
                 print(f"Mode: {routing['mode']} (confidence: {routing['confidence']:.0%})")
-            
-            # Step 2: Execute based on mode
+
+            # ── Phase 5 shortcut: if free real-time data was fetched, return it NOW
+            #    without running the LLM pipeline (prevents hallucination of prices).
+            free_data = routing.get("free_data")
+            if free_data:
+                # Local system query (e.g. "how many files on desktop")
+                if free_data.get("status") == "local":
+                    # Run as CHAT — LLM will use terminal tool or system knowledge
+                    result = self._execute_chat(
+                        f"[LOCAL TASK] Use the system terminal to answer: {user_input}",
+                        system_prompt,
+                    )
+                    result["mode"] = "chat"
+                    result["routing_confidence"] = routing["confidence"]
+                    result["fallback_mode"] = routing["fallback_mode"]
+                    result["execution_time"] = (datetime.now() - execution_start).total_seconds()
+                    self.last_execution = result
+                    return result
+
+                # Real live data (stocks, crypto, weather, etc.)
+                if free_data.get("status") == "success" and free_data.get("answer"):
+                    source = free_data.get("source", "free_api")
+                    answer = free_data["answer"]
+                    is_live = free_data.get("live", False)
+                    note = " (live data)" if is_live else ""
+                    result = {
+                        "status": "success",
+                        "mode": "free_data",
+                        "answer": answer,
+                        "sources": [{"source": source, "note": f"Real-time via {source}{note}"}],
+                        "confidence": 0.97,
+                        "verification_status": "verified",
+                        "routing_confidence": routing["confidence"],
+                        "fallback_mode": routing["fallback_mode"],
+                        "execution_time": (datetime.now() - execution_start).total_seconds(),
+                        "source": source,
+                    }
+                    self.last_execution = result
+                    return result
+
+            # Step 2: Execute based on mode (no free data shortcut available)
             if routing["mode"] == "chat":
                 result = self._execute_chat(user_input, system_prompt)
-            
+
             elif routing["mode"] == "research":
                 result = self._execute_research(
                     user_input,
                     routing["parameters"],
                     system_prompt
                 )
-            
+
             elif routing["mode"] == "browser":
                 result = self._execute_browser(user_input, routing["parameters"])
-            
+
             elif routing["mode"] == "hybrid":
                 result = self._execute_hybrid(
                     user_input,
                     routing["parameters"],
                     system_prompt
                 )
-            
+
             else:
                 result = self._execute_chat(user_input, system_prompt)
-            
+
             # Add metadata
             result["mode"] = routing["mode"]
             result["routing_confidence"] = routing["confidence"]
             result["fallback_mode"] = routing["fallback_mode"]
             result["execution_time"] = (datetime.now() - execution_start).total_seconds()
-            
+
             self.last_execution = result
             return result
-        
+
         except Exception as e:
             if self.verbose:
                 print(f"[EXECUTION ERROR] {str(e)}")
-            
+
             return {
                 "status": "error",
                 "error": str(e),
@@ -188,69 +244,54 @@ class UnifiedExecutor:
                 "verification_status": merged["verification_status"],
                 "source_count": len(report.sources),
             }
-        
+
         except Exception as e:
             if self.verbose:
                 print(f"[RESEARCH ERROR] {str(e)}")
-            
+
             return {
                 "status": "error",
                 "error": str(e),
                 "answer": "Failed to complete research.",
             }
-    
-    def _execute_browser(self, user_input: str, 
-                        parameters: Dict) -> Dict:
-        """Execute BROWSER mode: Direct page scraping."""
-        
+
+    def _execute_browser(self, user_input: str,
+                         parameters: Dict) -> Dict:
+        """Execute BROWSER mode: Direct page scraping with requests fallback."""
+
         try:
             urls = parameters.get("urls", [])
-            
+
             if not urls:
-                return {
-                    "status": "error",
-                    "error": "No URLs found to scrape.",
-                    "answer": "Please provide a URL to scrape.",
-                }
-            
-            results = []
-            
-            for url in urls:
-                # v0.8 Phase 2: Use focused fragment if user query passed
-                if user_input and len(user_input) > 10:
-                    fetch_result = self.browser_tool.fetch_focused_fragment(
-                        url,
-                        query=user_input
-                    )
+                # Try to extract URL from query text
+                url_match = re.search(r'https?://\S+', user_input)
+                if url_match:
+                    urls = [url_match.group(0).rstrip(".,;)")]
                 else:
-                    fetch_result = self.browser_tool.fetch_page(
-                        url,
-                        extract=parameters.get("extract_type", "all"),
-                        timeout=parameters.get("timeout", 30)
-                    )
-                
-                if fetch_result.get("status") == "success":
-                    results.append({
-                        "url": url,
-                        "title": fetch_result.get("metadata", {}).get("title", ""),
-                        "content": fetch_result.get("data", {}).get("markdown", "")[:2000],
-                        "method": fetch_result.get("metadata", {}).get("method", "unknown"),
-                    })
-            
+                    return {
+                        "status": "error",
+                        "error": "No URL found in query.",
+                        "answer": "No URL found. Provide a URL to fetch.",
+                    }
+
+            results = []
+
+            for url in urls[:3]:  # Cap at 3 URLs
+                content = self._fetch_url_smart(url, user_input)
+                if content:
+                    results.append(content)
+
             if not results:
                 return {
                     "status": "error",
                     "error": "Failed to fetch pages.",
                     "answer": "Could not extract content from the provided URLs.",
                 }
-            
-            # Format answer
-            answer_parts = []
-            for result in results:
-                answer_parts.append(f"## {result['title']}\n\n{result['content']}")
-            
-            answer = "\n\n---\n\n".join(answer_parts)
-            
+
+            answer = "\n\n---\n\n".join(
+                f"## {r['title']}\n\n{r['content']}" for r in results
+            )
+
             return {
                 "status": "success",
                 "answer": answer,
@@ -259,16 +300,48 @@ class UnifiedExecutor:
                 "verification_status": "verified",
                 "fetched_urls": len(results),
             }
-        
+
         except Exception as e:
             if self.verbose:
                 print(f"[BROWSER ERROR] {str(e)}")
-            
+
             return {
                 "status": "error",
                 "error": str(e),
                 "answer": "Failed to scrape pages.",
             }
+
+    def _fetch_url_smart(self, url: str, query: str = "") -> dict:
+        """Fetch a URL using the best available method (headless → requests fallback)."""
+        # Try headless browser first
+        if self.browser_tool:
+            try:
+                if query and len(query) > 10:
+                    result = self.browser_tool.fetch_focused_fragment(url, query=query)
+                else:
+                    result = self.browser_tool.fetch_page(url, extract="markdown", timeout=20)
+                if result.get("status") == "success":
+                    return {
+                        "url": url,
+                        "title": result.get("metadata", {}).get("title", url),
+                        "content": result.get("data", {}).get("markdown", "")[:3000],
+                        "method": "headless",
+                    }
+            except Exception:
+                pass
+
+        # Fallback: requests-based BrowserTool
+        try:
+            bt = BrowserTool()
+            content = bt.summarize_page(url)
+            return {
+                "url": url,
+                "title": url,
+                "content": str(content)[:3000],
+                "method": "requests",
+            }
+        except Exception:
+            return None
     
     def _execute_hybrid(self, user_input: str,
                        parameters: Dict,

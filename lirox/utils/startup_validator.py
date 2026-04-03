@@ -1,5 +1,5 @@
 """
-Lirox v0.8 — Startup Validation [FIX #6]
+Lirox v0.8.5 — Startup Validation
 
 Validates system state before agent starts.
 Checks: directories, API keys, Python version, dependencies.
@@ -49,7 +49,8 @@ class StartupValidator:
             for p in ["OPENAI", "GEMINI", "GROQ", "ANTHROPIC"]
         ]
         if not any(api_keys):
-            return False, ["No LLM API keys configured. Run /setup first."]
+            # Non-fatal: new users haven't done onboarding yet
+            warnings.append("No LLM API keys found. Run /add-api or use /setup to configure.")
         
         # 4. Check Python version
         if sys.version_info < (3, 8):

@@ -43,11 +43,20 @@ class RateLimiter:
         return total_tokens < limit
     
     def record_call(self, provider: str) -> None:
-        """Record a provider call."""
+        """Record a provider call with global cleanup to prevent memory leak."""
         key = f"{provider}_{datetime.now().minute}"
         if key not in self.call_history:
             self.call_history[key] = []
         self.call_history[key].append(datetime.now())
+
+        # Global cleanup: purge keys older than 2 minutes
+        cutoff = datetime.now() - timedelta(minutes=2)
+        stale_keys = [
+            k for k, v in self.call_history.items()
+            if v and v[-1] < cutoff
+        ]
+        for k in stale_keys:
+            del self.call_history[k]
 
 
 class ResourceMonitor:

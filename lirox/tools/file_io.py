@@ -1,5 +1,5 @@
 """
-Lirox v0.3 — File I/O Tool
+Lirox v0.8.5 — File I/O Tool
 
 Safe, sandboxed file operations for reading, writing, and listing files.
 Prevents directory traversal and restricts access to project-relative

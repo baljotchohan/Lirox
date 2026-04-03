@@ -15,6 +15,7 @@ from lirox.agent.reasoner import Reasoner
 from lirox.agent.memory import Memory
 from lirox.agent.profile import UserProfile
 from lirox.agent.scheduler import TaskScheduler
+from lirox.agent.learning_engine import LearningEngine
 from lirox.utils.llm import generate_response
 from lirox.utils.meta_parser import extract_meta
 from lirox.config import APP_VERSION
@@ -30,15 +31,21 @@ class LiroxAgent:
         self.executor  = Executor()
         self.reasoner  = Reasoner()
         self.scheduler = TaskScheduler()
-        
+        self.learning  = LearningEngine()
+
         # Link scheduler to this agent's task processor
         self.scheduler.execute_callback = self.process_task
-        
+
         # Version tracking
         self.version = APP_VERSION
 
+        # Start learning session
+        self.learning.on_session_start()
+
     def _get_system_prompt(self) -> str:
-        return self.profile.to_advanced_system_prompt()
+        base = self.profile.to_advanced_system_prompt()
+        boost = self.learning.get_context_boost()
+        return base + boost
 
     def chat(self, user_input: str, provider: str = "auto") -> str:
         """Simple chat response with context and personalization."""
@@ -55,14 +62,46 @@ class LiroxAgent:
         self.memory.save_memory("user", user_input)
         self.memory.save_memory("assistant", clean_text)
         
-        # Passive learning in background thread (non-blocking)
+        # Passive learning: profile facts
         threading.Thread(
-            target=self._try_learn_from_exchange, 
-            args=(user_input, clean_text), 
+            target=self._try_learn_from_exchange,
+            args=(user_input, clean_text),
             daemon=True
         ).start()
-        
+
+        # Learning engine: intent/topic/satisfaction tracking
+        threading.Thread(
+            target=self.learning.on_interaction,
+            args=(user_input, clean_text),
+            daemon=True
+        ).start()
+
         return response
+
+    def show_plan(self, goal: str, provider: str = "auto") -> dict:
+        """Create and show a plan for a goal without executing it."""
+        thought = self.reasoner.generate_thought_trace(goal)
+        plan = self.planner.create_plan(goal, context=thought)
+        return plan
+
+    def execute_last_plan(self, provider: str = "auto") -> str:
+        """Execute the last generated plan."""
+        plan = self.planner.get_last_plan()
+        if not plan:
+            return "No plan found. Call /plan first."
+        
+        system_prompt = self._get_system_prompt()
+        results, summary = self.executor.execute_plan(plan, provider, system_prompt)
+        self.reasoner.generate_reasoning_summary(plan, results)
+        return summary
+
+    def get_last_trace(self) -> str:
+        """Retrieve the execution trace of the last task."""
+        return self.executor.get_trace()
+
+    def get_last_reasoning(self) -> str:
+        """Retrieve the reasoning summary of the last task."""
+        return self.reasoner.last_reasoning_text or "No reasoning data available."
 
     def process_task(self, goal: str, provider: str = "auto") -> dict:
         """

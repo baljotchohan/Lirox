@@ -16,6 +16,14 @@ from typing import Dict, Tuple, Optional, List
 from datetime import datetime
 from lirox.utils.llm import generate_response
 
+# Lazy import — free_data only loads when needed
+try:
+    from lirox.tools.free_data import get_free_data as _get_free_data
+    _HAS_FREE_DATA = True
+except ImportError:
+    _HAS_FREE_DATA = False
+    _get_free_data = None
+
 
 class SmartRouter:
     """Intelligent query router that selects optimal execution mode."""
@@ -87,12 +95,18 @@ class SmartRouter:
         "is it true": 10, "fact check": 10, "confirm": 8,
         "check if": 8, "is this correct": 8, "up to date": 7,
         "weather": 8, "score": 8, "ranking": 7, "leaderboard": 7,
+        # Indian & global market indices
+        "nifty": 10, "sensex": 10, "nifty 50": 10, "bank nifty": 10,
+        "dow jones": 9, "nasdaq": 9, "s&p 500": 9,
+        "share price": 9, "stock price": 9, "index level": 9,
     }
-    
+
     REAL_TIME_TOPICS = [
         "bitcoin", "ethereum", "crypto", "price", "stock", "weather",
         "score", "game", "news", "trending", "covid", "update",
-        "current", "latest", "live", "breaking", "today"
+        "current", "latest", "live", "breaking", "today",
+        "nifty", "sensex", "nifty50", "bank nifty", "dow jones",
+        "nasdaq", "s&p", "share price", "stock price",
     ]
     
     VERIFICATION_TRIGGERS = [
@@ -111,25 +125,29 @@ class SmartRouter:
     def route(self, user_input: str) -> Dict:
         """
         Route a user query to the optimal execution mode.
-        
+
         Returns:
             {
                 "mode": "chat|research|browser|hybrid",
                 "confidence": 0.0-1.0,
                 "reasoning": "why this mode",
                 "parameters": {...},
-                "fallback_mode": "alternative mode if primary fails"
+                "fallback_mode": "alternative mode if primary fails",
+                "free_data": {...} or None  # pre-fetched data shortcut
             }
         """
+        # Phase 5: Try free data shortcut for price/weather/fact queries
+        free_data_result = self._try_free_data_shortcut(user_input)
+
         # Analyze the query
         analysis = self._analyze_query(user_input)
-        
+
         # Get mode scores
         mode_scores = self._score_all_modes(user_input, analysis)
-        
+
         # Select best mode
         best_mode, confidence = self._select_mode(mode_scores)
-        
+
         # Build routing decision
         routing = {
             "mode": best_mode,
@@ -140,18 +158,21 @@ class SmartRouter:
             "timestamp": datetime.now().isoformat(),
             "query_hash": self._hash_query(user_input),
             "complexity": self._calculate_complexity(user_input, analysis),
+            "free_data": free_data_result,
         }
-        
+
         self.last_routing = routing
         self.routing_history.append(routing)
-        
+
         if self.verbose:
             print(f"\n[SMART ROUTER DEBUG]")
             print(f"Query: {user_input[:80]}...")
             print(f"Mode: {best_mode} (confidence: {confidence:.2%})")
             print(f"Reasoning: {routing['reasoning']}")
             print(f"Mode Scores: {json.dumps({k: v['score'] for k, v in mode_scores.items()}, indent=2)}")
-        
+            if free_data_result:
+                print(f"Free data shortcut: {free_data_result.get('source')} → {free_data_result.get('status')}")
+
         return routing
     
     # ─── QUERY ANALYSIS ──────────────────────────────────────────────────────
@@ -351,11 +372,23 @@ class SmartRouter:
         return any(indicator in query_lower for indicator in time_indicators)
     
     def _is_data_point_query(self, query_lower: str) -> bool:
-        """Detect if query asks for specific data point."""
+        """Detect if query asks for a specific real-time data point."""
+        # Don't treat local system queries as live data-point lookups
+        local_indicators = [
+            "how many files", "count files", "files in", "files on",
+            "disk space", "my desktop", "my downloads", "cpu usage",
+            "memory usage", "ram usage", "running processes",
+        ]
+        if any(ind in query_lower for ind in local_indicators):
+            return False
+
         data_point_indicators = [
             "price", "cost", "how much", "what is the", "temperature",
-            "score", "ranking", "weather", "date", "time", "number",
-            "how many", "percentage", "rate", "value"
+            "score", "ranking", "weather", "date", "time",
+            "percentage", "rate", "value",
+            # Stock / index price lookups
+            "nifty", "sensex", "bank nifty", "dow jones", "nasdaq",
+            "s&p", "share price", "stock price", "index level",
         ]
         return any(indicator in query_lower for indicator in data_point_indicators)
     
@@ -492,6 +525,33 @@ class SmartRouter:
     
     # ─── UTILITY METHODS ─────────────────────────────────────────────────────
     
+    def _try_free_data_shortcut(self, user_input: str) -> Optional[Dict]:
+        """
+        Phase 5 shortcut: for real-time data-point queries, hit free APIs
+        immediately instead of waiting for full hybrid execution.
+        Returns None if no shortcut is applicable or available.
+        """
+        if not _HAS_FREE_DATA:
+            return None
+
+        lower = user_input.lower()
+
+        # Only shortcut clear data-point / price / weather queries
+        is_data_point = self._is_data_point_query(lower)
+        is_time_sensitive = self._is_time_sensitive(lower)
+
+        if not (is_data_point or is_time_sensitive):
+            return None
+
+        try:
+            result = _get_free_data(user_input)
+            if result and result.get("status") == "success" and result.get("answer"):
+                return result
+        except Exception:
+            pass
+
+        return None
+
     def get_mode_info(self, mode: str) -> Dict:
         """Get detailed info about a mode."""
         return self.MODES.get(mode, {})

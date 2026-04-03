@@ -1,6 +1,8 @@
 import os
 from pathlib import Path
-from lirox.ui.display import console, Panel, ROUNDED
+from rich.panel import Panel
+from rich.box import ROUNDED
+from lirox.ui.display import console
 from rich.prompt import Prompt
 from dotenv import set_key
 
