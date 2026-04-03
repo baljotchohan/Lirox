@@ -44,8 +44,53 @@ LOGO = f"""
   [{CLR_LIROX}]v{APP_VERSION} ✦ AUTONOMOUS KERNEL[/]
 """
 
+
+_LION_FRAMES = [
+    # Frame 1 — faint outline
+    f"""
+  [dim #FFC107]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
+  [dim #FFC107]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]
+  [dim #FFC107]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]
+  [dim #FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
+  [dim #FFC107]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
+  [dim #FFC107]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
+  [dim]v{APP_VERSION} ✦ AUTONOMOUS KERNEL[/]
+""",
+    # Frame 2 — brighter
+    f"""
+  [#FFB300]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
+  [#FFC107]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]
+  [#FFD54F]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]
+  [#FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
+  [#FFB300]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
+  [#FFA000]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
+  [dim #FFC107]v{APP_VERSION} ✦ AUTONOMOUS KERNEL[/]
+""",
+    # Frame 3 — full brightness (final)
+    f"""
+  [bold #FFB300]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
+  [bold #FFC107]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]
+  [bold #FFD54F]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]
+  [bold #FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
+  [bold #FFB300]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
+  [bold #FFA000]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
+  [bold #FFC107]v{APP_VERSION} ✦ AUTONOMOUS KERNEL[/]
+""",
+]
+
+
 def show_welcome():
-    console.print(LOGO)
+    """Phase 10: Animated lion ASCII reveal across 3 frames."""
+    import time
+    try:
+        with Live(console=console, refresh_per_second=10, transient=False) as live:
+            for i, frame in enumerate(_LION_FRAMES):
+                live.update(Text.from_markup(frame))
+                time.sleep(0.12 if i < 2 else 0)
+    except Exception:
+        # Fallback: static logo
+        console.print(LOGO)
+
 
 # ─── Status Cards ───────────────────────────────────────────────────────────
 

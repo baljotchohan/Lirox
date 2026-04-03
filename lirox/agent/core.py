@@ -15,6 +15,7 @@ from lirox.agent.reasoner import Reasoner
 from lirox.agent.memory import Memory
 from lirox.agent.profile import UserProfile
 from lirox.agent.scheduler import TaskScheduler
+from lirox.agent.learning_engine import LearningEngine
 from lirox.utils.llm import generate_response
 from lirox.utils.meta_parser import extract_meta
 from lirox.config import APP_VERSION
@@ -30,15 +31,21 @@ class LiroxAgent:
         self.executor  = Executor()
         self.reasoner  = Reasoner()
         self.scheduler = TaskScheduler()
-        
+        self.learning  = LearningEngine()
+
         # Link scheduler to this agent's task processor
         self.scheduler.execute_callback = self.process_task
-        
+
         # Version tracking
         self.version = APP_VERSION
 
+        # Start learning session
+        self.learning.on_session_start()
+
     def _get_system_prompt(self) -> str:
-        return self.profile.to_advanced_system_prompt()
+        base = self.profile.to_advanced_system_prompt()
+        boost = self.learning.get_context_boost()
+        return base + boost
 
     def chat(self, user_input: str, provider: str = "auto") -> str:
         """Simple chat response with context and personalization."""
@@ -55,13 +62,20 @@ class LiroxAgent:
         self.memory.save_memory("user", user_input)
         self.memory.save_memory("assistant", clean_text)
         
-        # Passive learning in background thread (non-blocking)
+        # Passive learning: profile facts
         threading.Thread(
-            target=self._try_learn_from_exchange, 
-            args=(user_input, clean_text), 
+            target=self._try_learn_from_exchange,
+            args=(user_input, clean_text),
             daemon=True
         ).start()
-        
+
+        # Learning engine: intent/topic/satisfaction tracking
+        threading.Thread(
+            target=self.learning.on_interaction,
+            args=(user_input, clean_text),
+            daemon=True
+        ).start()
+
         return response
 
     def show_plan(self, goal: str, provider: str = "auto") -> dict:

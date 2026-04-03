@@ -42,8 +42,8 @@ def check_dependencies():
         for pkg in missing:
             print(f"    • {pkg}")
         print("\n TO FIX, RUN BOTH COMMANDS IN YOUR TERMINAL:")
-        print("    1. python -m pip install -r requirements.txt")
-        print("    2. python -m lirox.main")
+        print("    1. pip install -e .          (installs lirox CLI)")
+        print("    2. lirox                     (or: python -m lirox)")
         print("="*60 + "\n")
         sys.exit(1)
 
@@ -80,7 +80,14 @@ def main():
     args = parser.parse_args()
 
     from lirox.utils.startup_validator import StartupValidator
-    StartupValidator.validate_all()
+    ok, warnings = StartupValidator.validate_all()
+    if not ok:
+        # Warn but don't exit — new users need to reach onboarding first
+        for w in warnings:
+            print(f"  [WARNING] {w}")
+    elif warnings:
+        for w in warnings:
+            print(f"  [!] {w}")
 
     agent = LiroxAgent()
     show_welcome()
@@ -128,32 +135,39 @@ def main():
         except Exception as e:
             error_panel("KERNEL ERROR", str(e))
 
+# ─── Singleton cache for UnifiedExecutor (FIX 1.3) ──────────────────────────
+_executor_cache: dict = {}
+
+
 def process_input(agent, user_input, verbose=False):
-    """v0.8 Smart Input Processor with Unified Router."""
-    
-    # NEW: Use unified executor for intelligent routing
-    from lirox.agent.unified_executor import UnifiedExecutor
-    from lirox.utils.response_formatter import format_for_display
-    
-    unified = UnifiedExecutor(provider="auto", verbose=verbose)
-    
+    """v0.8.5 Smart Input Processor with Unified Router."""
+    global _executor_cache
+
+    cache_key = f"{id(agent)}_auto"
+    if cache_key not in _executor_cache:
+        from lirox.agent.unified_executor import UnifiedExecutor
+        _executor_cache[cache_key] = UnifiedExecutor(provider="auto", verbose=verbose)
+
+    unified = _executor_cache[cache_key]
+
     try:
         # Execute using optimal mode
         result = unified.execute(user_input, system_prompt=agent.profile.to_advanced_system_prompt())
-        
+
         # Format and display
+        from lirox.utils.response_formatter import format_for_display
         formatted_response = format_for_display(result)
-        
-        from lirox.ui.display import console, CLR_ACCENT
+
+        from lirox.ui.display import CLR_ACCENT
         console.print(f"\n[{CLR_ACCENT}]{formatted_response}[/]\n")
-        
+
         # Save to memory
         agent.memory.save_memory("user", user_input)
         agent.memory.save_memory("assistant", result.get("answer", ""))
-        
+
     except Exception as e:
-        from lirox.ui.display import error_panel
         error_panel("EXECUTION ERROR", str(e))
+
 
 def run_autonomous_task(agent, goal):
     if goal.lower().startswith("research") or " research " in goal.lower():
@@ -242,9 +256,9 @@ def run_diagnostics(agent):
     for i, (name, fn) in enumerate(steps, 1):
         try:
             res = fn()
-            print(f"  [bold green]✓[/] [white]{name:25}[/] : {res}")
+            console.print(f"  [bold green]✓[/] [white]{name:25}[/] : {res}")
         except Exception as e:
-            print(f"  [bold red]✖[/] [white]{name:25}[/] : [bold red]{str(e)}[/]")
+            console.print(f"  [bold red]✖[/] [white]{name:25}[/] : [bold red]{str(e)}[/]")
         time.sleep(0.1)
     success_message("All core subsystems are within nominal operating parameters.")
 
@@ -259,11 +273,11 @@ def run_git_update():
         def stream_command(cmd, cwd=None):
             """Run a command and stream output to the console in real-time."""
             process = subprocess.Popen(
-                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, 
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
                 text=True, shell=False, cwd=cwd
             )
             for line in process.stdout:
-                print(f"  [dim]» {line.strip()}[/dim]")
+                console.print(f"  [dim]» {line.strip()}[/dim]")
             process.wait()
             return process.returncode
 
@@ -314,7 +328,23 @@ def handle_command(agent, command):
     base = cmd[0]
 
     if base == "/profile":
-        info_panel(f"AGENT IDENTITY PROTOCOL\n\n{agent.profile.summary()}")
+        from lirox.agent.learning_engine import LearningEngine
+        stats = agent.learning.get_stats_display() if hasattr(agent, 'learning') else {}
+        learn_text = ""
+        if stats:
+            top_i = ", ".join(f"{i}({c}x)" for i, c in stats.get("top_intents", [])[:3]) or "none"
+            top_t = ", ".join(t for t, _ in stats.get("top_topics", [])[:5]) or "none"
+            sat = stats.get("satisfaction_score", 1.0)
+            learn_text = (
+                f"\n\nLEARNING ENGINE\n"
+                f"  Sessions   : {stats.get('total_sessions', 0)}\n"
+                f"  Interactions: {stats.get('total_interactions', 0)}\n"
+                f"  Top intents: {top_i}\n"
+                f"  Hot topics : {top_t}\n"
+                f"  Satisfaction: {sat:.0%}\n"
+                f"  Peak hour  : {stats.get('most_active_hour', 'N/A')}:00"
+            )
+        info_panel(f"AGENT IDENTITY PROTOCOL\n\n{agent.profile.summary()}{learn_text}")
     elif base == "/memory":
         stats = agent.memory.get_stats()
         text = f"Neural Connections: {stats['total_messages']}\nUser Signals: {stats['user_messages']}\nLast Update: {stats['newest']}"
@@ -458,166 +488,152 @@ def handle_command(agent, command):
                 os.path.join(agent.scheduler.storage_file),
                 os.path.join(os.getcwd(), ".lirox_history")
             ]
+            # Also purge learning engine
+            from lirox.config import DATA_DIR
+            learn_path = os.path.join(DATA_DIR, "learning_engine.json")
+            files_to_purge.append(learn_path)
+
             for f in files_to_purge:
-                if os.path.exists(f):
+                if f and os.path.exists(f):
                     os.remove(f)
-                    print(f"  [dim]Purged: {os.path.basename(f)}[/dim]")
-            
+                    console.print(f"  [dim]Purged: {os.path.basename(f)}[/dim]")
+
             success_message("Kernel reset complete. Shutting down for reboot.")
             sys.exit(0)
 
     elif base == "/add-search-api":
         run_search_api_setup()
-    elif base == "/help":
-        help_text = (
-            "COMMAND REFERENCE\n\n"
-            "── Research (v0.6) ─────────────────────────────────────────\n"
-            "  /research \"Q\"    Deep research any topic\n"
-            "  /research \"Q\" --depth deep    Extended 12-source research\n"
-            "  /sources         View sources from last research\n"
-            "  /tier            Show current research tier & APIs\n"
-            "  /add-search-api  Add Tavily/Serper/Exa search keys\n\n"
-            "── Browser (v0.7) ─────────────────────────────────────────\n"
-            "  /fetch <url>     Fetch & extract page content\n"
-            "  /scrape <url>    Extract structured data from page\n"
-            "  /browser         Show headless browser subsystem status\n\n"
-            "── Agent ────────────────────────────────────────────────\n"
-            "  /profile    Show agent identity and profile\n"
-            "  /memory     Show memory core statistics\n"
-            "  /test       Run kernel diagnostics suite\n"
-            "  /clear      Purge conversation history\n"
-            "  /trace      View low-level tool logs\n"
-            "  /reasoning  Review the last strategy trace\n"
-            "  /models     List active LLM providers\n"
-            "  /add-api    Configure API keys\n"
-            "  /schedule \"Q\" [--when X] Defer a mission\n"
-            "  /run-task ID Run a scheduled task immediately\n"
-            "  /update     Check and apply kernel updates\n"
-            "  /exit       Safely terminate the kernel"
-        )
-        info_panel(help_text)
-
-    elif base == "/fetch":
-        # v0.7: /fetch <url> — Quick page fetch with headless browser
-        url = command[len("/fetch "):].strip().strip('"\'')
-        if not url or not url.startswith("http"):
-            info_panel("Usage: /fetch <url>\nExample: /fetch https://news.ycombinator.com")
+    elif base in ("/web", "/fetch", "/scrape", "/browser"):
+        # Phase 9: /web is the unified alias; /fetch, /scrape, /browser still work
+        if base == "/browser" and len(cmd) == 1:
+            # Show browser status
+            try:
+                from lirox.tools.browser_tool import get_browser_status
+                status = get_browser_status()
+                binary_status = "[bold green]✓ Available[/]" if status['binary_available'] else "[bold red]✗ Not Found[/]"
+                running = "[bold green]✓ Running[/]" if status.get('browser_running') else "[dim]Idle[/]"
+                text = (
+                    f"HEADLESS BROWSER SUBSYSTEM (v0.8.5)\n\n"
+                    f"  Binary:    {binary_status}\n"
+                    f"  Path:      {status.get('binary_path', 'N/A')}\n"
+                    f"  Status:    {running}\n"
+                    f"  Sessions:  {status.get('active_sessions', 0)}/{status.get('max_instances', 5)} active\n"
+                )
+                info_panel(text)
+            except ImportError:
+                info_panel("Lightpanda not installed. Using requests-based fetching instead.")
+            except Exception as e:
+                error_panel("BROWSER STATUS ERROR", str(e))
             return
 
-        spinner = AgentSpinner("Fetching page with headless browser...")
-        spinner.start()
-        try:
-            from lirox.tools.browser_tool import HeadlessBrowserTool
-            hb = HeadlessBrowserTool()
-            result = hb.fetch_page(url, extract="markdown")
-            spinner.stop()
+        # Extract URL from command
+        raw = command.split(maxsplit=1)[1].strip().strip('"\'')
+        url = raw if raw.startswith("http") else None
 
-            if result.get("status") == "success":
-                content = result.get("data", {}).get("markdown", "")
-                method = result.get("metadata", {}).get("method", "unknown")
-                duration = result.get("metadata", {}).get("duration", 0)
-                title = result.get("metadata", {}).get("title", "")
-
-                from lirox.ui.display import CLR_ACCENT
-                console.print(f"\n[bold]{title}[/bold]" if title else "")
-                console.print(f"[dim]Method: {method} | Duration: {duration}s | URL: {url}[/dim]\n")
-                # Show first 3000 chars
-                console.print(f"[{CLR_ACCENT}]{content[:3000]}[/]")
-                if len(content) > 3000:
-                    console.print(f"\n[dim]... ({len(content)} chars total, truncated)[/dim]")
-                console.print()
-            else:
-                error_panel("FETCH ERROR", result.get("error", "Unknown error"))
-        except Exception as e:
-            spinner.stop()
-            error_panel("FETCH ERROR", str(e))
-
-    elif base == "/scrape":
-        # v0.7: /scrape <url> — Extract structured data
-        url = command[len("/scrape "):].strip().strip('"\'')
-        if not url or not url.startswith("http"):
+        if not url:
             info_panel(
-                "Usage: /scrape <url>\n"
-                "Extracts all tables, links, and text from the target page.\n"
-                "Example: /scrape https://example.com"
+                "Usage: /web <url>\n"
+                "  or   /fetch <url>\n"
+                "  or   /scrape <url>\n"
+                "Fetches and extracts page content (uses headless browser if available, falls back to requests)."
             )
             return
 
-        spinner = AgentSpinner("Scraping page with headless browser...")
+        spinner = AgentSpinner("Fetching page...")
         spinner.start()
         try:
-            from lirox.tools.browser_tool import HeadlessBrowserTool
-            hb = HeadlessBrowserTool()
-            result = hb.fetch_page(url, extract="all")
+            from lirox.agent.unified_executor import UnifiedExecutor
+            ue = _executor_cache.get(f"{id(agent)}_auto") or UnifiedExecutor(provider="auto")
+            result = ue._fetch_url_smart(url, query="")
             spinner.stop()
 
-            if result.get("status") == "success":
-                data = result.get("data", {})
-                method = result.get("metadata", {}).get("method", "unknown")
-                duration = result.get("metadata", {}).get("duration", 0)
-
-                console.print(f"\n[dim]Method: {method} | Duration: {duration}s[/dim]")
-
-                if data.get("tables"):
-                    console.print(f"\n[bold cyan]📊 Tables Found: {len(data['tables'])}[/]")
-                    for i, table in enumerate(data['tables'][:3]):
-                        console.print(f"  Table {i+1}: {len(table)} rows")
-                        if table:
-                            console.print(f"  Columns: {', '.join(table[0].keys())}")
-
-                if data.get("links"):
-                    console.print(f"\n[bold cyan]🔗 Links Found: {len(data['links'])}[/]")
-                    for link in data['links'][:10]:
-                        console.print(f"  • {link.get('text', 'N/A')[:50]} → {link.get('url', '')[:60]}")
-
-                if data.get("markdown"):
-                    word_count = len(data['markdown'].split())
-                    console.print(f"\n[bold cyan]📄 Content: {word_count} words[/]")
-                    console.print(f"[dim]{data['markdown'][:500]}...[/dim]")
-
+            if result:
+                from lirox.ui.display import CLR_ACCENT
+                console.print(f"\n[dim]URL: {url} | Method: {result.get('method', '?')}[/dim]")
+                console.print(f"\n[{CLR_ACCENT}]{result['content'][:3000]}[/]")
+                if len(result['content']) > 3000:
+                    console.print(f"[dim]... ({len(result['content'])} total chars, truncated)[/dim]")
                 console.print()
             else:
-                error_panel("SCRAPE ERROR", result.get("error", "Unknown error"))
+                error_panel("FETCH ERROR", "Could not retrieve content from that URL.")
         except Exception as e:
-            spinner.stop()
-            error_panel("SCRAPE ERROR", str(e))
+            error_panel("FETCH ERROR", str(e))
+        return
 
-    elif base == "/browser":
-        # v0.7: Show headless browser subsystem status
-        try:
-            from lirox.tools.browser_tool import get_browser_status
-            status = get_browser_status()
-
-            binary_status = "[bold green]✓ Available[/]" if status['binary_available'] else "[bold red]✗ Not Found[/]"
-            running = "[bold green]✓ Running[/]" if status.get('browser_running') else "[dim]Idle[/]"
-
-            text = (
-                f"HEADLESS BROWSER SUBSYSTEM (v0.7)\n\n"
-                f"  Binary:    {binary_status}\n"
-                f"  Path:      {status.get('binary_path', 'N/A')}\n"
-                f"  Status:    {running}\n"
-                f"  Port:      {status.get('port', 'N/A')}\n"
-                f"  Sessions:  {status.get('active_sessions', 0)}/{status.get('max_instances', 5)} active\n"
-                f"  Available: {status.get('available_sessions', 0)} pooled\n"
-            )
-            if status.get('browser_running'):
-                text += f"  PID:       {status.get('browser_pid', 'N/A')}\n"
-
-            info_panel(text)
-        except Exception as e:
-            error_panel("BROWSER STATUS ERROR", str(e))
+    elif base == "/help":
+        _show_animated_help()
     else:
-        print(f"Unknown command: {base}. Type /help for assistance.")
+        console.print(f"[dim]Unknown command: {base}. Type /help for assistance.[/dim]")
+
+def _show_animated_help():
+    """Phase 3: Animated help panel with categorised command reference."""
+    from rich.table import Table
+    from lirox.config import APP_VERSION
+
+    table = Table(show_header=True, header_style="bold #FFC107", border_style="dim", padding=(0, 1))
+    table.add_column("Command", style="bold white", no_wrap=True)
+    table.add_column("Description", style="dim white")
+
+    rows = [
+        ("", "[bold #FFC107]─── CORE ────────────────────────[/]"),
+        ("/help",          "Show this reference"),
+        ("/profile",       "Agent identity + learning stats"),
+        ("/models",        "List active LLM providers"),
+        ("/add-api",       "Configure LLM API keys"),
+        ("/reset",         "Purge all data and restart"),
+        ("", ""),
+        ("", "[bold #FFC107]─── RESEARCH ────────────────────[/]"),
+        ('/research "Q"',  "Deep multi-source research"),
+        ('/research "Q" --depth deep', "Extended 12-source research"),
+        ("/sources",       "Show sources from last research"),
+        ("/tier",          "Research tier & available APIs"),
+        ("/add-search-api","Add Tavily / Serper / Exa keys"),
+        ("", ""),
+        ("", "[bold #FFC107]─── WEB & BROWSER ───────────────[/]"),
+        ("/web <url>",     "Fetch page (headless or requests)"),
+        ("/fetch <url>",   "Same as /web"),
+        ("/scrape <url>",  "Extract tables/links from page"),
+        ("/browser",       "Headless browser status"),
+        ("", ""),
+        ("", "[bold #FFC107]─── TASKS & MEMORY ──────────────[/]"),
+        ("/memory",        "Memory core statistics"),
+        ("/clear",         "Purge conversation history"),
+        ("/trace",         "Low-level execution trace"),
+        ("/reasoning",     "Last strategy reasoning"),
+        ("/test",          "Run kernel diagnostics"),
+        ("/update",        "Check & apply git updates"),
+        ('/schedule "Q" --when X', "Defer a mission"),
+        ("/run-task ID",   "Force-run a scheduled task"),
+        ("/exit",          "Safely terminate the kernel"),
+    ]
+
+    for cmd, desc in rows:
+        table.add_row(cmd, desc)
+
+    from rich.panel import Panel
+    from rich.box import ROUNDED
+    from lirox.ui.display import console, CLR_LIROX
+    console.print(Panel(
+        table,
+        title=f"[{CLR_LIROX}] LIROX v{APP_VERSION} — COMMAND REFERENCE [/]",
+        border_style=CLR_LIROX,
+        box=ROUNDED,
+        padding=(1, 2),
+    ))
+
 
 def run_setup(agent):
-    info_panel("AGENT GENESIS PROTOCOL")
-    agent_name = input("Designate Agent Name: ").strip() or "Lirox"
-    user_name = input("Identity Operator: ").strip() or "Operator"
-    niche = input("Primary Niche: ").strip() or "Generalist"
-    agent.profile.update("agent_name", agent_name)
-    agent.profile.update("user_name", user_name)
-    agent.profile.update("niche", niche)
-    success_message(f"Neural pathways initialized. Welcome, {user_name}. I am {agent_name} v{APP_VERSION} CLI.")
+    """Phase 3: Rich interactive onboarding wizard."""
+    from lirox.ui.wizard import run_setup_wizard
+    try:
+        run_setup_wizard(agent.profile)
+    except KeyboardInterrupt:
+        # Graceful fallback if user hits Ctrl+C during setup
+        console.print("\n  [dim]Setup interrupted. Using defaults. Run /add-api to add API keys.[/dim]")
+        if not agent.profile.data.get("agent_name") or agent.profile.data.get("agent_name") == "Lirox":
+            agent.profile.update("agent_name", "Lirox")
+        if not agent.profile.data.get("user_name") or agent.profile.data.get("user_name") == "Operator":
+            agent.profile.update("user_name", "Operator")
 
 def run_api_setup():
     info_panel("API CHANNEL CONFIGURATION")
