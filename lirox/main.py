@@ -276,7 +276,6 @@ def handle_command(agent, command):
     elif base in ("exit", "quit", "/exit"):
         from lirox.ui.display import info_panel
         info_panel("Shutting down. Goodbye.")
-        import sys
         sys.exit(0)
     
     else:
