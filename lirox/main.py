@@ -90,7 +90,8 @@ def main():
         sys.exit(0)
 
     # Interactive Loop
-    show_status_card(agent.profile.data, available_providers())
+    tokens = agent.executor.get_browser_token_status()
+    show_status_card(agent.profile.data, available_providers(), token_status=tokens)
     
     last_interrupt_time = 0
     while True:

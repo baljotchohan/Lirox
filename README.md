@@ -120,6 +120,28 @@ python -m lirox.main
 
 ---
 
+## 🌐 Browser & Real-Time Data
+
+Lirox v0.7.1 features a high-performance, secure browser engine that operates in two distinct modes. This hybrid architecture ensures that the agent can scrape data from simple static pages and complex interactive web apps alike.
+
+### Hybrid Engine Comparison
+
+| Feature | **HTTP Logic (Requests)** | **Headless CDP (Lightpanda)** |
+| :--- | :--- | :--- |
+| **Speed** | ⚡ Ultra Fast (< 500ms) | 🐢 Moderate (2s - 5s) |
+| **JS Rendering** | ❌ No | ✅ Yes (Full Engine) |
+| **Bypass Blocks** | ✅ Excellent (Native SSL) | ⚠️ Moderate (Can be detected) |
+| **Portability** | ✅ Runs Everywhere | 🛠️ Requires Binary |
+| **Security** | 🛡️ SSRF Blocklist | 🛡️ CDP Isolation |
+
+### Professional Data Extraction
+Lirox doesn't just read text; it **understands data structures**. The `RealTimeDataExtractor` engine is optimized for:
+- **Financial Metrics**: BTC/ETH prices, Stock tickers (AAPL, TSLA), and Forex rates.
+- **News Aggregation**: Harvesting titles, points, and timestamps from sources like **Hacker News** and **Wikipedia**.
+- **Market Sentiment**: Detecting percentage changes and volatility indicators directly from the source HTML.
+
+---
+
 ## 🏛️ Local-First Reliability
 - **Local Memory**: Your conversation history and profiles never leave your machine.
 - **Zero-Cloud Logic**: Strategy and planning are executed locally.

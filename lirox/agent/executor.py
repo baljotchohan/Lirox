@@ -677,22 +677,10 @@ class Executor:
             "attempts":      result.get("attempt", result.get("attempts", 1)),
         })
 
-    def get_trace(self) -> str:
-        if not self.last_trace:
-            return "No execution trace available. Run a task first."
-
-        lines = ["### 🔍 System Execution Trace", ""]
-        for entry in self.last_trace:
-            icon   = "✓" if entry["status"] == "success" else "✗" if entry["status"] == "failed" else "⊘"
-            status = entry["status"]
-            lines.append(f"{icon} Step {entry['step_id']}: {entry['task']}")
-            lines.append(f"  Tools: {', '.join(entry['tools'])}")
-            lines.append(f"  Status: {status} | Duration: {entry['duration']}s | Attempts: {entry['attempts']}")
-            if entry["output_preview"]:
-                preview = entry["output_preview"][:100].replace("\n", " ")
-                lines.append(f"  Output: {preview}")
-            if entry["error"]:
-                lines.append(f"  Error: {entry['error'][:100]}")
-            lines.append("")
-
         return "\n".join(lines)
+
+    def get_browser_token_status(self) -> Optional[Dict[str, Any]]:
+        """v0.7.1: Retrieve the current token rate-limit status for UI display."""
+        if self.headless_browser and hasattr(self.headless_browser, "_security") and self.headless_browser._security:
+            return self.headless_browser._security.get_token_status()
+        return None
