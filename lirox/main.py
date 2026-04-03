@@ -162,12 +162,7 @@ def process_input(agent, user_input, verbose=False):
         
         # Learning hook
         if hasattr(agent, 'learning'):
-            agent.learning.on_interaction(
-                user_input=user_input,
-                response=result.output,
-                mode=result.skill_name,
-                confidence=result.confidence,
-            )
+            agent.learning.on_interaction(user_input, result.output)
         
     except Exception as e:
         error_panel("EXECUTION ERROR", str(e))
