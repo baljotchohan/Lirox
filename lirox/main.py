@@ -69,6 +69,8 @@ from lirox.utils.llm import is_task_request, available_providers
 from lirox.utils.meta_parser import extract_meta
 from lirox.config import APP_VERSION
 from lirox.utils.intent_router import router
+from lirox.utils.smart_router import smart_router
+from lirox.utils.response_formatter import response_formatter
 
 def main():
     parser = argparse.ArgumentParser(description="Lirox Professional CLI Agent OS")
@@ -481,6 +483,9 @@ def handle_command(agent, command):
     elif base == "/help":
         help_text = (
             "COMMAND REFERENCE\n\n"
+            "── Smart Engine (Vision 1) ──────────────────────────────────\n"
+            "  /smart \"Q\"       Auto-route: CHAT / RESEARCH / BROWSER / HYBRID\n"
+            "  /smart           Show smart mode help and examples\n\n"
             "── Research (v0.6) ─────────────────────────────────────────\n"
             "  /research \"Q\"    Deep research any topic\n"
             "  /research \"Q\" --depth deep    Extended 12-source research\n"
@@ -616,6 +621,29 @@ def handle_command(agent, command):
             info_panel(text)
         except Exception as e:
             error_panel("BROWSER STATUS ERROR", str(e))
+
+    elif base == "/smart":
+        # Vision 1: Unified Research + Browser Engine
+        query = command[len("/smart "):].strip().strip('"\'')
+        if not query:
+            info_panel(
+                "SMART MODE — Unified Research + Browser Engine\n\n"
+                "Usage: /smart \"your query\"\n\n"
+                "Modes:\n"
+                "  CHAT     — Direct LLM answer (conversational queries)\n"
+                "  RESEARCH — Multi-source API research\n"
+                "  BROWSER  — Direct page scraping / extraction\n"
+                "  HYBRID   — Research + browser verification (real-time data)\n\n"
+                "Examples:\n"
+                "  /smart \"What is AI?\"\n"
+                "  /smart \"Research AI history\"\n"
+                "  /smart \"Extract from https://bitcoin.com\"\n"
+                "  /smart \"Current Bitcoin price\""
+            )
+            return
+
+        run_smart(agent, query)
+
     else:
         print(f"Unknown command: {base}. Type /help for assistance.")
 
@@ -710,6 +738,47 @@ def run_deep_research(agent, query: str, depth: str = "standard"):
         except Exception as e:
             progress.stop()
             error_panel("RESEARCH ERROR", str(e))
+
+def run_smart(agent, query: str):
+    """Vision 1: Unified Research + Browser Engine via SmartRouter."""
+    from lirox.agent.unified_executor import UnifiedExecutor
+
+    # Show routing decision before executing
+    decision = smart_router.route(query)
+    console.print(
+        f"\n[dim]🔀 Routing: [bold]{decision.mode}[/bold] "
+        f"({int(decision.confidence * 100)}% confidence) — {decision.reasoning}[/dim]"
+    )
+
+    spinner = AgentSpinner(f"Running in {decision.mode} mode...")
+    spinner.start()
+    try:
+        ue = UnifiedExecutor(agent, provider="auto")
+        response = ue.run(query, verbose=True)
+        spinner.stop()
+        response_formatter.render_to_console(response, console)
+
+        # Persist research sources for /sources command
+        if hasattr(response, "sources") and response.sources:
+            # Wrap plain dicts as a lightweight adapter for /sources compatibility
+            class _SourceAdapter:
+                def __init__(self, d):
+                    self.citation_id = d.get("citation_id", 0)
+                    self.title = d.get("title", "")
+                    self.domain = d.get("domain", "")
+                    self.score = d.get("confidence", 0.0)
+                    self.url = d.get("url", "")
+            agent._smart_sources = [_SourceAdapter(s) for s in response.sources]
+
+        # Save summary to memory
+        summary = response.answer[:300] if response.answer else ""
+        agent.memory.save_memory("user", f"SMART: {query}")
+        agent.memory.save_memory("assistant", f"SMART {response.mode}: {summary}")
+
+    except Exception as e:
+        spinner.stop()
+        error_panel("SMART MODE ERROR", str(e))
+
 
 def display_research_report(report, report_path: str):
     """Display research results in the terminal."""
