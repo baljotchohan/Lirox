@@ -1,5 +1,5 @@
 """
-Lirox v0.8.0 — Enhanced Executor
+Lirox v0.8.5 — Enhanced Executor
 
 Executes structured plans step-by-step with:
 - Parallel execution of independent steps (ThreadPoolExecutor)
@@ -9,7 +9,7 @@ Executes structured plans step-by-step with:
 - Retry logic with exponential backoff
 - Per-step status tracking and execution trace
 - Output validation — detects tool failures even when no exception is thrown
-- Headless browser for dynamic content & real-time data (v0.8.0)
+- Headless browser for dynamic content & real-time data (v0.8.5)
 """
 
 import time

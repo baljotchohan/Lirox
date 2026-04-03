@@ -1,5 +1,5 @@
 """
-Lirox v0.8.0 — Headless Browser Tool
+Lirox v0.8.5 — Headless Browser Tool
 
 High-level browser API registered with the Lirox executor.
 Provides fetch_page, interact_with_page, extract_structured_data,
