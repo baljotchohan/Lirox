@@ -1,38 +1,40 @@
-"""
-Lirox v0.5 — Professional Terminal UI (Lion Edition)
-
-Aesthetic components for the command-line experience:
-- Modern, hacker-ready terminal panels in Lion Yellow.
-- Real-time spinners with dynamic message updates.
-- System status cards with version v0.5.
-"""
-
+"""Lirox v2.0 — Agent-aware Terminal UI with Rich."""
 from rich.console import Console
 from rich.panel import Panel
-from rich.live import Live
-from rich.spinner import Spinner
 from rich.table import Table
-from rich.text import Text
-from rich.layout import Layout
-from rich.columns import Columns
-from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TimeRemainingColumn
+
 from lirox.config import APP_VERSION
 
 console = Console()
 
-# ─── Color Palette ──────────────────────────────────────────────────────────
-# Lion Branding: Yellow (#FFC107) and Gold variants.
+# Color palette
+CLR_LIROX = "bold #FFC107"
+CLR_ACCENT = "bold #FFD54F"
+CLR_SUCCESS = "bold #10b981"
+CLR_ERROR = "bold #ef4444"
+CLR_WARN = "bold #f59e0b"
+CLR_DIM = "dim #94a3b8"
+CLR_THINK = "bold #a78bfa"
+CLR_FINANCE = "bold #22d3ee"
+CLR_CODE = "bold #34d399"
+CLR_BROWSER = "bold #f97316"
+CLR_RESEARCH = "bold #818cf8"
 
-CLR_LIROX = "bold #FFC107"  # Official Lirox Yellow
-CLR_ACCENT = "bold #FFD54F" # Amber Lite
-CLR_SUCCESS = "bold #10b981" # Emerald Green
-CLR_ERROR = "bold #ef4444"   # Rose Red
-CLR_WARN = "bold #FFC107"    # Standard Yellow
-CLR_DIM = "dim #94a3b8"      # Slate
-CLR_WHITE = "bold #ffffff"
-CLR_PURPLE = "bold #a855f7"
-
-# ─── Logos & Branding ───────────────────────────────────────────────────────
+AGENT_COLORS = {
+    "finance": CLR_FINANCE,
+    "code": CLR_CODE,
+    "browser": CLR_BROWSER,
+    "research": CLR_RESEARCH,
+    "chat": CLR_ACCENT,
+}
+AGENT_ICONS = {
+    "finance": "📊",
+    "code": "💻",
+    "browser": "🌐",
+    "research": "🔬",
+    "chat": "💬",
+    "thinking": "🧠",
+}
 
 LOGO = f"""
   [bold #FFB300]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
@@ -41,383 +43,90 @@ LOGO = f"""
   [bold #FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
   [bold #FFB300]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
   [bold #FFA000]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
-  [{CLR_LIROX}]v{APP_VERSION} ✦ AUTONOMOUS KERNEL[/]
+  [{CLR_LIROX}]v{APP_VERSION} ✦ MULTI-AGENT KERNEL[/]
 """
 
 
-_LION_FRAMES = [
-    # Frame 1 — faint outline
-    f"""
-  [dim #FFC107]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
-  [dim #FFC107]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]
-  [dim #FFC107]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]
-  [dim #FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
-  [dim #FFC107]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
-  [dim #FFC107]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
-  [dim]v{APP_VERSION} ✦ AUTONOMOUS KERNEL[/]
-""",
-    # Frame 2 — brighter
-    f"""
-  [#FFB300]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
-  [#FFC107]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]
-  [#FFD54F]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]
-  [#FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
-  [#FFB300]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
-  [#FFA000]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
-  [dim #FFC107]v{APP_VERSION} ✦ AUTONOMOUS KERNEL[/]
-""",
-    # Frame 3 — full brightness (final)
-    f"""
-  [bold #FFB300]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
-  [bold #FFC107]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]
-  [bold #FFD54F]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]
-  [bold #FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
-  [bold #FFB300]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
-  [bold #FFA000]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
-  [bold #FFC107]v{APP_VERSION} ✦ AUTONOMOUS KERNEL[/]
-""",
-]
-
-
 def show_welcome():
-    """v1.0 — Animated lion launch."""
-    import time
-    from rich.live import Live
-    from rich.text import Text
-    
-    frames = [
-        f"[{CLR_LIROX}]\n        /\\_/\\\n       ( o.o )\n        > ^ <\n[/]",
-        f"[{CLR_LIROX}]\n      /\\_____/\\\n     /  o   o  \\\n    (  =  ^  =  )\n     \\  -----  /\n[/]",
-        f"[{CLR_LIROX}]\n     /\\_________/\\\n    /  O       O  \\\n   |    __===__    |\n   |   / ROAR! \\   |\n    \\  \\_______/  /\n     \\___________/\n   ~~~~~~~~~~~~~~~~~~~~\n[/]",
-    ]
-    
-    with Live(console=console, refresh_per_second=6, transient=True) as live:
-        for frame in frames:
-            live.update(Text.from_markup(frame))
-            time.sleep(0.4)
-    
     console.print(LOGO)
-    console.print(f"  [{CLR_DIM}]Autonomous AI Agent — Skill-based architecture[/]\n")
-
-
-# ─── Status Cards ───────────────────────────────────────────────────────────
-
-def show_status_card(profile_data, providers, token_status=None):
-    table = Table(box=None, padding=(0, 2))
-    table.add_column("Kernel Status", style=CLR_LIROX)
-    table.add_column("Operator Domain", style=CLR_ACCENT)
-    
-    agent_name = profile_data.get("agent_name", "Lirox")
-    user_name = profile_data.get("user_name", "Operator")
-    niche = profile_data.get("niche", "Generalist")
-    
-    table.add_row(
-        f"Designation: [white]{agent_name}[/]\nEngine: [white]v{APP_VERSION}[/]",
-        f"Operator: [white]{user_name}[/]\nDomain: [white]{niche}[/]"
+    console.print(
+        f"  [{CLR_DIM}]Agents: Finance · Code · Browser · Research · Chat[/]"
     )
-    
-    prov_str = ", ".join(available_styled_providers(providers))
-    
-    # Token usage bar for rate-limit visibility
-    token_line = ""
-    if token_status:
-        avail = token_status.get("available", 0)
-        used = token_status.get("used", 0)
-        capacity = token_status.get("capacity", 100)
-        fill = int((avail / capacity) * 10) if capacity > 0 else 0
-        bar = "█" * fill + "░" * (10 - fill)
-        token_line = (
-            f"\n[{CLR_DIM}]Tokens:[/] [{CLR_SUCCESS}]{bar}[/] "
-            f"[white]{avail}[/][{CLR_DIM}]/{capacity} avail[/]  "
-            f"[{CLR_WARN}]{used}[/] [{CLR_DIM}]used[/]"
+    console.print(f"  [{CLR_DIM}]Type /help for commands · /agents for status[/]\n")
+
+
+def show_thinking(msg: str):
+    console.print(
+        Panel(
+            f"[{CLR_THINK}]{msg}[/]",
+            title=f"[{CLR_THINK}]🧠 THINKING[/]",
+            border_style="#a78bfa",
+            padding=(0, 1),
         )
-    
-    console.print(Panel(
-        table,
-        title=f"[{CLR_LIROX}] INITIALIZING CORE [/]",
-        subtitle=f"[{CLR_DIM}] Channels: {prov_str or 'None'} [/]{token_line}",
-        border_style=CLR_LIROX,
-        padding=(1, 2)
-    ))
+    )
 
-def available_styled_providers(providers):
-    return [f"[bold green]{p}[/]" for p in providers[:5]]
 
-# ─── Task Progress Tracking ─────────────────────────────────────────────────
-
-class TaskProgressBar:
-    """Professional progress tracking for multi-step tasks."""
-    
-    def __init__(self, total_steps: int, title: str = "Task Execution"):
-        self.total_steps = total_steps
-        self.title = title
-        self.progress = None
-        self.task_id = None
-        
-    def start(self):
-        self.progress = Progress(
-            SpinnerColumn(style=CLR_LIROX),
-            TextColumn("[progress.description]{task.description}", style=CLR_WHITE),
-            BarColumn(bar_width=30, style=CLR_LIROX),
-            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-            TimeRemainingColumn(),
-            console=console,
-            transient=False
+def show_agent_event(agent: str, etype: str, msg: str):
+    color = AGENT_COLORS.get(agent, CLR_ACCENT)
+    icon = AGENT_ICONS.get(agent, "⚡")
+    if etype == "agent_start":
+        console.print(
+            f"  [{color}]{icon} {agent.upper()} AGENT[/] [{CLR_DIM}]activated[/]"
         )
-        self.progress.start()
-        self.task_id = self.progress.add_task(f"[{CLR_LIROX}]{self.title}[/]", total=self.total_steps)
-        return self
-    
-    def update(self, advance: int = 1, description: str = None):
-        if self.progress and self.task_id is not None:
-            if description:
-                self.progress.update(self.task_id, description=f"[{CLR_LIROX}]{description}[/]")
-            self.progress.update(self.task_id, advance=advance)
-    
-    def stop(self):
-        if self.progress:
-            self.progress.stop()
-    
-    def __enter__(self):
-        self.start()
-        return self
-    
-    def __exit__(self, *args):
-        self.stop()
+    elif etype == "tool_call":
+        console.print(f"  [{CLR_DIM}]  ├─ 🔧 {msg}[/]")
+    elif etype == "tool_result":
+        console.print(f"  [{CLR_DIM}]  ├─ ✓ {msg[:100]}[/]")
+    elif etype == "agent_progress":
+        console.print(f"  [{CLR_DIM}]  ├─ {msg}[/]")
+    elif etype == "error":
+        console.print(f"  [{CLR_ERROR}]  ├─ ✖ {msg}[/]")
 
 
-class AdvancedTaskPanel:
-    """Display real-time task execution with step tracking."""
-    
-    def __init__(self, goal: str, total_steps: int):
-        self.goal = goal
-        self.total_steps = total_steps
-        self.current_step = 0
-        self.step_results = []
-        
-    def start(self):
-        console.print(Panel(
-            f"[{CLR_LIROX}]AUTONOMOUS MISSION INITIATED[/]\n\n"
-            f"Goal: [white]{self.goal}[/]\n"
-            f"Steps: [white]{self.total_steps}[/]",
-            border_style=CLR_LIROX,
-            padding=(1, 2)
-        ))
-    
-    def update_step(self, step_num: int, task: str, status: str, details: str = ""):
-        """Update UI with current step progress."""
-        self.current_step = step_num
-        
-        icon_map = {
-            "waiting": "⏳",
-            "running": "⚙️ ",
-            "success": "✅",
-            "error": "❌"
-        }
-        color_map = {
-            "waiting": CLR_DIM,
-            "running": CLR_LIROX,
-            "success": CLR_SUCCESS,
-            "error": CLR_ERROR
-        }
-        
-        icon = icon_map.get(status, "•")
-        color = color_map.get(status, CLR_DIM)
-        
-        msg = f"  {icon} [Step {step_num}/{self.total_steps}] [{color}]{task}[/]"
-        if details:
-            msg += f"\n     [dim]{details}[/]"
-        
-        console.print(msg)
-        self.step_results.append({
-            "step": step_num,
-            "task": task,
-            "status": status,
-            "details": details
-        })
-    
-    def finish(self, summary: str = ""):
-        success_message(f"Mission Complete\n\n{summary}")
-
-# ─── Spinners & Live Updating ───────────────────────────────────────────────
-
-class AgentSpinner:
-    """Manages a persistent, updateable spinner for the terminal."""
-    def __init__(self, message="Thinking..."):
-        self.message = message
-        self.spinner = Spinner("dots", style=CLR_LIROX)
-        self.live = None
-
-    def start(self):
-        self.live = Live(self._render(), refresh_per_second=10, transient=True)
-        self.live.start()
-
-    def update_message(self, new_message: str):
-        self.message = new_message
-        if self.live:
-            self.live.update(self._render())
-
-    def stop(self):
-        if self.live:
-            self.live.stop()
-
-    def _render(self):
-        return Columns([self.spinner, Text(f" {self.message}", style=CLR_ACCENT)])
-
-def _clean_thought_text(text: str) -> str:
-    """Strip residual markdown markers and unwanted asterisks/hashes."""
-    import re
-    # Remove bold/italic markers
-    text = re.sub(r'\*+', '', text)
-    # Remove header markers
-    text = re.sub(r'#+\s*', '', text)
-    # Restore some structure if needed, but keep it clean
-    return text.strip()
+def show_answer(answer: str, agent: str = "chat"):
+    console.print(f"\n[{AGENT_COLORS.get(agent, CLR_ACCENT)}]{answer.strip()}[/]\n")
 
 
-def thinking_panel(goal: str, thought_trace: str):
-    """Render a sophisticated reasoning panel with phase-based layouts."""
-    phases = {"PHASE 1": "", "PHASE 2": "", "PHASE 3": ""}
-    current_phase = None
-
-    for line in thought_trace.split("\n"):
-        line = _clean_thought_text(line)
-        if not line: continue
-        
-        if "PHASE 1" in line.upper(): current_phase = "PHASE 1"
-        elif "PHASE 2" in line.upper(): current_phase = "PHASE 2"
-        elif "PHASE 3" in line.upper(): current_phase = "PHASE 3"
-        elif current_phase:
-            phases[current_phase] += line + "\n"
-
-    # Fallback if no phases found
-    if not any(phases.values()):
-        phases["PHASE 1"] = thought_trace
-
-    layout = Layout()
-    layout.split_column(
-        Layout(name="header", size=3),
-        Layout(name="body")
-    )
-    layout["body"].split_row(
-        Layout(Panel(phases["PHASE 1"].strip(), title="[bold]01 ANALYSIS", border_style=CLR_LIROX)),
-        Layout(Panel(phases["PHASE 2"].strip(), title="[bold]02 LOGIC", border_style="#4ecdc4")),
-        Layout(Panel(phases["PHASE 3"].strip(), title="[bold]03 RISK", border_style="#ff6b6b"))
-    )
-
-    header_text = Text.assemble(
-        (" 🧠 INTERNAL REASONING ", "bold black on #FFC107"),
-        (f"  Target: {goal[:50]}...", CLR_DIM)
-    )
-    layout["header"].update(header_text)
-
-    console.print("\n")
-    console.print(Panel(
-        layout,
-        border_style=CLR_LIROX,
-        padding=(1, 1),
-        height=18
-    ))
-    console.print("\n")
-
-# ─── Execution Trace ────────────────────────────────────────────────────────
-
-def show_plan_table(plan):
-    table = Table(title="STRATEGIC DEPLOYMENT PLAN", border_style=CLR_DIM, header_style=CLR_LIROX)
-    table.add_column("Phase", justify="center", width=6)
-    table.add_column("Objective", style="white")
-    table.add_column("Tools", justify="right", style=CLR_ACCENT)
-    
-    for i, step in enumerate(plan.get("steps", []), 1):
-        tools = ", ".join(step.get("tools", ["llm"]))
-        table.add_row(str(i), step["task"], tools)
-    
-    console.print(table)
-
-def execute_panel(command):
-    console.print(f"[{CLR_DIM}]DEPLOYING:[/] [bold white]{command}[/]")
-
-def update_plan_step(step_id, task, status="waiting"):
-    icon = "⏳" if status == "waiting" else "⚙️" if status == "progress" else "✅" if status == "success" else "❌"
-    color = CLR_DIM if status == "waiting" else CLR_LIROX if status == "progress" else CLR_SUCCESS if status == "success" else CLR_ERROR
-    
-    console.print(f"  {icon} [italic {color}]Phase {step_id}: {task}[/]")
-
-# ─── Success & Utilities ────────────────────────────────────────────────────
-
-def success_message(text):
-    console.print(Panel(
-        f"[{CLR_SUCCESS}]✓ MISSION PROTOCOL COMPLETE[/]\n\n{text}",
-        border_style=CLR_SUCCESS,
-        padding=(1, 2)
-    ))
-
-def error_panel(title, error):
-    console.print(Panel(
-        f"[{CLR_ERROR}]{error}[/]",
-        title=f"[{CLR_ERROR}] {title} [/]",
-        border_style=CLR_ERROR,
-        padding=(1, 2)
-    ))
-
-def info_panel(text):
-    console.print(Panel(text, border_style=CLR_LIROX, padding=(1, 2)))
-
-def confirm_prompt(message: str) -> bool:
-    from rich.prompt import Confirm
-    return Confirm.ask(f"[{CLR_WARN}]{message}[/]")
-
-def show_completion_art():
-    # Subtle solar flare in yellow
-    art = f"""
-    [{CLR_LIROX}]      .
-            .
-      .  :  .
-       : : :
-     '.: : :.'
-       ' : '
-         ' [/]
-    """
-    console.print(art)
-
-# ─── Research Output Formatting ────────────────────────────────────────────
-
-def format_research_summary(query: str, source_count: int, confidence: float, apis_used: list):
-    """Format a clean research summary header."""
-    confidence_bar = "█" * int(confidence * 10) + "░" * (10 - int(confidence * 10))
-    
-    table = Table(show_header=False, border_style=CLR_DIM)
-    table.add_row(f"[{CLR_LIROX}]Query[/]", f"[white]{query}[/]")
-    table.add_row(f"[{CLR_LIROX}]Sources[/]", f"[white]{source_count} analyzed[/]")
-    table.add_row(f"[{CLR_LIROX}]Confidence[/]", f"[{CLR_SUCCESS}]{confidence_bar}[/] [white]{int(confidence * 100)}%[/]")
-    table.add_row(f"[{CLR_LIROX}]APIs Used[/]", f"[white]{', '.join(apis_used) or 'DuckDuckGo'}[/]")
-    
-    console.print(Panel(
-        table,
-        title=f"[{CLR_LIROX}] RESEARCH COMPLETE [/]",
-        border_style=CLR_LIROX,
-        padding=(1, 2)
-    ))
-
-
-def format_findings_table(findings: list):
-    """Display findings with confidence indicators."""
-    table = Table(title="Key Findings", border_style=CLR_DIM, header_style=CLR_LIROX)
-    table.add_column("#", width=3)
-    table.add_column("Finding", style="white")
-    table.add_column("Confidence", justify="center")
-    table.add_column("Sources", width=8)
-    
-    for i, finding in enumerate(findings[:8], 1):
-        confidence = finding.get("confidence", "medium")
-        conf_icon = "🟢" if confidence == "high" else "🟡" if confidence == "medium" else "🔴"
-        citations = ", ".join(map(str, finding.get("citation_ids", [])[:3]))
-        
-        table.add_row(
-            str(i),
-            finding.get("claim", "")[:70],
-            f"{conf_icon} {confidence.capitalize()}",
-            f"[{citations}]" if citations else "—"
+def show_status_card(profile_data: dict, providers: list):
+    t = Table(box=None, padding=(0, 2), show_header=False)
+    t.add_column("Key", style=CLR_DIM)
+    t.add_column("Value", style="white")
+    t.add_row("Operator", profile_data.get("user_name", "Operator"))
+    t.add_row("Agent", profile_data.get("agent_name", "Lirox"))
+    t.add_row("Version", f"v{APP_VERSION}")
+    t.add_row("Providers", ", ".join(providers) if providers else "None configured")
+    t.add_row("Agents", "Finance · Code · Browser · Research · Chat")
+    console.print(
+        Panel(
+            t,
+            title=f"[{CLR_LIROX}]✦ SYSTEM STATUS[/]",
+            border_style="#FFC107",
+            padding=(0, 1),
         )
-    
-    console.print(table)
+    )
+    console.print()
+
+
+def error_panel(title: str, msg: str):
+    console.print(
+        Panel(
+            f"[{CLR_ERROR}]{msg}[/]",
+            title=f"[{CLR_ERROR}]{title}[/]",
+            border_style="#ef4444",
+        )
+    )
+
+
+def info_panel(msg: str):
+    console.print(
+        Panel(f"[{CLR_DIM}]{msg}[/]", border_style="#94a3b8", padding=(0, 1))
+    )
+
+
+def success_message(msg: str):
+    console.print(f"  [{CLR_SUCCESS}]✓ {msg}[/]")
+
+
+def confirm_prompt(msg: str) -> bool:
+    r = console.input(f"  [{CLR_WARN}]⚠ {msg} (y/n): [/]")
+    return r.strip().lower() in ("y", "yes")

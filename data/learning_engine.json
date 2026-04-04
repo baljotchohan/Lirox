@@ -1,0 +1,37 @@
+{
+  "version": "0.8.5",
+  "total_sessions": 1,
+  "total_interactions": 3,
+  "intent_counts": {
+    "coding": 2,
+    "general": 1
+  },
+  "topic_counts": {
+    "write": 2,
+    "code": 2,
+    "task": 1,
+    "information": 1,
+    "seems": 1
+  },
+  "hour_activity": {
+    "1": 1
+  },
+  "satisfaction_score": 1.0,
+  "negative_signals": 0,
+  "recent_queries": [
+    "can you write a code",
+    "??",
+    "can you write a code"
+  ],
+  "recent_topics": [
+    "write",
+    "code",
+    "task",
+    "information",
+    "seems",
+    "write",
+    "code"
+  ],
+  "last_session": "2026-04-04T01:25:32.636246",
+  "created_at": "2026-04-04T01:25:32.636243"
+}
