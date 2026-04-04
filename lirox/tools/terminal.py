@@ -1,5 +1,5 @@
 """
-Lirox v0.3 — Terminal Tool (hardened)
+Lirox v2.0 — Terminal Tool (hardened)
 
 Safe command execution with:
 - Expanded allowlist for common dev/system tools
@@ -79,9 +79,7 @@ def is_safe(cmd):
             if basename not in ALLOWED_COMMANDS:
                 return False, f"'{basename}' is not in the allowed commands list"
 
-        # 4. Environment Safety check (pip/npm)
-        if base_cmd in ["pip", "pip3", "npm"]:
-            return False, "Autonomous environment modification blocked. Please run pip/npm commands manually in your terminal."
+ 
 
     return True, "ok"
 

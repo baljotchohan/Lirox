@@ -1,5 +1,5 @@
 """
-Lirox v0.8 — Structured Logging System [FIX #3]
+Lirox v2.0 — Structured Logging System [FIX #3]
 
 Implements JSON-structured logging for debugging, auditing, and analysis.
 All logs include: timestamp, level, component, message, metadata.

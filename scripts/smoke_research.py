@@ -4,7 +4,7 @@ from lirox.agent.core import LiroxAgent
 from lirox.server.state import GlobalState
 
 async def test_research_synthesis():
-    print("🧪 Testing Lirox v0.4 Research Synthesis...")
+    print("🧪 Testing Lirox v2.0 Research Synthesis...")
     
     agent = LiroxAgent()
     

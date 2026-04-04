@@ -1,10 +1,10 @@
 """
-Lirox v0.7.1 — Browser Session Manager (Hardened)
+Lirox v2.0 — Browser Session Manager (Hardened)
 
 Manages Lightpanda browser instance lifecycle, session pooling,
 and provides sync wrappers for the async CDP bridge.
 
-Improvements over v0.7:
+Improvements over v2.0:
 - AsyncBridge class: prevents deadlocks with strict timeouts + task cleanup
 - Atomic session pool: thread-safe acquire/release with dead-session pruning
 - Session health tracking with configurable error thresholds

@@ -1,5 +1,5 @@
 """
-Lirox v0.6 — API Rate Limiter & Resource Monitor
+Lirox v2.0 — API Rate Limiter & Resource Monitor
 
 Prevents API abuse and monitors system resources to ensure safe autonomous execution.
 """
@@ -12,51 +12,41 @@ from lirox.ui.display import error_panel
 
 
 class RateLimiter:
-    """Rate limit requests per provider and domain."""
-    
-    def __init__(self):
-        self.call_history: Dict[str, list] = {}  # {key: [timestamps]}
-        self.limits: Dict[str, int] = {
-            "openai": 3500,      # tokens per minute
-            "gemini": 10000,
-            "groq": 25000,
-            "anthropic": 50000,
-            "default": 5000
-        }
-    
-    def is_allowed(self, provider: str, tokens: int = 100) -> bool:
-        """Check if request is allowed under rate limits."""
-        key = f"{provider}_{datetime.now().minute}"
-        if key not in self.call_history:
-            self.call_history[key] = []
-        
-        # Clean old entries (older than 1 minute)
-        cutoff = datetime.now() - timedelta(minutes=1)
-        self.call_history[key] = [
-            ts for ts in self.call_history[key]
-            if ts > cutoff
-        ]
-        
-        limit = self.limits.get(provider, self.limits["default"])
-        total_tokens = sum(1 for _ in self.call_history[key]) * tokens
-        
-        return total_tokens < limit
-    
-    def record_call(self, provider: str) -> None:
-        """Record a provider call with global cleanup to prevent memory leak."""
-        key = f"{provider}_{datetime.now().minute}"
-        if key not in self.call_history:
-            self.call_history[key] = []
-        self.call_history[key].append(datetime.now())
+    """Sliding-window rate limiter per provider."""
 
-        # Global cleanup: purge keys older than 2 minutes
+    def __init__(self):
+        self.call_history: Dict[str, list] = {}  # {provider: [timestamps]}
+        self.limits: Dict[str, int] = {
+            "openai": 55,       # calls per minute
+            "gemini": 55,
+            "groq": 28,
+            "anthropic": 45,
+            "openrouter": 55,
+            "deepseek": 55,
+            "nvidia": 55,
+            "default": 30,
+        }
+
+    def is_allowed(self, provider: str) -> bool:
+        now = datetime.now()
+        cutoff = now - timedelta(seconds=60)
+        history = self.call_history.get(provider, [])
+        # Prune old entries
+        history = [ts for ts in history if ts > cutoff]
+        self.call_history[provider] = history
+        limit = self.limits.get(provider, self.limits["default"])
+        return len(history) < limit
+
+    def record_call(self, provider: str) -> None:
+        if provider not in self.call_history:
+            self.call_history[provider] = []
+        self.call_history[provider].append(datetime.now())
+        # Global cleanup: prune all providers older than 2 min
         cutoff = datetime.now() - timedelta(minutes=2)
-        stale_keys = [
-            k for k, v in self.call_history.items()
-            if v and v[-1] < cutoff
-        ]
-        for k in stale_keys:
-            del self.call_history[k]
+        for key in list(self.call_history.keys()):
+            self.call_history[key] = [
+                ts for ts in self.call_history[key] if ts > cutoff
+            ]
 
 
 class ResourceMonitor:

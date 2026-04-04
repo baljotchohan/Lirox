@@ -1,5 +1,5 @@
 """
-Lirox v0.7 — Lightpanda CDP Bridge
+Lirox v2.0 — Lightpanda CDP Bridge
 
 Low-level Chrome DevTools Protocol communication layer for Lightpanda browser.
 Communicates over WebSocket to control navigation, DOM, scripting, and extraction.

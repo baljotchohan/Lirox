@@ -1,5 +1,5 @@
 """
-Lirox v0.8.5 — Headless Browser Tool
+Lirox v2.0 — Headless Browser Tool
 
 High-level browser API registered with the Lirox executor.
 Provides fetch_page, interact_with_page, extract_structured_data,
@@ -159,7 +159,7 @@ class HeadlessBrowserTool:
 
     def fetch_focused_fragment(self, url: str, query: str) -> Dict[str, Any]:
         """
-        v0.8 Phase 2: Fragment-level extraction.
+        v2.0 Phase 2: Fragment-level extraction.
         Fetches the page and isolates only the most relevant sections.
         """
         result = self.fetch_page(url, extract="markdown")

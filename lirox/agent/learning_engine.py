@@ -1,5 +1,5 @@
 """
-Lirox v0.8.5 — Autonomous Learning Engine (Phase 6)
+Lirox v2.0 — Autonomous Learning Engine (Phase 6)
 
 Tracks user interaction patterns over time to build a dynamic context
 boost that personalises the system prompt on every session:
@@ -96,7 +96,7 @@ class LearningEngine:
     """
 
     DEFAULT_DATA = {
-        "version": "0.8.5",
+        "version": "2.0.0",
         "total_sessions": 0,
         "total_interactions": 0,
         "intent_counts": {},          # {intent: count}
@@ -243,7 +243,7 @@ class LearningEngine:
             sat_note = "\n- CAUTION: Recent negative feedback detected. Be more precise and verify facts before answering."
 
         return (
-            f"\nLEARNED USER PATTERNS (v0.8.5)\n"
+            f"\nLEARNED USER PATTERNS (v2.0)\n"
             f"- Sessions: {d['total_sessions']} | Interactions: {d['total_interactions']}\n"
             f"- Top intents: {intent_str}\n"
             f"- Frequent topics: {topic_str}\n"

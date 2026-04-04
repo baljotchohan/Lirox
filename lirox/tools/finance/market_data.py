@@ -41,23 +41,29 @@ def get_market_data(query: str) -> str:
 
 
 def _extract_ticker(q: str) -> str:
-    m = re.search(r"\b([A-Z]{1,5})\b", q)
-    if m:
-        return m.group(1)
+    # Check name map first (higher priority)
+    q_lower = q.lower()
     names = {
-        "apple": "AAPL",
-        "microsoft": "MSFT",
-        "google": "GOOGL",
-        "amazon": "AMZN",
-        "meta": "META",
-        "tesla": "TSLA",
-        "nvidia": "NVDA",
-        "bitcoin": "BTC-USD",
-        "ethereum": "ETH-USD",
+        "apple": "AAPL", "microsoft": "MSFT", "google": "GOOGL",
+        "amazon": "AMZN", "meta": "META", "tesla": "TSLA",
+        "nvidia": "NVDA", "bitcoin": "BTC-USD", "ethereum": "ETH-USD",
     }
     for n, t in names.items():
-        if n in q.lower():
+        if n in q_lower:
             return t
+
+    # Only match explicit tickers (preceded by $ or standalone uppercase)
+    m = re.search(r'\$([A-Z]{1,5})\b', q)
+    if m:
+        return m.group(1)
+
+    # Match standalone tickers only if they look like tickers (not common words)
+    common_words = {"I", "A", "AM", "IS", "IT", "IN", "ON", "AT", "TO", "OF",
+                    "DO", "IF", "OR", "SO", "UP", "BY", "AN", "AS", "NO", "BE",
+                    "US", "WE", "MY", "HE", "ME", "GDP", "USA", "UK", "CEO", "CTO"}
+    m = re.search(r'\b([A-Z]{1,5})\b', q)
+    if m and m.group(1) not in common_words:
+        return m.group(1)
     return None
 
 

@@ -1,9 +1,9 @@
-# Lirox tools package — v0.7
+# Lirox tools package — v2.0
 
 # Core browser tools
 from lirox.tools.browser import BrowserTool
 
-# Headless browser tools (v0.7 — Lightpanda)
+# Headless browser tools (v2.0 — Lightpanda)
 try:
     from lirox.tools.browser_tool import HeadlessBrowserTool, get_browser_status
     from lirox.tools.browser_manager import BrowserSessionManager

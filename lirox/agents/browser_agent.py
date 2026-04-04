@@ -6,6 +6,7 @@ from typing import Generator
 
 from lirox.agents.base_agent import BaseAgent, AgentEvent
 from lirox.utils.llm import generate_response
+from lirox.config import MAX_LLM_PROMPT_CHARS, MAX_SEARCH_RESULT_CHARS
 
 
 class BrowserAgent(BaseAgent):
@@ -20,6 +21,12 @@ class BrowserAgent(BaseAgent):
     def run(
         self, query: str, system_prompt: str = "", context: str = ""
     ) -> Generator[AgentEvent, None, None]:
+        from lirox.utils.structured_logger import get_logger, log_with_metadata
+        import time
+        logger = get_logger(f"lirox.agents.{self.name}")
+        start = time.time()
+        log_with_metadata(logger, "INFO", "Agent started", agent=self.name, query=query[:100])
+
         yield {"type": "agent_progress", "message": "Browser Agent starting..."}
         url_match = re.search(r"https?://\S+", query)
 
@@ -30,7 +37,7 @@ class BrowserAgent(BaseAgent):
             if len(content) > 3000:
                 yield {"type": "agent_progress", "message": "Summarizing..."}
                 answer = generate_response(
-                    f"Summarize for: {query}\n\nContent:\n{content[:8000]}",
+                    f"Summarize for: {query}\n\nContent:\n{content[:MAX_LLM_PROMPT_CHARS]}",
                     provider="auto",
                     system_prompt="Concise web content summarizer.",
                 )
@@ -50,6 +57,7 @@ class BrowserAgent(BaseAgent):
                 system_prompt=system_prompt or "Web research assistant.",
             )
 
+        log_with_metadata(logger, "INFO", "Agent completed", agent=self.name, duration_ms=int((time.time() - start)*1000))
         yield {"type": "done", "answer": answer, "sources": []}
 
     def _fetch(self, url: str) -> str:
@@ -72,6 +80,6 @@ class BrowserAgent(BaseAgent):
                 if main
                 else soup.get_text(separator="\n", strip=True)
             )
-            return re.sub(r"\n{3,}", "\n\n", text)[:10000]
+            return re.sub(r"\n{3,}", "\n\n", text)[:MAX_SEARCH_RESULT_CHARS]
         except Exception as e:
             return f"Fetch error: {e}"

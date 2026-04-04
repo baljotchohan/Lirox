@@ -44,14 +44,20 @@ PLAN_CONFIRM = True
 MAX_RETRIES = 3
 CONTEXT_MAX_CHARS = 4000
 
+# Content truncation limits
+MAX_LLM_PROMPT_CHARS = 8000
+MAX_TOOL_RESULT_CHARS = 2000
+MAX_MEMORY_ENTRY_CHARS = 500
+MAX_CONTEXT_CHARS = 4000
+MAX_SEARCH_RESULT_CHARS = 10000
+
 # Terminal Safety
 ALLOWED_COMMANDS = [
     "ls", "pwd", "find", "which", "whoami", "file", "wc", "head", "tail", "du", "df",
     "mkdir", "touch", "cat", "cp", "mv", "rm", "echo", "tee", "python", "python3",
     "node", "npx", "git", "cargo", "go", "rustc", "gcc", "make", "curl", "wget",
     "ping", "grep", "awk", "sed", "sort", "uniq", "tr", "cut", "xargs", "uname",
-    "date", "cal", "env", "tar", "zip", "unzip", "gzip", "pip", "pip3", "npm",
-    "yarn", "docker", "pytest", "black", "flake8", "mypy", "eslint", "shasum",
+    "date", "cal", "env", "tar", "zip", "unzip", "gzip", "docker", "pytest", "black", "flake8", "mypy", "eslint", "shasum",
 ]
 BLOCK_PATTERNS = [
     "rm -rf /", "rm -rf ~", "shutdown", "reboot", "mv /", "rm /",

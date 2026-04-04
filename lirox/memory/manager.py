@@ -4,7 +4,7 @@ import os
 from datetime import datetime
 from typing import Dict, List, Optional
 
-from lirox.config import MEMORY_DIR, MEMORY_LIMIT
+from lirox.config import MEMORY_DIR, MEMORY_LIMIT, MAX_MEMORY_ENTRY_CHARS
 
 
 class MemoryManager:
@@ -17,7 +17,7 @@ class MemoryManager:
         ts = datetime.now().isoformat()
         self.conversation_buffer.append({"role": "user", "content": user_msg, "ts": ts})
         self.conversation_buffer.append(
-            {"role": "assistant", "content": str(asst_msg)[:500], "ts": ts}
+            {"role": "assistant", "content": str(asst_msg)[:MAX_MEMORY_ENTRY_CHARS], "ts": ts}
         )
         if len(self.conversation_buffer) > MEMORY_LIMIT * 2:
             self.conversation_buffer = self.conversation_buffer[-MEMORY_LIMIT:]
@@ -29,12 +29,13 @@ class MemoryManager:
             with open(daily, "a") as f:
                 f.write(
                     json.dumps(
-                        {"user": user_msg, "assistant": str(asst_msg)[:500], "ts": ts}
+                        {"user": user_msg, "assistant": str(asst_msg)[:MAX_MEMORY_ENTRY_CHARS], "ts": ts}
                     )
                     + "\n"
                 )
-        except Exception:
-            pass
+        except Exception as e:
+            from lirox.utils.structured_logger import get_logger
+            get_logger("lirox.memory").warning(f"Non-critical error (daily write): {e}")
 
     def get_relevant_context(self, query: str, max_items: int = 10) -> str:
         if not self.conversation_buffer:
@@ -85,13 +86,15 @@ class MemoryManager:
             try:
                 with open(path) as f:
                     return json.load(f)
-            except Exception:
-                pass
+            except Exception as e:
+                from lirox.utils.structured_logger import get_logger
+                get_logger("lirox.memory").warning(f"Non-critical error: {e}")
         return None
 
     def _save(self, path: str, data: dict):
         try:
             with open(path, "w") as f:
                 json.dump(data, f, indent=2)
-        except Exception:
-            pass
+        except Exception as e:
+            from lirox.utils.structured_logger import get_logger
+            get_logger("lirox.memory").warning(f"Non-critical error: {e}")

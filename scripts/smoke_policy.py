@@ -2,7 +2,7 @@ import os
 from lirox.agent.policy import policy_engine
 
 def test_policy():
-    print("🧪 Testing Lirox v0.4 Policy Engine...")
+    print("🧪 Testing Lirox v2.0 Policy Engine...")
     
     # Test Case 1: Simple Search (Should auto-execute)
     low_risk_plan = {

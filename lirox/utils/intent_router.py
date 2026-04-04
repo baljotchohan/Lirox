@@ -1,5 +1,5 @@
 """
-Lirox v0.8.5 — Smart Command Intent Router
+Lirox v2.0 — Smart Command Intent Router
 
 Automatically detects user intent and routes to appropriate handler.
 Learns over time what the user typically wants.
@@ -42,7 +42,7 @@ class IntentRouter:
         r"opinion", r"think\s+(about|of)", r"suggest",
     ]
 
-    # v0.7: Browser-specific intent patterns
+    # v2.0: Browser-specific intent patterns
     BROWSER_PATTERNS = [
         r"scrape\s+", r"fetch\s+(page|url|site)", r"automate\s+",
         r"fill\s+form", r"login\s+to", r"extract\s+from\s+(page|site|url)",
@@ -113,7 +113,7 @@ class IntentRouter:
         if memory_score > 0.6:
             return ("memory", None, memory_score)
 
-        # v0.7: Check browser intent
+        # v2.0: Check browser intent
         browser_score = self._score_patterns(user_lower, self.BROWSER_PATTERNS)
         if browser_score > 0.5:
             return ("browser", None, browser_score)

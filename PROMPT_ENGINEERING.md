@@ -33,12 +33,12 @@ Use this prompt when adding a new tool to `lirox/tools/`.
 
 **Prompt Template:**
 ```markdown
-Act as the Lead Architect of Lirox (v0.6). 
+Act as the Lead Architect of Lirox (v2.0). 
 Design a new tool component for [FEATURE_NAME].
 Constraints:
 - It must follow the `lirox/tools/` pattern (functional, stateless if possible).
 - It must catch all exceptions and return a `ToolExecutionError`.
-- It must include docstrings matching the existing v0.6 style.
+- It must include docstrings matching the existing v2.0 style.
 - Ensure dependency checks are handled at the top.
 
 Goal: [DESCRIBE_WHAT_TOOL_DOES]
@@ -72,7 +72,7 @@ Output a revised JSON risk score:
 ---
 
 ## 📈 Tips for Exact Outputs
-1. **Context Anchoring**: Always mention "Lirox v0.6" and "CLI-first architecture" to avoid the AI suggesting web-based solutions.
+1. **Context Anchoring**: Always mention "Lirox v2.0" and "CLI-first architecture" to avoid the AI suggesting web-based solutions.
 2. **Path Constraints**: Remind the AI that all paths must be relative to the `PROJECT_ROOT` found in `lirox.config`.
 3. **UI Constraints**: Explicitly ask for `rich.console` or `lirox.ui.display` components for any user-facing output.
 

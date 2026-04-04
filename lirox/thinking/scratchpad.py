@@ -2,6 +2,7 @@
 from dataclasses import dataclass, field
 from typing import Dict, Any, List
 from datetime import datetime
+from lirox.config import MAX_TOOL_RESULT_CHARS
 
 
 @dataclass
@@ -20,7 +21,7 @@ class Scratchpad:
 
     def add_tool_result(self, tool: str, result: str, args: Dict = None):
         self.tool_results.append(
-            ToolCallRecord(tool=tool, args=args or {}, result=str(result)[:2000])
+            ToolCallRecord(tool=tool, args=args or {}, result=str(result)[:MAX_TOOL_RESULT_CHARS])
         )
 
     def add_thinking(self, note: str):
@@ -30,7 +31,7 @@ class Scratchpad:
         if not self.tool_results:
             return ""
         return "\n\n".join(
-            f"[Tool {i}: {r.tool}]\n{r.result[:1500]}"
+            f"[Tool {i}: {r.tool}]\n{r.result[:MAX_TOOL_RESULT_CHARS]}"
             for i, r in enumerate(self.tool_results, 1)
         )
 

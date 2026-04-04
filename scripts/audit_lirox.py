@@ -6,7 +6,7 @@ from lirox.tools.file_io import FileIOTool
 from lirox.utils.llm import generate_response, available_providers
 
 def audit_lirox_tools():
-    print("🧹 AUDITING LIROX CORE v0.4.1...")
+    print("🧹 AUDITING LIROX CORE v2.0...")
     
     # 1. LLM Provider Audit
     print("\n[LLM Provider Audit]")

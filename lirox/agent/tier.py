@@ -1,5 +1,5 @@
 """
-Lirox v0.6 — API Tier System
+Lirox v2.0 — API Tier System
 
 Controls which research APIs are available based on what keys the user has
 configured. All keys live in .env and are never exposed to users.

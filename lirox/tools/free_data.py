@@ -1,5 +1,5 @@
 """
-Lirox v0.8.5 — Free Public Data APIs (Phase 5)
+Lirox v2.0 — Free Public Data APIs (Phase 5)
 
 Keyless, rate-limit-friendly access to real-time data sources:
 - DuckDuckGo Instant Answer API

@@ -1,5 +1,5 @@
 """
-Lirox v0.7.1 — Browser System Verification Script
+Lirox v2.0 — Browser System Verification Script
 
 Purpose:
 1.  Demonstrate direct browser usage (fetching/scraping) without search APIs.

@@ -1,5 +1,5 @@
 """
-Lirox v0.7.1 — Real-World Browser & Data Demonstration
+Lirox v2.0 — Real-World Browser & Data Demonstration
 
 Purpose:
 1.  Prove "direct browser" usage on real domains (Wikipedia & Hacker News).

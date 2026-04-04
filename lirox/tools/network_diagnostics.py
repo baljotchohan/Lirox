@@ -1,5 +1,5 @@
 """
-Lirox v0.7.1 — Network Diagnostics & Security Audit Logger
+Lirox v2.0 — Network Diagnostics & Security Audit Logger
 
 Provides:
 - Human-readable network error diagnosis

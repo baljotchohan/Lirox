@@ -3,7 +3,10 @@
 
 def search_ddg(query: str, max_results: int = 8) -> str:
     try:
-        from duckduckgo_search import DDGS
+        import warnings
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            from duckduckgo_search import DDGS
 
         with DDGS() as ddgs:
             results = list(ddgs.text(query, max_results=max_results))

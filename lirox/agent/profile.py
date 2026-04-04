@@ -1,8 +1,8 @@
 """
-Lirox v1.0 — User Profile System (CLI-First)
+Lirox v2.0 — User Profile System (CLI-First)
 
 Storage anchored to PROJECT_ROOT (not CWD).
-v1.0: Advanced prompt system with learning context boost integration.
+v2.0: Advanced prompt system with learning context boost integration.
 """
 
 import json
@@ -43,8 +43,9 @@ class UserProfile:
                         merged = dict(self.DEFAULT)
                         merged.update(data)
                         return merged
-                except (json.JSONDecodeError, IOError):
-                    pass
+                except (json.JSONDecodeError, IOError) as e:
+                    from lirox.utils.structured_logger import get_logger
+                    get_logger("lirox.profile").warning(f"Non-critical error: {e}")
             
             profile = dict(self.DEFAULT)
             profile["created_at"] = datetime.now().isoformat()
@@ -61,12 +62,13 @@ class UserProfile:
                 # [FIX #2] Atomic file replacement
                 os.replace(temp_file, self.storage_file)
             except Exception as e:
-                # Log error silently or pass to error handler
+                from lirox.utils.structured_logger import get_logger
+                get_logger("lirox.profile").warning(f"Non-critical error saving profile: {e}")
                 if os.path.exists(temp_file):
                     try:
                         os.remove(temp_file)
-                    except OSError:
-                        pass
+                    except OSError as e2:
+                        get_logger("lirox.profile").warning(f"Non-critical error removing temp file: {e2}")
 
     def update(self, key: str, value):
         self.data[key] = value
@@ -136,7 +138,7 @@ class UserProfile:
         return [word for word, _ in counter.most_common(5)]
 
     def to_advanced_system_prompt(self) -> str:
-        """v1.0 Advanced Prompt with learned preferences and predictions."""
+        """v2.0 Advanced Prompt with learned preferences and predictions."""
         p = self.data
         agent = p.get('agent_name', 'Lirox')
         user = p.get('user_name', 'Operator')
@@ -150,7 +152,7 @@ class UserProfile:
             successful = [t for t in p["task_history"][-20:] if t.get("success")]
             successful_tasks = [t["task"] for t in successful[:5]]
         
-        return f"""You are {agent} v1.0 (Autonomous AI Agent OS) — a sophisticated autonomous agent.
+        return f"""You are {agent} v2.0 (Autonomous AI Agent OS) — a sophisticated autonomous agent.
 
 OPERATING CONTEXT
 - Terminal-based agent assisting {user} with research, task automation, and information synthesis
@@ -176,7 +178,7 @@ MEMORY & LEARNING
 - LEARNED CONTEXT: {facts}
 - RECENT TASK PATTERNS: {', '.join(successful_tasks[:3]) if successful_tasks else 'None yet'}
 
-RESEARCH CAPABILITY (v1.0)
+RESEARCH CAPABILITY (v2.0)
 When asked factual questions, you proactively:
 - Search the web for current information
 - Synthesize multiple sources with citations
@@ -200,7 +202,7 @@ OUTPUT FORMAT & BEHAVIOR
         return self.data.get("agent_name") is not None and self.data.get("user_name") != "Operator"
 
     def to_system_prompt(self) -> str:
-        """v1.0 Professional CLI-First Prompt Generation."""
+        """v2.0 Professional CLI-First Prompt Generation."""
         p = self.data
         agent = p.get('agent_name', 'Lirox')
         user = p.get('user_name', 'Operator')
@@ -209,7 +211,7 @@ OUTPUT FORMAT & BEHAVIOR
         goals = "; ".join(p['goals']) if p['goals'] else "No active goals."
 
         # Template from User Request
-        return f"""You are {agent} v1.0 (CLI-First Autonomous Agent) — a local-first autonomous agent running inside a terminal.
+        return f"""You are {agent} v2.0 (CLI-First Autonomous Agent) — a local-first autonomous agent running inside a terminal.
 
 OPERATING CONTEXT
 - You are used through a CLI where the operator ({user}) types messages and commands.
@@ -266,7 +268,7 @@ MEMORY / LEARNING (CURRENT CAPABILITY)
 - Only store compact “facts” or preferences.
 - If unsure whether something is a stable preference, ask once before treating it as long-term.
 
-RESEARCH CAPABILITY (v1.0)
+RESEARCH CAPABILITY (v2.0)
 You are a research-capable autonomous agent. When asked factual questions, you proactively search the web, synthesize multiple sources, and cite your findings. You NEVER make up facts. When uncertain, you say so and recommend using /research for deeper analysis. Research outputs include confidence scores and source citations.
 
 OUTPUT FORMAT & BEHAVIOR (MANDATORY)

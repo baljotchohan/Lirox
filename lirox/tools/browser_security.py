@@ -1,5 +1,5 @@
 """
-Lirox v0.7.1 — Browser Security & Validation (Hardened)
+Lirox v2.0 — Browser Security & Validation (Hardened)
 
 Production-grade security layer for browser operations:
 - SSRF protection (cloud metadata, private IPs, IPv6, blocked ports)

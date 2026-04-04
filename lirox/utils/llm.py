@@ -1,5 +1,5 @@
 """
-Lirox v0.5 — LLM Utility Layer
+Lirox v2.0 — LLM Utility Layer
 
 Provider support: Gemini, Groq, OpenAI, OpenRouter, DeepSeek, NVIDIA, Anthropic
 Features:
@@ -69,31 +69,24 @@ def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
         from google import genai
         from google.genai import types
         client = genai.Client(api_key=api_key)
-        
-        # In the new SDK, system_instruction is passed to generate_content
-        # or as a config in some versions. Let's use the standard config way.
         config = types.GenerateContentConfig(
             system_instruction=system_prompt or DEFAULT_SYSTEM,
             temperature=0.7,
         )
-        
-        response = client.models.generate_content(
-            model="gemini-2.0-flash", # Upgrade to 2.0 while we are at it if they have it
-            contents=prompt,
-            config=config
-        )
-        return response.text
+        # Try 2.0 first, fall back to 1.5
+        for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+            try:
+                response = client.models.generate_content(
+                    model=model_name, contents=prompt, config=config
+                )
+                return response.text
+            except Exception:
+                continue
+        return "Gemini Error: All models failed"
+    except ImportError:
+        return "google-genai not installed. Run: pip install google-genai"
     except Exception as e:
-        # Fallback to gemini-1.5-flash if 2.0 is not available
-        try:
-            response = client.models.generate_content(
-                model="gemini-1.5-flash",
-                contents=prompt,
-                config=config
-            )
-            return response.text
-        except Exception:
-            return f"Gemini Error: {str(e)}"
+        return f"Gemini Error: {str(e)}"
 
 
 def groq_call(prompt: str, system_prompt: Optional[str] = None, model: str = "llama-3.3-70b-versatile") -> str:
@@ -292,11 +285,17 @@ def smart_router(prompt: str) -> Optional[str]:
 
 
 def is_error_response(text: str) -> bool:
-    if not text:
+    if not text or len(text.strip()) < 5:
         return True
+    # Only match error patterns at the START of the response
     lowered = text.strip().lower()
-    patterns = ["api key missing", "unknown provider", "request timed out", "error: ", " error: "]
-    return any(p in lowered for p in patterns)
+    error_prefixes = [
+        "openai error:", "gemini error:", "groq error:",
+        "anthropic error:", "deepseek error:", "nvidia error:",
+        "openrouter error:", "error:", "api key missing",
+        "unknown provider:", "rate limit exceeded",
+    ]
+    return any(lowered.startswith(p) for p in error_prefixes)
 
 
 def is_task_request(user_input: str, provider: str = "auto") -> bool:
@@ -343,10 +342,6 @@ def is_task_request(user_input: str, provider: str = "auto") -> bool:
 # ─── Core Response Generation ────────────────────────────────────────────────
 
 def generate_response(prompt: str, provider: str = "auto", system_prompt: str = None, timeout: Optional[int] = None) -> str:
-    """
-    Generate a response from the best available provider.
-    Includes automatic fallback chain if primary fails.
-    """
     if timeout is None:
         from lirox.config import LLM_TIMEOUT
         timeout = LLM_TIMEOUT
@@ -357,47 +352,41 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
     if provider is None:
         return (
             "No API keys are configured. Please add at least one key:\n"
-            "  • CLI: run /add-api\n"
-            "  • Web UI: go to System Settings → API Keys\n"
-            "  • Manual: add keys to your .env file"
+            "  • Run /setup to configure\n"
+            "  • Or add keys to your .env file"
         )
 
     provider = provider.lower().strip("[]'\" ")
     if not provider_has_key(provider):
         fallback = pick_default_provider()
         if fallback is None:
-            return "No API keys configured. Please add a key via /add-api or in the .env file."
+            return "No API keys configured. Run /setup or add keys to .env."
         if fallback == provider:
             return f"No API key configured for: {provider}"
         provider = fallback
 
-    # Helper method for timeout wrapping
-    def _execute_with_timeout(func, *args):
-        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-        future = executor.submit(func, *args)
-        try:
-            # [FIX #3] Block thread on timeout
-            return future.result(timeout=timeout)
-        except concurrent.futures.TimeoutError:
-            executor.shutdown(wait=False)
-            raise TimeoutError(f"LLM API timed out after {timeout}s")
-
-    # Primary attempt
+    # Primary attempt with proper executor cleanup
     try:
-        response = _execute_with_timeout(_call_provider, provider, prompt, system_prompt)
-    except TimeoutError as e:
-        return f"Error: {str(e)}"
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(_call_provider, provider, prompt, system_prompt)
+            response = future.result(timeout=timeout)
+    except concurrent.futures.TimeoutError:
+        return f"Error: LLM API timed out after {timeout}s"
+    except Exception as e:
+        response = f"Error: {e}"
 
-    # Execution-time fallback chain
+    # Fallback chain
     if is_error_response(response):
         avail = available_providers()
         fallbacks = [p for p in _PROVIDER_PRIORITY if p in avail and p != provider]
         for fb in fallbacks:
             try:
-                retry = _execute_with_timeout(_call_provider, fb, prompt, system_prompt)
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_call_provider, fb, prompt, system_prompt)
+                    retry = future.result(timeout=timeout)
                 if not is_error_response(retry):
                     return retry
-            except TimeoutError:
+            except (concurrent.futures.TimeoutError, Exception):
                 continue
 
     return response
@@ -417,25 +406,25 @@ def generate_response_stream(prompt: str, provider: str = "auto", system_prompt:
 
 
 def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> str:
-    """Route to the correct provider function with rate and resource limits."""
     from lirox.utils.rate_limiter import api_limiter, sys_monitor
-    import time
-    
-    # Enforce API rate limits
+
     if not api_limiter.is_allowed(provider):
         return f"Rate limit exceeded for provider: {provider}"
-    
-    # Enforce system resource limits
-    while not sys_monitor.check_resources():
-        time.sleep(5)
-        
-    # Record this call
+
+    # Check resources with max 3 retries (not infinite)
+    for _ in range(3):
+        if sys_monitor.check_resources():
+            break
+        import time
+        time.sleep(2)
+    # Proceed even if resources are high — don't block forever
+
     api_limiter.record_call(provider)
 
     if provider == "openai":    return openai_call(prompt, system_prompt)
     if provider == "gemini":    return gemini_call(prompt, system_prompt)
     if provider == "groq":      return groq_call(prompt, system_prompt)
-    if provider == "openrouter":return openrouter_call(prompt, system_prompt)
+    if provider == "openrouter": return openrouter_call(prompt, system_prompt)
     if provider == "deepseek":  return deepseek_call(prompt, system_prompt)
     if provider == "nvidia":    return nvidia_call(prompt, system_prompt)
     if provider == "anthropic": return anthropic_call(prompt, system_prompt)

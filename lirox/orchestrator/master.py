@@ -79,6 +79,8 @@ class MasterOrchestrator:
                     "django", "dockerfile", "test", "lint", "compile", "build",
                     "deploy", "git", "review code", "architecture", "package",
                     "syntax", "error", "exception", "import",
+                    "write file", "save file", "create file", "folder", "desktop",
+                    "html", "css", "portfolio site", "write", "create"
                 ]
                 if k in q
             ),
@@ -121,8 +123,9 @@ class MasterOrchestrator:
                     query, self.memory.get_relevant_context(query)
                 )
                 yield OrchestratorEvent(type="thinking", message=thinking_trace)
-            except Exception:
-                pass
+            except Exception as e:
+                from lirox.utils.structured_logger import get_logger
+                get_logger("lirox.orchestrator").warning(f"Non-critical error in thinking engine: {e}")
 
         agent_type = self.classify_intent(query)
         yield OrchestratorEvent(

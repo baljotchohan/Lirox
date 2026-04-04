@@ -1,5 +1,5 @@
 """
-Lirox v0.7.1 — Browser Tool (Portable Edition)
+Lirox v2.0 — Browser Tool (Portable Edition)
 
 Robust web access for research and data gathering.
 Works on ANY device — no headless browser binary required.

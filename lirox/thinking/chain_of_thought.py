@@ -1,5 +1,6 @@
 """Multi-phase reasoning: UNDERSTAND → STRATEGIZE → PLAN"""
 from lirox.utils.llm import generate_response
+from lirox.config import MAX_CONTEXT_CHARS, MAX_TOOL_RESULT_CHARS
 
 
 class ThinkingEngine:
@@ -11,7 +12,7 @@ class ThinkingEngine:
         prompt = f"""Structured reasoning for this query:
 
 Query: {query}
-{f"Context: {context[:2000]}" if context else ""}
+{f"Context: {context[:MAX_CONTEXT_CHARS]}" if context else ""}
 
 UNDERSTAND: What is being asked? Key requirements?
 STRATEGIZE: Best approach? Tools needed? Risks?
@@ -32,7 +33,7 @@ Be concise."""
     def reflect(self, query: str, result: str) -> str:
         try:
             return generate_response(
-                f"Rate 1-10. Complete? Accurate?\nQuery: {query}\nResult: {result[:3000]}",
+                f"Rate 1-10. Complete? Accurate?\nQuery: {query}\nResult: {result[:MAX_TOOL_RESULT_CHARS]}",
                 self.provider,
                 system_prompt="Brief quality evaluator.",
             )

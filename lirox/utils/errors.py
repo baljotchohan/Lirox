@@ -1,5 +1,5 @@
 """
-Lirox v0.3 — Error Handling & Recovery Framework
+Lirox v2.0 — Error Handling & Recovery Framework
 
 Provides base exceptions, retryable error detection, and retry utilities
 used across all agent components (executor, browser, file_io, etc.).
@@ -37,7 +37,7 @@ class PlanValidationError(LiroxError):
     pass
 
 
-# ─── Browser-Specific Errors (v0.7) ──────────────────────────────────────────
+# ─── Browser-Specific Errors (v2.0) ──────────────────────────────────────────
 
 from enum import Enum
 

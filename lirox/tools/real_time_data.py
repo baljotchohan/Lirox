@@ -1,5 +1,5 @@
 """
-Lirox v0.7.1 — Real-Time Data Extraction
+Lirox v2.0 — Real-Time Data Extraction
 
 Specialized extractors for structured financial and live data from web pages.
 Used by BrowserTool and HeadlessBrowser to parse prices, percentages,

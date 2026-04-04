@@ -12,7 +12,7 @@ _ENV_PATH = str(_PROJECT_ROOT_DIR / ".env")
 def run_setup_wizard(profile):
     console.clear()
     console.print(Panel(
-        "Welcome to Lirox v1.0. Let's set you up.",
+        "Welcome to Lirox v2.0. Let's set you up.",
         border_style="bold #FFC107", box=ROUNDED, width=60
     ))
     

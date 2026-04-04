@@ -1,4 +1,4 @@
-"""Lirox v0.7.1 Hardening Tests"""
+"""Lirox v2.0 Hardening Tests"""
 import asyncio, time, os, sys, pytest
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

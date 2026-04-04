@@ -4,7 +4,7 @@ import os
 from lirox.agent.executor import Executor
 
 def test_chaining():
-    print("--- Testing Research Chaining v0.4.2 ---")
+    print("--- Testing Research Chaining v2.0 ---")
     executor = Executor()
     
     # Mock context from a 'search' step that contains URLs

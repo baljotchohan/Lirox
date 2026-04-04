@@ -1,7 +1,7 @@
 """
-Lirox v0.3 — Test Suite
+Lirox v2.0 — Test Suite
 
-Tests for all v0.3 components:
+Tests for all v2.0 components:
 - Planner (structured plan generation)
 - Executor (step execution with retry)
 - Reasoner (step evaluation)

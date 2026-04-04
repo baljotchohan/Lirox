@@ -1,5 +1,5 @@
 """
-Lirox v1.0 — Skill System
+Lirox v2.0 — Skill System
 
 Inspired by claw-code's tool architecture:
 - Each skill is a self-contained unit with name, description, risk level

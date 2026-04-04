@@ -13,6 +13,7 @@ def check_dependencies():
         "dotenv": "python-dotenv",
         "bs4": "beautifulsoup4",
         "lxml": "lxml",
+        "requests": "requests",
     }
     missing = [pkg for mod, pkg in required.items() if not _try_import(mod.split(".")[0])]
     if missing:
@@ -29,7 +30,7 @@ def _try_import(m: str) -> bool:
         return False
 
 
-check_dependencies()
+
 
 from lirox.orchestrator.master import MasterOrchestrator
 from lirox.ui.display import (
@@ -49,6 +50,8 @@ from lirox.config import APP_VERSION
 
 
 def main():
+    check_dependencies()  # Move here from module level
+
     parser = argparse.ArgumentParser(description="Lirox v2 — Multi-Agent AI Kernel")
     parser.add_argument("--setup", action="store_true", help="Run setup wizard")
     parser.add_argument("--verbose", action="store_true", help="Verbose thinking output")
