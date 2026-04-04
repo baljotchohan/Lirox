@@ -76,12 +76,24 @@ def main():
 
     show_status_card(profile.data, available_providers())
 
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.styles import Style
+
     agent_name = profile.data.get("agent_name", "Lirox")
     last_int = 0.0
 
+    style = Style.from_dict({
+        'prompt': 'ansiyellow bold',
+        'symbol': 'ansiyellow',
+    })
+    session = PromptSession()
+
     while True:
         try:
-            line = input(f"[{agent_name}] ✦ ").strip()
+            line = session.prompt(
+                [('class:prompt', f"[{agent_name}] "), ('class:symbol', "✦ ")],
+                style=style
+            ).strip()
             if not line:
                 continue
             if line.lower() in ("exit", "quit", "/exit"):

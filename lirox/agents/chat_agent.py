@@ -18,7 +18,7 @@ class ChatAgent(BaseAgent):
     def run(
         self, query: str, system_prompt: str = "", context: str = ""
     ) -> Generator[AgentEvent, None, None]:
-        yield {"type": "agent_start", "message": "Processing..."}
+        yield {"type": "agent_progress", "message": "Processing..."}
 
         sys = system_prompt or get_identity_prompt()
         mem = self.memory.get_relevant_context(query)

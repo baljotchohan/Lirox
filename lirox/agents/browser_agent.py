@@ -20,7 +20,7 @@ class BrowserAgent(BaseAgent):
     def run(
         self, query: str, system_prompt: str = "", context: str = ""
     ) -> Generator[AgentEvent, None, None]:
-        yield {"type": "agent_start", "message": "Browser Agent starting..."}
+        yield {"type": "agent_progress", "message": "Browser Agent starting..."}
         url_match = re.search(r"https?://\S+", query)
 
         if url_match:

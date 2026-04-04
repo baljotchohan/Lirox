@@ -17,7 +17,7 @@ class ResearchAgent(BaseAgent):
     def run(
         self, query: str, system_prompt: str = "", context: str = ""
     ) -> Generator[AgentEvent, None, None]:
-        yield {"type": "agent_start", "message": "Research Agent starting..."}
+        yield {"type": "agent_progress", "message": "Research Agent starting..."}
         yield {"type": "tool_call", "message": "Searching multiple sources..."}
         results = self._multi_search(query)
         yield {"type": "agent_progress", "message": "Synthesizing..."}

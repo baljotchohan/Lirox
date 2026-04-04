@@ -27,7 +27,7 @@ class CodeAgent(BaseAgent):
     ) -> Generator[AgentEvent, None, None]:
         cwd = os.getcwd()
         sys_p = CODE_SYS.format(cwd=cwd)
-        yield {"type": "agent_start", "message": "Code Agent analyzing..."}
+        yield {"type": "agent_progress", "message": "Code Agent analyzing..."}
 
         project_ctx = ""
         if any(

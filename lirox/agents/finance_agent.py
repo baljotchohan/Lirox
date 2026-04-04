@@ -32,7 +32,7 @@ class FinanceAgent(BaseAgent):
         if mem:
             sys_p += f"\n\nUser Context:\n{mem}"
 
-        yield {"type": "agent_start", "message": "Finance Agent analyzing..."}
+        yield {"type": "agent_progress", "message": "Finance Agent analyzing..."}
 
         routing = generate_response(
             f"Return JSON array of tool calls for: {query}\n"

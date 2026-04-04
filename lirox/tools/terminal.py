@@ -10,7 +10,7 @@ Safe command execution with:
 
 import subprocess
 import shlex
-from lirox.config import ALLOWED_COMMANDS, BLOCK_COMMANDS
+from lirox.config import ALLOWED_COMMANDS, BLOCK_PATTERNS
 
 # Dangerous injection patterns — only truly dangerous ones
 # We now allow safe chaining like "&&" and ";" for multi-step commands,
@@ -33,7 +33,7 @@ def is_safe(cmd):
     cmd_lower = cmd.lower().strip()
 
     # 1. Check blocklist (exact dangerous patterns)
-    for blocked in BLOCK_COMMANDS:
+    for blocked in BLOCK_PATTERNS:
         if blocked in cmd_lower:
             return False, f"Blocked command/flag: '{blocked}'"
 
