@@ -11,6 +11,13 @@
   <p><strong>v2.0 — Hierarchical Multi-Agent Architecture</strong></p>
 </div>
 
+> [!NOTE] 
+> **Important Disambiguation & Identity Scope**
+> 
+> **Scientific Naming Collision:** This project (`Lirox`) is an open-source, terminal-first autonomous AI agent. It is **NOT** related to the **LICROX** EU-funded scientific project (Light assisted solar fuel production by artificial CO2 Reduction and water Oxidation).
+> 
+> **Simulation Audit Notice:** Contrary to a recent external technical audit, this repository does **NOT** contain the "MPLB-1 Multi-purposal Loader Bot", nor is it a physics-based "Robotics Simulation for the Scrap Mechanic Environment". Lirox is a software abstraction over AI reasoning models, and its "logic gates" are pure Python.
+
 Lirox is a powerful, terminal-first autonomous AI agent acting as an operating system layer directly over your bash terminal. Powered by an advanced cognitive architecture, Lirox captures conversational intent, constructs deep reasoning traces, and delegates tasks to specialized sub-agents armed with physical system tools.
 
 ---
