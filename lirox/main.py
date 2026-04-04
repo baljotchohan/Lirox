@@ -119,20 +119,38 @@ def main():
 
 def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
     last_agent = "chat"
-    for ev in orch.run(query):
-        t = ev.type
-        if t == "thinking" and ev.message:
-            if verbose or len(ev.message) > 50:
-                show_thinking(ev.message)
-        elif t == "agent_start":
-            last_agent = ev.agent
-            show_agent_event(ev.agent, t, ev.message)
-        elif t in ("tool_call", "tool_result", "agent_progress"):
-            show_agent_event(ev.agent or last_agent, t, ev.message)
-        elif t == "error":
-            show_agent_event(ev.agent or last_agent, "error", ev.message)
-        elif t == "done" and ev.message:
-            show_answer(ev.message, agent=last_agent)
+    status = None
+    try:
+        for ev in orch.run(query):
+            t = ev.type
+            if t == "thinking":
+                if ev.message == "Analyzing..." and not verbose:
+                    status = console.status("[bold purple]🧠 Reasoning...[/]", spinner="dots")
+                    status.start()
+                elif verbose:
+                    show_thinking(ev.message)
+                else:
+                    # After trace finishes, stop spinner
+                    if status:
+                        status.stop()
+                        status = None
+            else:
+                if status:
+                    status.stop()
+                    status = None
+
+                if t == "agent_start":
+                    last_agent = ev.agent
+                    show_agent_event(ev.agent, t, ev.message)
+                elif t in ("tool_call", "tool_result", "agent_progress"):
+                    show_agent_event(ev.agent or last_agent, t, ev.message)
+                elif t == "error":
+                    show_agent_event(ev.agent or last_agent, "error", ev.message)
+                elif t == "done" and ev.message:
+                    show_answer(ev.message, agent=last_agent)
+    finally:
+        if status:
+            status.stop()
 
 
 def handle_command(

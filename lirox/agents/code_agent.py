@@ -7,11 +7,21 @@ from typing import Generator
 from lirox.agents.base_agent import BaseAgent, AgentEvent
 from lirox.utils.llm import generate_response
 
+import json
+import re
+
 CODE_SYS = """You are the Code Agent — a senior software engineer.
 Write production-quality code. Type hints always. Handle errors gracefully.
 Debug with root cause analysis. Review for security + performance.
-Working directory: {cwd}"""
+Working directory: {cwd}
 
+If you determine that you need to physically create files or run terminal commands to fulfill the user's request, you MUST output a JSON block matching this exact structure inside ```json fences:
+{
+  "explanation": "Brief explanation of what you are doing",
+  "bash": ["list of exact bash commands to run"],
+  "files": [{"path": "/absolute/or/relative/path", "content": "exact file content"}]
+}
+Otherwise, just respond normally."""
 
 class CodeAgent(BaseAgent):
     @property
@@ -20,7 +30,7 @@ class CodeAgent(BaseAgent):
 
     @property
     def description(self) -> str:
-        return "Code generation, debugging, review, project analysis"
+        return "Code generation, writing files, terminal execution, debugging"
 
     def run(
         self, query: str, system_prompt: str = "", context: str = ""
@@ -45,7 +55,54 @@ class CodeAgent(BaseAgent):
 
         yield {"type": "agent_progress", "message": "Generating solution..."}
         answer = generate_response(prompt, provider="auto", system_prompt=sys_p)
-        yield {"type": "done", "answer": answer, "sources": []}
+        
+        parsed_actions = self._parse_json_actions(answer)
+        if parsed_actions:
+            explanation = parsed_actions.get("explanation", "Executing requested actions...")
+            yield {"type": "agent_progress", "message": explanation}
+            
+            # Execute bash
+            bash_cmds = parsed_actions.get("bash", [])
+            for cmd in bash_cmds:
+                yield {"type": "tool_call", "message": f"Running: {cmd}"}
+                from lirox.tools.terminal import run_command
+                out = run_command(cmd)
+                self.scratchpad.add_tool_result("bash", out)
+                yield {"type": "tool_result", "message": f"Done: {cmd}"}
+
+            # Execute files
+            files = parsed_actions.get("files", [])
+            for f in files:
+                path = f.get("path")
+                content = f.get("content")
+                if path and content:
+                    yield {"type": "tool_call", "message": f"Writing: {path}"}
+                    from lirox.tools.file_io import FileIOTool
+                    res = FileIOTool().write_file(path, content)
+                    self.scratchpad.add_tool_result("file_write", res)
+                    yield {"type": "tool_result", "message": f"Saved: {path}"}
+            
+            final_answer = explanation + "\n\nAll requested operations completed."
+            yield {"type": "done", "answer": final_answer, "sources": []}
+        else:
+            yield {"type": "done", "answer": answer, "sources": []}
+
+    def _parse_json_actions(self, text: str) -> dict:
+        m = re.search(r"```json\n(.*?)\n```", text, re.DOTALL)
+        if m:
+            text = m.group(1)
+        try:
+            r = json.loads(text)
+            return r if isinstance(r, dict) else {}
+        except Exception:
+            # try to find a raw json object
+            m2 = re.search(r"\{.*\}", text, re.DOTALL)
+            if m2:
+                try:
+                    return json.loads(m2.group())
+                except Exception:
+                    pass
+        return {}
 
     def _scan(self, path: str) -> str:
         parts = []
