@@ -1,75 +1,75 @@
 <div align="center">
   <pre>
-        /\_/\  
-       ( o.o ) 
-        > ^ <  
+  ██╗     ██╗██████╗  ██████╗ ██╗  ██╗
+  ██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝
+  ██║     ██║██████╔╝██║   ██║ ╚███╔╝ 
+  ██║     ██║██╔══██╗██║   ██║ ██╔██╗ 
+  ███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗
+  ╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝
   </pre>
-  <h1>LIROX Autonomous OS</h1>
-  <p><strong>v1.0 — Skill-Based CLI Autonomous Agent</strong></p>
+  <h1>Lirox Autonomous OS</h1>
+  <p><strong>v2.0 — Hierarchical Multi-Agent Architecture</strong></p>
 </div>
 
-Lirox is a powerful, terminal-first autonomous AI agent designed with a highly modular, pluggable **Skill-Based Architecture**. It processes natural language instructions, routes them to specific tool modules (Skills), and executes sophisticated real-world actions ranging from file orchestration and Bash operations to deep multi-source research.
+Lirox is a powerful, terminal-first autonomous AI agent acting as an operating system layer directly over your bash terminal. Powered by an advanced cognitive architecture, Lirox captures conversational intent, constructs deep reasoning traces, and delegates tasks to specialized sub-agents armed with physical system tools.
 
 ---
 
-## 🌟 Key Features (v1.0)
+## 🌟 Key Features (v2.0)
 
-- **Pluggable Skill Architecture**: Completely decoupled tool execution. Skills self-register and declare their intent and risk profiles. Adding a new behavior is as simple as dropping a new file in the `skills/` folder.
-- **Intelligent Routing**: Natural language directly maps to the best tool without needing expensive LLM chains for simple task delegations.
-- **Risk & Permission Guardrails**: Explicit clearance limits. High-risk skills (like `bash` execution or file manipulations) require active user confirmation before deployment.
-- **Multi-Source Research**: Built-in verification logic fetches, scrapes, ranks, and synthesizes data.
-- **Interactive Onboarding**: Fluid console-driven wizard for seamless model integration and profile configuration.
-- **Stateful Memory & Learning**: Learns operator preferences over interactions. Tracks active context silently. 
+- **Hierarchical Multi-Agent System**: Queries are classified by a Master Orchestrator and routed to specialized expert agents (Finance, Code, Browser, Research, Chat).
+- **Thinking Engine (Chain-of-Thought)**: Behind every query, a dedicated logic engine runs silent deep reasoning and structural planning (visualized by a sleek, dynamic reasoning spinner) before returning actionable results.
+- **Pluggable Skill Architecture**: Completely decoupled tool execution. Skills self-register and declare their intent and risk profiles. Sub-agents wield these skills to safely manipulate local files and commands.
+- **Risk & Permission Guardrails**: Explicit clearance limits. High-risk skills (like `bash` execution or file manipulations) are strictly bounded to prevent catastrophic host machine alterations.
+- **3-Tier Memory System**: Retains short-term contextual buffers, extracts long-term semantic facts bridging sessions, and aggregates them into contextual synthesis.
 
 ---
 
-## ⚙️ How It Works (The Skill Engine)
+## ⚙️ How It Works (The v2 Architecture)
 
-Lirox intercepts queries and dynamically scores them against the registered capabilities of its Tool Pool.
+The system revolves around the **Master Orchestrator**, which intercepts queries, activates the **Thinking Engine**, and pipes the logic context to the most appropriate Sub-Agent.
 
 ```mermaid
 graph TD
-    UI[Terminal CLI Input] -->|User Query| Router[Skill Registry & Router]
+    UI[prompt_toolkit CLI] -->|Natural Language| MO{Master Orchestrator}
     
-    %% Routing Engine
-    Router -->|Scores Keywords| Pool{Skill Pool}
+    %% Core Cognitive Loops
+    MO -->|Generates Context| TE[Thinking Engine]
+    MO -->|Searches DB| Mem[(3-Tier Memory)]
     
-    Pool -->|Best Match| SK_B[Bash Skill]
-    Pool -->|Best Match| SK_F[File Ops Skills]
-    Pool -->|Best Match| SK_R[Research/Web Skills]
-    Pool -->|No Match| SK_C[Chat / LLM Fallback]
+    TE -.->|Logic Trace + Scratchpad| MO
+    Mem -.->|Semantic Context| MO
     
-    %% Risk Management
-    SK_B -.-> |Risk: HIGH| Confirm[User Permission Prompt]
-    Confirm -->|Accept| Execute[Skill Execution Environment]
-    Confirm -->|Deny| Cancel[Cancel Operation]
+    %% Intent Routing
+    MO -->|Intent: Markets| AF[Finance Agent]
+    MO -->|Intent: Scripts/System| AC[Code Agent]
+    MO -->|Intent: Internet| AB[Browser Agent]
+    MO -->|Intent: Deep Dive| AR[Research Agent]
+    MO -->|Intent: Fallback| AChat[Chat Agent]
     
-    SK_F --> Execute
-    SK_R --> Execute
-    SK_C --> Execute
-
-    %% State and Output
-    Execute --> Context[Profile & Memory Context Injection]
-    Context --> Formatter[Response Synthesizer]
-    Formatter --> UI
+    %% Execution & Tools
+    AF --> Reg[Skill Registry]
+    AC --> Reg
+    AB --> Reg
+    AR --> Reg
+    
+    Reg -->|Action| Sys[Local System / APIs]
+    Sys -->|Output| UI
 ```
 
 ---
 
-## 🛠️ The Skill Pool
+## 🛠️ The Sub-Agents (The "Hive")
 
-These core modules are integrated natively into Lirox out of the box:
+Lirox v2 implements 5 distinctive Sub-Agents out of the box:
 
-| Skill | Risk Level | Description |
+| Agent | Purpose | Tools Wielded |
 |---|---|---|
-| **Bash** | 🔴 HIGH | Safely execute bash commands within the CLI. Unlocks total environment control. |
-| **File Write** | 🔴 HIGH | Generates, structures, and writes raw code to targeted files in the ecosystem. |
-| **File Edit** | 🔴 HIGH | Search, replace, and dynamically iterate upon existing file content. |
-| **File Read**| 🟢 LOW | Peeks into current or targeted directory structures to scrape project context. |
-| **Web Search** | 🟢 LOW | Performs live internet searches to pull the latest headlines and verified information. |
-| **Web Fetch** | 🟠 MEDIUM | Employs HTTP fallbacks and headless browsing scraping to extract deep page contents. |
-| **Research** | 🟢 LOW | Multi-source deep-dive agent capable of building comprehensive synthesis reports and citations. |
-| **Chat** | 🟢 SAFE | Standard fallback operator interaction handling natural conversational logic. |
+| **Code Agent** | Software engineering, generating algorithms, debugging. | Modifies local files, executes secure Bash/Terminal scripts. |
+| **Finance Agent** | Institutional-grade equity, macroeconomic research. | Invokes Yahoo Finance APIs, market screeners, fundamental datasets. |
+| **Browser Agent** | Internet interactions & live data scraping. | Uses HTTP requests / headless web parsers to surf public domains. |
+| **Research Agent** | Multi-source academic and topic synthesis. | Leverages DuckDuckGo, Tavily, and text extraction logic. |
+| **Chat Agent** | Native handler for conversational flow & chitchat. | General intelligence algorithms. |
 
 ---
 
@@ -81,15 +81,17 @@ These core modules are integrated natively into Lirox out of the box:
    cd Lirox
    ```
 
-2. **Install the CLI Tooling**
-   Lirox utilizes `setuptools` build mechanisms.
+2. **Install Dependencies**
    ```bash
-   pip install -e .
+   pip install -r requirements.txt
    ```
+   *(Ensure you have `rich`, `prompt_toolkit`, `psutil`, `bs4`, `python-dotenv` installed)*.
 
 3. **Initialize the Agent**
-   To instantly jump into the onboarding wizard allowing you to choose models, API keys, and configurations, simply run:
+   To instantly jump into the internal Lirox CLI and initial setup wizard:
    ```bash
+   python lirox/main.py
+   # OR if entrypoints built:
    lirox
    ```
 
@@ -97,71 +99,24 @@ These core modules are integrated natively into Lirox out of the box:
 
 ## 💻 Usage & Commands
 
-Lirox acts as an OS layer directly over your bash terminal. Once inside the active session, you can assign it tasks or run direct commands:
+Once inside the active session, communicate naturally. Lirox will automatically sense whether you need to write software or check the stock market:
 
 ```bash
-# Standard Conversational Input
-[Lirox] ✦ List out the files in the current directory and open the config.
-[Lirox] ✦ Write a Python script that scrapes HackerNews and save it as scraper.py.
-[Lirox] ✦ Research Sam Altman's recent investments and summarize them.
+# Natural Language Execution
+[Lirox] ✦ Research the 2026 impact of solid state batteries and create a markdown report on my Desktop.
+[Lirox] ✦ Look up TSLA earnings and perform a valuation.
+[Lirox] ✦ Fix the python syntax errors in my src/main.py file.
 ```
 
-**Slash Commands:**
-Direct terminal commands allow for overriding natural language mappings.
-
-- `/skills` - View all active skills inside the registry and their operating status.
-- `/enable <skill>` - Manually switch ON a specialized capability.
-- `/disable <skill>` - Manually switch OFF a distinct capability.
-- `/research <query>` - Force override into Deep Research mode.
-- `/web <url>` - Instantly fetch, scrape, and extract content from a specific URL.
-- `/profile` - View your agent's learning context, memory banks, and system configurations.
-- `/models` - Peek into the current active LLMs connected to your system.
-- `/test` - Run kernel integrity diagnostics to insure internal systems operate nominally.
-- `/update` - Synchronize and gracefully update the agent via origin branches.
-- `/reset` - Complete factory purge of operator profiles and memory strings.
-- `/help` - Open the reference payload for commands.
-
----
-
-## 🏗️ Expanding Lirox (Building Custom Skills)
-
-Building a custom skill is incredibly straightforward due to the auto-discovery mechanism.
-
-1. Create a `your_custom_skill.py` directly inside `/lirox/skills/`.
-2. Subclass `BaseSkill`.
-3. Provide your `RiskLevel`, descriptive `keywords`, and the overarching `execute()` logic. 
-
-**Example Template:**
-```python
-from lirox.skills import BaseSkill, SkillResult, RiskLevel
-
-class MyCustomSkill(BaseSkill):
-    @property
-    def name(self) -> str:
-        return "my_custom"
-
-    @property
-    def description(self) -> str:
-        return "Does something amazing"
-
-    @property
-    def risk_level(self) -> RiskLevel:
-        return RiskLevel.SAFE
-
-    @property
-    def keywords(self) -> list[str]:
-        return ["custom", "amazing", "do work"]
-
-    def execute(self, query: str, context: dict = None) -> SkillResult:
-        # Your python logic here
-        return SkillResult(
-            success=True,
-            output="Executed amazingly!",
-            skill_name=self.name
-        )
-```
-
-Lirox will automatically bind this parameter onto the router on the next boot, actively mapping it to conversational triggers.
+**System Directives:**
+- `/help` - Show all commands.
+- `/agents` - View active sub-agents and domains.
+- `/models` - Show active LLM providers.
+- `/memory` - Peek into the 3-Tier memory bank system.
+- `/think <query>` - Run just the chain-of-thought logic.
+- `/profile` - View your agent's learning context and your personalization config.
+- `/test` - Run system diagnostic tests.
+- `/reset` - Factory wipe session memory.
 
 ---
 

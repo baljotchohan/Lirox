@@ -1,83 +1,72 @@
-# 📘 Lirox Handbook (v0.6)
-### Professional Autonomous CLI Assistant OS
+# 📘 Lirox Handbook (v2.0)
+### Master-Orchestrated Autonomous OS 
 
-Lirox is a production-grade autonomous agent system designed for terminal-first research, coding, and system automation.
+Lirox is a production-grade autonomous agent system designed for terminal-first research, coding, financial analysis, and system automation.
 
 ---
 
 ## 🏛️ System Architecture & Connectivity
-Lirox operates on a **Wave-Based Execution** model.
+Lirox v2 operates on a **Hierarchical Routing** model.
 
 ```mermaid
 graph TD
-    User([Operator]) --> Main[lirox.main]
-    Main --> Router{Intent Router}
+    User([Operator]) --> CLI[prompt_toolkit Interface]
+    CLI --> Main[Master Orchestrator]
     
-    Router -->|Research| Researcher[lirox.agent.researcher]
-    Router -->|Task| Planner[lirox.agent.planner]
-    Router -->|Direct| Chat[lirox.agent.core]
+    %% Intent Router & Memory
+    Main -->|Semantic Search| Mem[(3-Tier Memory Bank)]
+    Main -->|Pre-flight Logic| Think[Thinking Engine]
+    Think -.->|Trace| Main
     
-    Planner --> Policy{Policy Engine}
-    Policy -->|Safe| Executor[lirox.agent.executor]
-    Policy -->|Risk| Confirm[User Approval]
-    Confirm -->|Yes| Executor
+    %% Agent Routing
+    Main --> Intent{Intent Classification}
     
-    Executor -->|Wave 1| Tool1[Terminal/Browser]
-    Executor -->|Wave 2| Tool2[File IO/LLM]
+    Intent -->|Markets & Data| AF[Finance Agent]
+    Intent -->|System & Local DevOps| AC[Code Agent]
+    Intent -->|Live Scraping| AB[Browser Agent]
+    Intent -->|Deep Document Diving| AR[Research Agent]
+    Intent -->|Conversational| AChat[Chat Agent]
     
-    subgraph Core Subsystems
-        Researcher
-        Planner
-        Executor
-        Memory[lirox.agent.memory]
-    end
+    %% Execution Layer
+    AC --> ToolRegistry{Skill Registry}
+    AB --> ToolRegistry
+    AR --> ToolRegistry
+    
+    ToolRegistry --> Bash[Terminal Exec]
+    ToolRegistry --> FIO[File Streams]
 ```
 
 ---
 
-## 🚀 Professional Workflows
+## 🚀 Core Sub-Agent Workflows
 
-### 1. Deep Research (Tiered)
-Lirox uses a multi-source parallel search engine with automated source verification.
-- **Workflow**: `/research "query"` → Decomposition → Parallel Search (Tavily/Serper/DDG) → Content Extraction → Report Generation.
-- **Tiers**:
-    - **Free**: DuckDuckGo (Standard depth).
-    - **Pro**: Tavily/Serper (Deep depth, 12+ sources).
+### 1. The Code Agent
+Lirox acts as a Senior Software Engineer via the Code Agent.
+- **Workflow**: `Query` → Project Code Scan (looks for Python/JS config files) → Extraction → Chain of thought → Execute terminal commands/File Writes to fix errors or generate files automatically.
+- **Safety**: Uses a built shell-argument parser inside `lirox.tools.terminal.run_command` that strips out malicious injections.
 
-### 2. Autonomous Task Execution
-Lirox breaks complex goals into atomic, dependency-aware steps.
-- **Workflow**: `/think "goal"` → Logic Trace → Strategic Plan → Risk Evaluation → Wave-Based Execution → Summary Reflection.
+### 2. The Finance Agent
+Institutional research module routing queries dynamically.
+- **Workflow**: Classifies intent → Fetches data via Yahoo Finance endpoint (`market_data`, `fundamentals`) → Compiles an analytical response bridging macro variables with fundamental stock metrics.
 
-### 3. Identity & Profile Management
-The agent adapts its persona based on the Operator's niche.
-- **Command**: `/profile`
-- **Logic**: Persona is injected into every system prompt as a core instruction set.
+### 3. The Research & Browser Agents
+Deep parallel execution engines.
+- **Browser**: Employs Python headless requests and Beautiful Soup to load exact webpages.
+- **Research**: Uses API toolkits (like DDG/Tavily) to synthesize multiple parallel links into comprehensive readouts.
 
 ---
 
-## 🛠️ Tool Connectivity Chart
+## 🛠️ Security Protocol: The "Hardened Shell"
 
-| Tool | Subsystem | Domain Access | Safety Level |
-| :--- | :--- | :--- | :--- |
-| **Terminal** | `lirox.tools.terminal` | Local System Shell | 🔴 High (Blocked) |
-| **Browser** | `lirox.tools.browser` | Global Web | 🟢 Low (Read-only) |
-| **File I/O** | `lirox.tools.file_io` | `/outputs`, `/data` | 🟡 Medium (Restricted) |
-| **Memory** | `lirox.agent.memory` | `memory.json` | 🟢 Low (Internal) |
+For local interaction, `CodeAgent` invokes the **Safe Terminal Tool**:
+1. **Allowlist Mapping**: Blocked against self-referential or destructive commands.
+2. **Subprocess Isolation**: All pipelines utilize raw string array mapping `shlex.split(cmd)`, totally disabling `shell=True` bash injection liabilities.
+3. **Regex Injection Detection**: Blocks command substitution (`$( )`, `` ` ``) inherently protecting the host OS.
 
 ---
 
-## 🛡️ Security Protocol: The "Hardened Shell"
-v0.6 introduces the **Recursive Pipeline Validator**:
-1. **Allowlist Mapping**: Only 60+ pre-approved developer tools are accessible.
-2. **Chain Verification**: Every command in a pipeline (`|`, `&&`, `;`, `||`) is parsed and validated individually.
-3. **Regex Injection Detection**: Blocks command substitution and exfiltration patterns (`$( )`, `` ` ``).
+## 🧠 The Thinking Engine
+v2.0 abstracts intelligence planning into a unique object called the **Thinking Engine**. Before any physical execution or web search occurs, this Engine spins up a `<thinking>` loop evaluating goals, constraints, constraints logic, and generating an iterative plan, assuring fewer hallucinations and significantly higher success ratios on complex, multi-stage prompts.
 
 ---
-
-## 🌍 Connecting External APIs
-Run `/add-api` to connect your LLM providers or `/add-search-api` for research power.
-- **Supported LLMs**: Gemini, Groq, OpenAI, Anthropic, OpenRouter, DeepSeek, Nvidia.
-- **Supported Search**: Tavily, Serper, Exa.
-
----
-*Lirox: The Autonomous Kernel.*
+*Lirox: Intelligence as an Operation System.*
