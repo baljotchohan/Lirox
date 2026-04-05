@@ -1,4 +1,4 @@
-"""Lirox v2.0 — Multi-Agent Entry Point"""
+"""Lirox v2.1 — Multi-Agent Entry Point"""
 import os
 import sys
 import time
@@ -180,6 +180,9 @@ def handle_command(
             ("/profile", "Show profile"),
             ("/reset", "Reset session memory"),
             ("/test", "Run diagnostics"),
+            ("/import-memory", "Import memory from ChatGPT/Claude/Gemini"),
+            ("/export-profile", "Export your profile as JSON"),
+            ("/uninstall", "Remove all Lirox data from this device"),
             ("/exit", "Shutdown"),
         ]:
             t.add_row(c, d)
@@ -254,6 +257,47 @@ def handle_command(
             except Exception as e:
                 console.print(f"  [red]✖[/] {n:22}: {e}")
         success_message("Diagnostics complete.")
+
+    elif base == "/uninstall":
+        import shutil
+        from rich.panel import Panel as _Panel
+        from lirox.config import PROJECT_ROOT, DATA_DIR, OUTPUTS_DIR
+        console.print()
+        console.print(_Panel(
+            "[bold red]⚠️ UNINSTALL LIROX[/]\n\n"
+            "This will remove all Lirox data from your device:\n"
+            "  • Profile and settings\n"
+            "  • Memory and learning data\n"
+            "  • Configuration (.env)\n\n"
+            "The Python package itself must be removed separately:\n"
+            "  [bold]pip uninstall lirox[/]",
+            border_style="red"
+        ))
+        if confirm_prompt("Delete ALL Lirox data? This cannot be undone."):
+            for path in [
+                os.path.join(PROJECT_ROOT, "profile.json"),
+                os.path.join(PROJECT_ROOT, ".env"),
+                os.path.join(PROJECT_ROOT, "skills_config.json"),
+                os.path.join(PROJECT_ROOT, "intent_patterns.json"),
+                os.path.join(PROJECT_ROOT, "scheduled_tasks.json"),
+            ]:
+                if os.path.exists(path):
+                    os.remove(path)
+            for dir_path in [DATA_DIR, OUTPUTS_DIR]:
+                if os.path.exists(dir_path):
+                    shutil.rmtree(dir_path, ignore_errors=True)
+            success_message("All Lirox data deleted. Run 'pip uninstall lirox' to remove the package.")
+            info_panel("Goodbye. 👋")
+            sys.exit(0)
+
+    elif base == "/import-memory":
+        from lirox.ui.wizard import _show_memory_import_prompt
+        _show_memory_import_prompt(profile, profile.data.get("user_name", "User"),
+                                   profile.data.get("agent_name", "Lirox"))
+
+    elif base == "/export-profile":
+        import json as _json
+        console.print(_json.dumps(profile.data, indent=2, default=str))
 
     else:
         console.print(f"  [dim]Unknown command: {base}. Type /help for options.[/]")

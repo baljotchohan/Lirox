@@ -44,6 +44,20 @@ class BrowserAgent(BaseAgent):
             else:
                 answer = content
         else:
+            # Try smart auto-fetch first
+            smart_result = self._smart_fetch(query)
+            if smart_result:
+                yield {"type": "agent_progress", "message": "📊 Synthesizing retrieved data..."}
+                answer = generate_response(
+                    f"Query: {query}\n\nData found:\n{smart_result[:6000]}",
+                    provider="auto",
+                    system_prompt="Synthesize this data into a clear answer. Cite the source.",
+                )
+                log_with_metadata(logger, "INFO", "Agent completed via smart_fetch",
+                                  agent=self.name, duration_ms=int((time.time() - start)*1000))
+                yield {"type": "done", "answer": answer, "sources": []}
+                return
+
             yield {"type": "tool_call", "message": "Searching..."}
             from lirox.tools.search.duckduckgo import search_ddg
 
@@ -67,7 +81,7 @@ class BrowserAgent(BaseAgent):
 
             resp = requests.get(
                 url,
-                headers={"User-Agent": "Lirox/2.0"},
+                headers={"User-Agent": "Lirox/2.1"},
                 timeout=15,
             )
             resp.raise_for_status()
@@ -83,3 +97,29 @@ class BrowserAgent(BaseAgent):
             return re.sub(r"\n{3,}", "\n\n", text)[:MAX_SEARCH_RESULT_CHARS]
         except Exception as e:
             return f"Fetch error: {e}"
+
+    def _smart_fetch(self, query: str) -> str:
+        """Auto-construct search URLs and fetch real data without APIs."""
+        # Try free data APIs first
+        try:
+            from lirox.tools.free_data import get_free_data
+            result = get_free_data(query)
+            if result.get("status") == "success" and result.get("answer"):
+                return result["answer"]
+        except Exception:
+            pass
+
+        # Fall back to DuckDuckGo search + first result fetch
+        try:
+            from lirox.tools.search.duckduckgo import search_ddg
+            results = search_ddg(query, max_results=3)
+            # Extract first URL from results
+            urls = re.findall(r'https?://\S+', results)
+            if urls:
+                content = self._fetch(urls[0])
+                if content and "error" not in content.lower():
+                    return f"Source: {urls[0]}\n\n{content}"
+        except Exception:
+            pass
+
+        return ""

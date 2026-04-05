@@ -193,6 +193,7 @@ class LearningEngine:
                 self._data["recent_topics"] = rt[-30:]
 
             # Satisfaction signal
+            lower = user_input.lower()
             if _has_negative_signal(user_input):
                 self._data["negative_signals"] += 1
                 # Decay satisfaction (min 0.2)
@@ -206,6 +207,25 @@ class LearningEngine:
                     1.0,
                     self._data["satisfaction_score"] + 0.02
                 )
+
+            # Auto-learn from code interactions
+            if intent == "coding":
+                # Extract language/framework mentions
+                tech_patterns = [
+                    "python", "javascript", "typescript", "react", "vue", "svelte",
+                    "flask", "django", "fastapi", "node", "express", "rust", "go",
+                    "docker", "kubernetes", "aws", "gcp", "azure", "terraform",
+                    "postgres", "mongodb", "redis", "graphql", "rest", "api",
+                ]
+                for tech in tech_patterns:
+                    if tech in lower:
+                        tc[f"tech:{tech}"] = tc.get(f"tech:{tech}", 0) + 1
+
+            # Learn communication preferences
+            if len(user_input.split()) < 10:
+                tc["style:brief_queries"] = tc.get("style:brief_queries", 0) + 1
+            elif len(user_input.split()) > 50:
+                tc["style:detailed_queries"] = tc.get("style:detailed_queries", 0) + 1
 
             self._save()
 

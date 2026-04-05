@@ -53,6 +53,12 @@ def show_welcome():
         f"  [{CLR_DIM}]Agents: Finance · Code · Browser · Research · Chat[/]"
     )
     console.print(f"  [{CLR_DIM}]Type /help for commands · /agents for status[/]\n")
+    from lirox.agent.profile import UserProfile
+    p = UserProfile()
+    if p.is_setup():
+        user = p.data.get("user_name", "")
+        agent = p.data.get("agent_name", "Lirox")
+        console.print(f"  [bold #FFC107]Welcome back, {user}! 👋 {agent} is ready.[/]\n")
 
 
 def show_thinking(msg: str):
@@ -84,7 +90,9 @@ def show_agent_event(agent: str, etype: str, msg: str):
 
 
 def show_answer(answer: str, agent: str = "chat"):
-    console.print(f"\n[{AGENT_COLORS.get(agent, CLR_ACCENT)}]{answer.strip()}[/]\n")
+    icon = AGENT_ICONS.get(agent, "💬")
+    color = AGENT_COLORS.get(agent, CLR_ACCENT)
+    console.print(f"\n{icon} [{color}]{answer.strip()}[/]\n")
 
 
 def show_status_card(profile_data: dict, providers: list):
