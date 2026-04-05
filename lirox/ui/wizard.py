@@ -172,6 +172,37 @@ def _setup_ollama():
     console.print(f"  [bold green]✓ Ollama configured: {model} @ {endpoint}[/]\n")
 
 
+def _verify_api_key(provider_name: str, api_key: str) -> bool:
+    """Verify if the provided API key is valid using the provider's REST API."""
+    import requests
+    console.print(f"  [dim]Verifying {provider_name} API key...[/]")
+    try:
+        if provider_name == "Groq":
+            r = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
+        elif provider_name == "Gemini":
+            r = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", timeout=5)
+        elif provider_name == "OpenRouter":
+            r = requests.get("https://openrouter.ai/api/v1/auth/key", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
+        elif provider_name == "OpenAI":
+            r = requests.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
+        elif provider_name == "Anthropic":
+            r = requests.get("https://api.anthropic.com/v1/models", headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"}, timeout=5)
+            # Anthropic models endpoint may 404 or 403, but 401 explicitly means invalid key
+        elif provider_name == "DeepSeek":
+            r = requests.get("https://api.deepseek.com/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
+        else:
+            return True
+
+        if r.status_code in (401, 403):
+            console.print("  [bold red]✖ Invalid API key. Verification failed.[/]")
+            return False
+            
+        return True
+    except Exception:
+        console.print("  [yellow]⚠ Network error during verification, proceeding anyway.[/]")
+        return True
+
+
 def _setup_cloud_keys():
     """Configure cloud LLM API keys."""
     provider_options = {
@@ -196,11 +227,15 @@ def _setup_cloud_keys():
         name, env_key, url, _ = provider_options[choice]
         key = Prompt.ask(f"  Paste {name} API key", password=True)
         if key and key.strip():
-            if not Path(_ENV_PATH).exists():
-                Path(_ENV_PATH).write_text("# Lirox Configuration\n")
-            set_key(_ENV_PATH, env_key, key.strip())
-            os.environ[env_key] = key.strip()
-            console.print(f"  [bold green]✓ {name} key saved[/]")
+            if _verify_api_key(name, key.strip()):
+                if not Path(_ENV_PATH).exists():
+                    Path(_ENV_PATH).write_text("# Lirox Configuration\n")
+                set_key(_ENV_PATH, env_key, key.strip())
+                os.environ[env_key] = key.strip()
+                console.print(f"  [bold green]✓ {name} key saved[/]")
+            else:
+                console.print("  [dim]Key was not saved. Please try again.[/]")
+                continue
         if not Confirm.ask("  Add another?", default=False):
             break
 
