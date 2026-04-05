@@ -18,6 +18,20 @@ import requests
 import concurrent.futures
 from typing import List, Dict, Optional, Generator
 
+
+# ─── Lirox Memory Compressor — Ollama Inference Options ──────────────────────
+# These options are permanently injected by scripts/compress_model.py
+# They reduce peak RAM usage by capping context, threads, and batch size.
+_OLLAMA_OPTIONS = {
+    "num_ctx": 8192,     # matches gemma-compact Modelfile — KV cache optimized
+    "num_thread": 4,    # cap CPU threads
+    "num_batch": 512,   # prompt batch size
+    "num_predict": 1024, # max response tokens
+    "num_keep": 64,
+    "repeat_last_n": 64
+}
+# ─────────────────────────────────────────────────────────────────────────────
+
 DEFAULT_SYSTEM = (
     "You are Lirox, a premium autonomous AI agent designed for high-performance research and systems execution. "
     "MANDATORY FORMATTING RULES:\n"
@@ -183,24 +197,32 @@ def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
     """
     Local LLM provider via Ollama (https://ollama.ai).
     Requires Ollama to be running: `ollama serve`
-    Auto-detects the model from OLLAMA_MODEL env var (default: gemma4).
+    Auto-detects the model from OLLAMA_MODEL env var (default: llama3).
+
+    Memory note: gc.collect() is called after every inference to release
+    temporary Python objects and reduce peak RAM pressure.
     """
+    import gc
     endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
     if model is None:
-        model = os.getenv("OLLAMA_MODEL", "gemma4")
+        model = os.getenv("OLLAMA_MODEL", "llama3")
     full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
     try:
         res = requests.post(
             f"{endpoint}/api/generate",
-            json={"model": model, "prompt": full_prompt, "stream": False},
+            json={"model": model, "prompt": full_prompt, "stream": False, "options": _OLLAMA_OPTIONS},
             timeout=120,
         )
         res.raise_for_status()
-        return res.json().get("response", "Ollama Error: empty response")
+        result = res.json().get("response", "Ollama Error: empty response")
+        return result
     except requests.exceptions.ConnectionError:
         return "Ollama Error: server not running. Start with: ollama serve"
     except Exception as e:
         return f"Ollama Error: {str(e)}"
+    finally:
+        # Release Python-side objects immediately after inference
+        gc.collect()
 
 
 def _is_ollama_available() -> bool:

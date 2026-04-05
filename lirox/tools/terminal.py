@@ -89,15 +89,22 @@ def run_command(cmd: str) -> str:
     Execute a terminal command safely using shlex parsing (no shell=True).
     
     [FIX #1] Prevents shell injection by using subprocess array form.
+    [FIX #2] Uses sys.executable for python3 commands to avoid Xcode resolver.
     """
+    import sys
+
     safe, reason = is_safe(cmd)
     if not safe:
         return f"[Blocked] {reason}"
 
     try:
-        # [FIX #1] Parse command into safe array form (NO shell=True)
         parsed_args = shlex.split(cmd)
-        
+
+        # [FIX #2] Replace python3/python with sys.executable so scripts always
+        # run under the same interpreter Lirox is using (not the Xcode fallback)
+        if parsed_args and parsed_args[0] in ("python3", "python"):
+            parsed_args[0] = sys.executable
+
         result = subprocess.run(
             parsed_args,
             capture_output=True,

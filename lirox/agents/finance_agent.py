@@ -52,11 +52,16 @@ class FinanceAgent(BaseAgent):
         if tools:
             results = []
             for tc in tools:
-                yield {"type": "tool_call", "message": f"Fetching {tc['tool']}..."}
-                r = self._exec(tc["tool"], tc.get("args", {}))
-                results.append({"tool": tc["tool"], "result": r})
-                self.scratchpad.add_tool_result(tc["tool"], r)
-                yield {"type": "tool_result", "message": f"{tc['tool']}: done"}
+                # Handle both {"tool": ...} and {"name": ...} formats from different models
+                tool_name = tc.get("tool") or tc.get("name") or tc.get("function") or ""
+                if not tool_name:
+                    continue
+                tool_args = tc.get("args") or tc.get("arguments") or tc.get("parameters") or {}
+                yield {"type": "tool_call", "message": f"Fetching {tool_name}..."}
+                r = self._exec(tool_name, tool_args)
+                results.append({"tool": tool_name, "result": r})
+                self.scratchpad.add_tool_result(tool_name, r)
+                yield {"type": "tool_result", "message": f"{tool_name}: done"}
 
             yield {"type": "agent_progress", "message": "Synthesizing..."}
             synth = (
@@ -65,7 +70,28 @@ class FinanceAgent(BaseAgent):
             )
             answer = generate_response(synth, provider="auto", system_prompt=sys_p)
         else:
-            answer = generate_response(query, provider="auto", system_prompt=sys_p)
+            # Direct fallback — fetch real data via yfinance
+            tickers = re.findall(r'\b([A-Z]{2,5})\b', query)
+            direct_data = []
+            try:
+                import yfinance as yf
+                for ticker in tickers[:3]:
+                    info = yf.Ticker(ticker).fast_info
+                    price = getattr(info, 'last_price', None)
+                    if price:
+                        direct_data.append(f"{ticker}: ${price:,.2f}")
+                if "bitcoin" in query.lower() or "btc" in query.lower():
+                    btc_price = getattr(yf.Ticker("BTC-USD").fast_info, 'last_price', None)
+                    if btc_price:
+                        direct_data.append(f"Bitcoin (BTC): ${btc_price:,.2f}")
+            except Exception:
+                pass
+
+            if direct_data:
+                price_ctx = "Live prices fetched:\n" + "\n".join(direct_data) + "\n\n"
+                answer = generate_response(price_ctx + query, provider="auto", system_prompt=sys_p)
+            else:
+                answer = generate_response(query, provider="auto", system_prompt=sys_p)
 
         log_with_metadata(logger, "INFO", "Agent completed", agent=self.name, duration_ms=int((time.time()-start)*1000))
         yield {"type": "done", "answer": answer, "sources": []}

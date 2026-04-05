@@ -76,24 +76,74 @@ class CodeAgent(BaseAgent):
 
         cwd = os.getcwd()
         from lirox.agent.profile import UserProfile
+        from lirox.tools.file_io import FileIOTool
         profile = UserProfile()
         agent_name = profile.data.get("agent_name", "Lirox")
         sys_p = CODE_SYS.format(cwd=cwd, agent_name=agent_name)
 
         yield {"type": "agent_progress", "message": "🔍 Analyzing your request..."}
 
-        # Auto-scan project if query involves existing code
+        # ── Pre-read: extract any file paths mentioned in query and inject real content
+        file_contents_ctx = ""
+        path_matches = re.findall(r'(/[\w./\-_ ]+\.(?:txt|py|html|js|css|md|json|csv|yaml|yml))', query)
+        if path_matches:
+            fio = FileIOTool()
+            for path in path_matches:
+                path = path.strip()
+                if os.path.exists(path):
+                    yield {"type": "tool_call", "message": f"📖 Pre-reading: {path}"}
+                    try:
+                        content = fio.read_file(path)
+                        file_contents_ctx += f"\n\n=== FILE: {path} ===\n{content[:3000]}"
+                        yield {"type": "tool_result", "message": f"✅ Read {path} ({len(content)} chars)"}
+                    except Exception as e:
+                        yield {"type": "tool_result", "message": f"⚠️ Could not read {path}: {e}"}
+
+        # ── Pre-list: if query mentions a directory, list its files
+        dir_matches = re.findall(r'(/(?:Users|home)/[\w./\-_ ]+)', query)
+        # Also catch bare paths like /Users/foo/Desktop/cv
+        for token in query.split():
+            if token.startswith('/') and os.path.isdir(token.rstrip('/')) and token not in dir_matches:
+                dir_matches.append(token.rstrip('/'))
+        for dpath in dir_matches:
+            dpath = dpath.strip().rstrip('/')
+            if os.path.isdir(dpath) and not file_contents_ctx:
+                yield {"type": "tool_call", "message": f"📁 Listing: {dpath}"}
+                try:
+                    entries = os.listdir(dpath)
+                    fio = FileIOTool()
+                    dir_summary = f"\n\n=== DIRECTORY: {dpath} ===\n"
+                    for entry in sorted(entries):
+                        full = os.path.join(dpath, entry)
+                        if os.path.isfile(full) and not entry.startswith('.'):
+                            dir_summary += f"  {entry} ({os.path.getsize(full)} bytes)\n"
+                            # Auto-read small text files
+                            if entry.endswith(('.txt', '.md', '.py', '.js', '.css', '.html')) and os.path.getsize(full) < 10000:
+                                try:
+                                    fc = fio.read_file(full)
+                                    dir_summary += f"  --- {entry} contents ---\n{fc[:1500]}\n"
+                                except Exception:
+                                    pass
+                    file_contents_ctx += dir_summary
+                    yield {"type": "tool_result", "message": f"✅ Listed {len(entries)} items in {dpath}"}
+                except Exception as e:
+                    yield {"type": "tool_result", "message": f"⚠️ Could not list {dpath}: {e}"}
+
+        # Auto-scan project if query involves code changes
         project_ctx = ""
         if any(k in query.lower() for k in [
-            "fix", "debug", "review", "refactor", "analyze", "this file",
-            "this project", "scan", "read", "edit", "modify", "update"
+            "fix", "debug", "review", "refactor", "analyze",
+            "this file", "this project", "scan", "edit", "modify", "update"
         ]):
             yield {"type": "agent_progress", "message": "📁 Scanning project structure..."}
             project_ctx = self._scan(cwd)
 
+        # Build full prompt with real file contents injected
         prompt = query
+        if file_contents_ctx:
+            prompt = f"Here is the actual file content you need:\n{file_contents_ctx}\n\nTask: {query}"
         if project_ctx:
-            prompt = f"Project Structure:\n{project_ctx}\n\nTask: {query}"
+            prompt = f"Project Structure:\n{project_ctx}\n\n{prompt}"
         if context:
             prompt = f"Reasoning:\n{context}\n\n{prompt}"
 
@@ -104,7 +154,8 @@ class CodeAgent(BaseAgent):
         if parsed:
             yield from self._execute_actions(parsed, query)
         else:
-            yield {"type": "done", "answer": answer, "sources": []}
+            # ── Fallback: extract write-target paths and code blocks from prose response
+            yield from self._fallback_write_extraction(answer, query)
 
         log_with_metadata(logger, "INFO", "Code Agent completed",
                           duration_ms=int((time.time() - start) * 1000))
@@ -202,6 +253,69 @@ class CodeAgent(BaseAgent):
             except Exception:
                 pass
         return {}
+
+    def _fallback_write_extraction(self, answer: str, query: str) -> Generator[AgentEvent, None, None]:
+        """
+        Fallback: when LLM doesn't output JSON but the query asked to write a file,
+        extract the output path from the query and any code blocks from the response,
+        then write them directly.
+        """
+        from lirox.tools.file_io import FileIOTool
+        from lirox.tools.terminal import is_safe, run_command
+
+        # Check if query asked to write to a specific file
+        write_match = re.search(
+            r'(?:write|save|create|output)\s+(?:to|at|into)?\s*([/~][\w./\-_ ]+\.(?:html|py|js|css|md|txt|json|yaml))',
+            query, re.IGNORECASE
+        )
+        # Also check if query has "to /path/file.ext"
+        path_match = re.search(
+            r'(?:to|into|at)\s+(/[\w./\-_ ]+\.(?:html|py|js|css|md|txt|json|yaml))',
+            query, re.IGNORECASE
+        )
+        target_path = None
+        if write_match:
+            target_path = write_match.group(1).strip()
+        elif path_match:
+            target_path = path_match.group(1).strip()
+
+        # Also check if query asks to run a script
+        run_match = re.search(
+            r'(?:run|execute|then run)\s+(python3?\s+[/\w./\-_ ]+\.py)',
+            query, re.IGNORECASE
+        )
+
+        # Extract code blocks from LLM prose answer
+        code_blocks = re.findall(r'```(?:\w+)?\n(.*?)\n```', answer, re.DOTALL)
+
+        files_written = []
+        if target_path and code_blocks:
+            # Use the largest code block as the file content
+            code = max(code_blocks, key=len)
+            fio = FileIOTool()
+            yield {"type": "tool_call", "message": f"📝 Writing extracted code → {target_path}"}
+            try:
+                # Ensure parent directory exists
+                os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
+                res = fio.write_file(target_path, code)
+                files_written.append(target_path)
+                yield {"type": "tool_result", "message": f"✅ {res}"}
+            except Exception as e:
+                yield {"type": "error", "message": f"❌ Write failed: {e}"}
+
+        # Run a script if query requested it
+        if run_match:
+            cmd = run_match.group(1).strip()
+            safe, reason = is_safe(cmd)
+            if safe:
+                yield {"type": "tool_call", "message": f"🔧 Running: {cmd}"}
+                out = run_command(cmd)
+                yield {"type": "tool_result", "message": f"Output: {out[:500]}"}
+                answer = answer + f"\n\n**Execution Output:**\n```\n{out[:1000]}\n```"
+            else:
+                yield {"type": "error", "message": f"❌ Blocked: {reason}"}
+
+        yield {"type": "done", "answer": answer, "sources": []}
 
     def _scan(self, path: str) -> str:
         """Scan project directory for context."""

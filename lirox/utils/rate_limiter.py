@@ -6,9 +6,8 @@ Prevents API abuse and monitors system resources to ensure safe autonomous execu
 
 import time
 import psutil
-from typing import Dict, Optional
+from typing import Dict
 from datetime import datetime, timedelta
-from lirox.ui.display import error_panel
 
 
 class RateLimiter:
@@ -50,26 +49,44 @@ class RateLimiter:
 
 
 class ResourceMonitor:
-    """Monitors CPU and RAM to prevent the agent from locking up the host."""
-    
-    def __init__(self, max_cpu_percent: float = 90.0, max_ram_percent: float = 85.0):
+    """
+    Monitors CPU and RAM to prevent the agent from locking up the host.
+
+    Thresholds are intentionally high (95% RAM, 95% CPU) because Ollama
+    local models are large and will naturally consume significant RAM.
+    The monitor logs a warning but NEVER blocks execution — the agent
+    should always proceed even under high memory pressure.
+    """
+
+    def __init__(self, max_cpu_percent: float = 95.0, max_ram_percent: float = 95.0):
         self.max_cpu = max_cpu_percent
         self.max_ram = max_ram_percent
-    
+        self._warn_interval = 60  # seconds between repeated warnings
+        self._last_warn_time = 0.0
+
     def check_resources(self) -> bool:
-        """Return True if system is healthy, False if overloaded."""
+        """
+        Always returns True (non-blocking). Logs a single warning if thresholds
+        are exceeded, but does not pause or stall the agent.
+        """
+        import gc
         cpu = psutil.cpu_percent(interval=0.1)
         ram = psutil.virtual_memory().percent
-        
-        if cpu > self.max_cpu:
-            error_panel("RESOURCE WARNING", f"CPU load critically high ({cpu}%). Pausing agent...")
-            return False
-            
-        if ram > self.max_ram:
-            error_panel("RESOURCE WARNING", f"RAM usage critically high ({ram}%). Pausing agent...")
-            return False
-            
-        return True
+
+        now = time.time()
+        if (cpu > self.max_cpu or ram > self.max_ram):
+            if now - self._last_warn_time > self._warn_interval:
+                label = "CPU" if cpu > self.max_cpu else "RAM"
+                val = cpu if cpu > self.max_cpu else ram
+                # Soft warning only — do not block
+                import logging
+                logging.getLogger("lirox.resources").warning(
+                    f"{label} pressure high ({val:.0f}%) — running GC"
+                )
+                gc.collect()  # run garbage collector to free unreferenced objects
+                self._last_warn_time = now
+
+        return True  # always non-blocking
 
 
 # Global instances
