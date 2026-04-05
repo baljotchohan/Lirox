@@ -69,9 +69,13 @@ def is_safe(cmd):
             basename = os.path.basename(base_cmd)
             is_absolute = os.path.isabs(base_cmd)
             
+            # Strip .exe for basename checking on Windows
+            if os.name == 'nt' and basename.lower().endswith('.exe'):
+                basename = basename[:-4]
+            
             # Strict validation for absolute paths: must be in standard system bins
-            SAFE_BIN_PATHS = ["/usr/bin", "/bin", "/usr/local/bin"]
-            if is_absolute:
+            if is_absolute and os.name != 'nt':
+                SAFE_BIN_PATHS = ["/usr/bin", "/bin", "/usr/local/bin"]
                 dirname = os.path.dirname(base_cmd)
                 if dirname not in SAFE_BIN_PATHS:
                     return False, f"Untrusted execution path for binary: '{base_cmd}'"

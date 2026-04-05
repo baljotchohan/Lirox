@@ -1,0 +1,4 @@
+{"timestamp": "2026-04-05T17:41:44.280752", "level": "INFO", "component": "lirox.agents.chat", "message": "Agent started", "function": null, "line": 0, "agent": "chat", "query": "sowhat are you know about me"}
+{"timestamp": "2026-04-05T17:41:59.818255", "level": "INFO", "component": "lirox.agents.chat", "message": "Agent completed", "function": null, "line": 0, "agent": "chat", "duration_ms": 15537}
+{"timestamp": "2026-04-05T17:43:00.254374", "level": "INFO", "component": "lirox.agents.code", "message": "Code Agent started", "function": null, "line": 0, "query": "ok so create a python loop in my test.py folder and run and test that"}
+{"timestamp": "2026-04-05T17:43:16.861759", "level": "INFO", "component": "lirox.agents.code", "message": "Code Agent completed", "function": null, "line": 0, "duration_ms": 16607}

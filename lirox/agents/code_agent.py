@@ -85,7 +85,7 @@ class CodeAgent(BaseAgent):
 
         # ── Pre-read: extract any file paths mentioned in query and inject real content
         file_contents_ctx = ""
-        path_matches = re.findall(r'(/[\w./\-_ ]+\.(?:txt|py|html|js|css|md|json|csv|yaml|yml))', query)
+        path_matches = re.findall(r'((?:[a-zA-Z]:[\\/]|/)[\w.\\/\-_ ]+\.(?:txt|py|html|js|css|md|json|csv|yaml|yml))', query)
         if path_matches:
             fio = FileIOTool()
             for path in path_matches:
@@ -100,11 +100,14 @@ class CodeAgent(BaseAgent):
                         yield {"type": "tool_result", "message": f"⚠️ Could not read {path}: {e}"}
 
         # ── Pre-list: if query mentions a directory, list its files
-        dir_matches = re.findall(r'(/(?:Users|home)/[\w./\-_ ]+)', query)
-        # Also catch bare paths like /Users/foo/Desktop/cv
+        dir_matches = re.findall(r'((?:[a-zA-Z]:[\\/](?:Users|home)|/(?:Users|home))[\w.\\/\-_ ]+)', query)
+        # Also catch bare paths like /Users/foo/Desktop/cv or C:\Users\...
         for token in query.split():
-            if token.startswith('/') and os.path.isdir(token.rstrip('/')) and token not in dir_matches:
-                dir_matches.append(token.rstrip('/'))
+            clean_token = token.rstrip('/\\')
+            is_win_abs = len(clean_token) >= 3 and clean_token[1:3] == ':\\' and clean_token[0].isalpha()
+            is_unix_abs = clean_token.startswith('/')
+            if (is_win_abs or is_unix_abs) and os.path.isdir(clean_token) and clean_token not in dir_matches:
+                dir_matches.append(clean_token)
         for dpath in dir_matches:
             dpath = dpath.strip().rstrip('/')
             if os.path.isdir(dpath) and not file_contents_ctx:
@@ -265,12 +268,12 @@ class CodeAgent(BaseAgent):
 
         # Check if query asked to write to a specific file
         write_match = re.search(
-            r'(?:write|save|create|output)\s+(?:to|at|into)?\s*([/~][\w./\-_ ]+\.(?:html|py|js|css|md|txt|json|yaml))',
+            r'(?:write|save|create|output)\s+(?:to|at|into)?\s*((?:[a-zA-Z]:[\\/]|[/~])[\w.\\/\-_ ]+\.(?:html|py|js|css|md|txt|json|yaml))',
             query, re.IGNORECASE
         )
         # Also check if query has "to /path/file.ext"
         path_match = re.search(
-            r'(?:to|into|at)\s+(/[\w./\-_ ]+\.(?:html|py|js|css|md|txt|json|yaml))',
+            r'(?:to|into|at)\s+((?:[a-zA-Z]:[\\/]|[/~])[\w.\\/\-_ ]+\.(?:html|py|js|css|md|txt|json|yaml))',
             query, re.IGNORECASE
         )
         target_path = None
@@ -281,7 +284,7 @@ class CodeAgent(BaseAgent):
 
         # Also check if query asks to run a script
         run_match = re.search(
-            r'(?:run|execute|then run)\s+(python3?\s+[/\w./\-_ ]+\.py)',
+            r'(?:run|execute|then run)\s+(python3?\s+(?:[a-zA-Z]:[\\/]|\/)[\w.\\/\-_ ]+\.py|python3?\s+[\w.\\/\-_ ]+\.py)',
             query, re.IGNORECASE
         )
 
