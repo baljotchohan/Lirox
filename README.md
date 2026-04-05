@@ -9,10 +9,10 @@
   </pre>
 
   <h1>Lirox — Autonomous AI Agent OS</h1>
-  <p><strong>v2.1.0 · Terminal-First · Multi-Agent · Learns From You</strong></p>
+  <p><strong>Beta 1 · Terminal-First · Multi-Agent · Learns From You</strong></p>
 
   <p>
-    <img src="https://img.shields.io/badge/version-2.1.0-FFC107?style=for-the-badge" alt="Version 2.1.0"/>
+    <img src="https://img.shields.io/badge/version-1.0.0b1-FFC107?style=for-the-badge" alt="Version 1.0.0b1"/>
     <img src="https://img.shields.io/badge/python-3.9%2B-3776AB?style=for-the-badge&logo=python&logoColor=white" alt="Python 3.9+"/>
     <img src="https://img.shields.io/badge/license-MIT-10b981?style=for-the-badge" alt="MIT License"/>
     <img src="https://img.shields.io/badge/LLM%20Providers-7%2B-a78bfa?style=for-the-badge" alt="7+ LLM Providers"/>
@@ -40,7 +40,7 @@ Lirox:        → Thinks → Routes to Code Agent → Scans project → Generate
 
 ---
 
-## ✨ What's New in v2.1.0
+## ✨ What's New in Beta 1
 
 | # | Feature | Impact |
 |---|---------|--------|
@@ -62,7 +62,7 @@ Lirox:        → Thinks → Routes to Code Agent → Scans project → Generate
 
 ## 💾 Model Compression & Memory Optimization (gemma-compact)
 
-Lirox v2.1.0 introduces native support for **memory-optimized models**, starting with the highly efficient `gemma-compact`. By implementing an automated model compressor algorithm during setup, Lirox dramatically reduces RAM consumption while maintaining full context windows.
+Lirox Beta 1 introduces native support for **memory-optimized models**, starting with the highly efficient `gemma-compact`. By implementing an automated model compressor algorithm during setup, Lirox dramatically reduces RAM consumption while maintaining full context windows.
 
 ### How It Works
 
@@ -314,7 +314,7 @@ lirox/
 ├── main.py                  # Entry point, REPL, command handler
 ├── config.py                # Central configuration
 ├── soul.py                  # Agent identity & personality
-├── __init__.py              # Package (v2.1.0)
+├── __init__.py              # Package (1.0.0b1)
 │
 ├── orchestrator/
 │   └── master.py            # Master Orchestrator — intent routing
@@ -420,5 +420,5 @@ MIT License — see [LICENSE](LICENSE) for details.
     <a href="https://github.com/baljotchohan/Lirox/issues">Request a Feature</a> ·
     <a href="https://github.com/baljotchohan/Lirox/pulls">Submit a PR</a>
   </p>
-  <sub>Lirox v2.1.0 · Python 3.9+ · MIT</sub>
+  <sub>Lirox Beta 1 · Python 3.9+ · MIT</sub>
 </div>
