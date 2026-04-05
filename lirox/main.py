@@ -183,6 +183,7 @@ def handle_command(
             ("/import-memory", "Import memory from ChatGPT/Claude/Gemini"),
             ("/export-profile", "Export your profile as JSON"),
             ("/uninstall", "Remove all Lirox data from this device"),
+            ("/update", "Update Lirox to the latest version"),
             ("/exit", "Shutdown"),
         ]:
             t.add_row(c, d)
@@ -289,6 +290,37 @@ def handle_command(
             success_message("All Lirox data deleted. Run 'pip uninstall lirox' to remove the package.")
             info_panel("Goodbye. 👋")
             sys.exit(0)
+
+    elif base == "/update":
+        import subprocess
+        from lirox.config import PROJECT_ROOT
+        info_panel("Checking for updates and pulling latest code...")
+        try:
+            if os.path.exists(os.path.join(PROJECT_ROOT, ".git")):
+                result = subprocess.run(
+                    ["git", "-C", PROJECT_ROOT, "pull"],
+                    capture_output=True, text=True, check=True
+                )
+                if "Already up to date." in result.stdout:
+                    success_message("Lirox is already up to date.")
+                else:
+                    console.print(f"[dim]{result.stdout.strip()}[/]")
+                    subprocess.run(
+                        [sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT],
+                        capture_output=True
+                    )
+                    success_message("Lirox updated successfully. Please restart Lirox.")
+            else:
+                info_panel(
+                    "Not a Git repository.\n"
+                    "To update Lirox via pip, please run:\n"
+                    "  [bold]pip install --upgrade lirox[/]"
+                )
+        except subprocess.CalledProcessError as e:
+            err_msg = e.stderr.strip() if e.stderr else str(e)
+            error_panel("UPDATE FAILED", f"Git operation failed:\n{err_msg}")
+        except Exception as e:
+            error_panel("UPDATE FAILED", str(e))
 
     elif base == "/import-memory":
         from lirox.ui.wizard import _show_memory_import_prompt
