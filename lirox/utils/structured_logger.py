@@ -36,7 +36,10 @@ def get_logger(name: str) -> logging.Logger:
     logger = logging.getLogger(name)
     
     if not logger.handlers:
-        handler = logging.StreamHandler()
+        from lirox.config import DATA_DIR
+        import os
+        log_path = os.path.join(DATA_DIR, "agent.log")
+        handler = logging.FileHandler(log_path)
         handler.setFormatter(StructuredFormatter())
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
