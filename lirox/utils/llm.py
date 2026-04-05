@@ -18,6 +18,8 @@ import requests
 import concurrent.futures
 from typing import List, Dict, Optional, Generator
 
+_FALLBACK_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+
 
 # ─── Lirox Memory Compressor — Ollama Inference Options ──────────────────────
 # These options are permanently injected by scripts/compress_model.py
@@ -235,6 +237,44 @@ def _is_ollama_available() -> bool:
         return False
 
 
+def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = None) -> str:
+    """
+    Local LLM provider via Hugging Face BitsAndBytes API server.
+    Requires run_hf_bnb.py to be running: `python3 run_hf_bnb.py`
+    """
+    import gc
+    endpoint = os.getenv("HF_BNB_ENDPOINT", "http://localhost:11435")
+    full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    try:
+        res = requests.post(
+            f"{endpoint}/api/generate",
+            json={"prompt": full_prompt, "options": _OLLAMA_OPTIONS},
+            timeout=120,
+        )
+        res.raise_for_status()
+        result = res.json().get("response", "HF BNB Error: empty response")
+        return result
+    except requests.exceptions.ConnectionError:
+        return "HF BNB Error: server not running. Start it with: python3 run_hf_bnb.py"
+    except Exception as e:
+        return f"HF BNB Error: {str(e)}"
+    finally:
+        gc.collect()
+
+
+def _is_hf_bnb_available() -> bool:
+    """Return True if HF BNB server is reachable on the configured endpoint."""
+    endpoint = os.getenv("HF_BNB_ENDPOINT", "http://127.0.0.1:11435")
+    import socket
+    try:
+        host, port = endpoint.replace("http://", "").split(":")
+        port = int(port.split("/")[0])
+        with socket.create_connection((host, port), timeout=2):
+            return True
+    except Exception:
+        return False
+
+
 def anthropic_call(prompt: str, system_prompt: Optional[str] = None, model: str = "claude-3-5-haiku-20241022") -> str:
     """
     Anthropic Claude provider.
@@ -310,9 +350,13 @@ RESEARCH_KEYWORDS = [
 
 def available_providers() -> List[str]:
     providers = [name for name, env_var in _PROVIDER_ENV_MAP.items() if os.getenv(env_var)]
-    # Include Ollama if LOCAL_LLM_ENABLED and server is reachable
-    if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true" and _is_ollama_available():
-        providers.insert(0, "ollama")
+    # Include Ollama or HF BNB if LOCAL_LLM_ENABLED and server is reachable
+    if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true":
+        local_provider = os.getenv("LOCAL_LLM_PROVIDER", "ollama").lower()
+        if local_provider == "ollama" and _is_ollama_available():
+            providers.insert(0, "ollama")
+        elif local_provider == "hf_bnb" and _is_hf_bnb_available():
+            providers.insert(0, "hf_bnb")
     return providers
 
 
@@ -360,7 +404,7 @@ def is_error_response(text: str) -> bool:
     error_prefixes = [
         "openai error:", "gemini error:", "groq error:",
         "anthropic error:", "deepseek error:", "nvidia error:",
-        "openrouter error:", "ollama error:", "error:",
+        "openrouter error:", "ollama error:", "hf bnb error:", "error:",
         "unknown provider:", "rate limit exceeded",
     ]
     return any(lowered.startswith(p) for p in error_prefixes)
@@ -390,21 +434,7 @@ def is_task_request(user_input: str, provider: str = "auto") -> bool:
     if not available_providers():
         return False
 
-    try:
-        check_prompt = (
-            "Does this user message require executing terminal commands, "
-            "creating files, or running multi-step tasks? Reply ONLY with yes or no.\n\n"
-            f"Message: {user_input}"
-        )
-        result = generate_response(
-            check_prompt, "auto",
-            system_prompt="You are a classifier. Reply only with 'yes' or 'no'."
-        )
-        decision = "yes" in result.strip().lower()
-        _task_cache[cache_key] = decision
-        return decision
-    except Exception:
-        return False
+    return any(k in lowered for k in ["build", "create", "fix", "write", "debug"])
 
 
 # ─── Core Response Generation ────────────────────────────────────────────────
@@ -415,16 +445,18 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
         timeout = LLM_TIMEOUT
 
     if provider == "auto":
-        # If Ollama is available and LOCAL_LLM_ENABLED, prefer it first
-        if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true" and _is_ollama_available():
-            try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(_call_provider, "ollama", prompt, system_prompt)
+        # If Ollama or HF BNB is available and LOCAL_LLM_ENABLED, prefer it first
+        if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true":
+            local_provider = os.getenv("LOCAL_LLM_PROVIDER", "ollama").lower()
+            avail_checker = _is_ollama_available if local_provider == "ollama" else _is_hf_bnb_available
+            if avail_checker():
+                try:
+                    future = _FALLBACK_POOL.submit(_call_provider, local_provider, prompt, system_prompt)
                     resp = future.result(timeout=timeout)
-                if not is_error_response(resp):
-                    return resp
-            except Exception:
-                pass
+                    if not is_error_response(resp):
+                        return resp
+                except Exception:
+                    pass
         provider = smart_router(prompt)
 
     if provider is None:
@@ -436,10 +468,13 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
 
     provider = provider.lower().strip("[]'\" ")
 
-    # Ollama doesn't require an API key — just check availability
+    # Local providers don't require an API key — just check availability
     if provider == "ollama":
         if not _is_ollama_available():
             return "Ollama Error: server not running. Start with: ollama serve"
+    elif provider == "hf_bnb":
+        if not _is_hf_bnb_available():
+            return "HF BNB Error: server not running. Start it with: python3 run_hf_bnb.py"
     elif not provider_has_key(provider):
         fallback = pick_default_provider()
         if fallback is None:
@@ -450,9 +485,8 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
 
     # Primary attempt with proper executor cleanup
     try:
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-            future = executor.submit(_call_provider, provider, prompt, system_prompt)
-            response = future.result(timeout=timeout)
+        future = _FALLBACK_POOL.submit(_call_provider, provider, prompt, system_prompt)
+        response = future.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
         return f"Error: LLM API timed out after {timeout}s"
     except Exception as e:
@@ -464,9 +498,8 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
         fallbacks = [p for p in _PROVIDER_PRIORITY if p in avail and p != provider]
         for fb in fallbacks:
             try:
-                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-                    future = executor.submit(_call_provider, fb, prompt, system_prompt)
-                    retry = future.result(timeout=timeout)
+                future = _FALLBACK_POOL.submit(_call_provider, fb, prompt, system_prompt)
+                retry = future.result(timeout=timeout)
                 if not is_error_response(retry):
                     return retry
             except (concurrent.futures.TimeoutError, Exception):
@@ -512,4 +545,5 @@ def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> 
     if provider == "nvidia":    return nvidia_call(prompt, system_prompt)
     if provider == "anthropic": return anthropic_call(prompt, system_prompt)
     if provider == "ollama":    return ollama_call(prompt, system_prompt)
+    if provider == "hf_bnb":    return hf_bnb_call(prompt, system_prompt)
     return f"Unknown provider: {provider}"
