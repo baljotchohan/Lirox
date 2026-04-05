@@ -1,7 +1,7 @@
 """
 Lirox v2.0 — LLM Utility Layer
 
-Provider support: Gemini, Groq, OpenAI, OpenRouter, DeepSeek, NVIDIA, Anthropic
+Provider support: Gemini, Groq, OpenAI, OpenRouter, DeepSeek, NVIDIA, Anthropic, Ollama (local)
 Features:
   - Smart provider routing based on task type
   - Automatic fallback chain: primary → secondary → tertiary
@@ -9,6 +9,7 @@ Features:
   - 60-second timeout (up from 30s) for long research tasks
   - generate_response_stream() generator for SSE/WebSocket streaming
   - Anthropic Claude provider (claude-3-5-haiku for speed, claude-opus for heavy)
+  - Ollama local LLM support (gemma4, llama3, mistral, etc.) — zero API cost
 """
 
 import os
@@ -178,6 +179,40 @@ def nvidia_call(prompt: str, system_prompt: Optional[str] = None, model: str = "
         return f"NVIDIA Error: {str(e)}"
 
 
+def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = None) -> str:
+    """
+    Local LLM provider via Ollama (https://ollama.ai).
+    Requires Ollama to be running: `ollama serve`
+    Auto-detects the model from OLLAMA_MODEL env var (default: gemma4).
+    """
+    endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+    if model is None:
+        model = os.getenv("OLLAMA_MODEL", "gemma4")
+    full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    try:
+        res = requests.post(
+            f"{endpoint}/api/generate",
+            json={"model": model, "prompt": full_prompt, "stream": False},
+            timeout=120,
+        )
+        res.raise_for_status()
+        return res.json().get("response", "Ollama Error: empty response")
+    except requests.exceptions.ConnectionError:
+        return "Ollama Error: server not running. Start with: ollama serve"
+    except Exception as e:
+        return f"Ollama Error: {str(e)}"
+
+
+def _is_ollama_available() -> bool:
+    """Return True if Ollama server is reachable on the configured endpoint."""
+    endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+    try:
+        res = requests.get(f"{endpoint}/api/tags", timeout=2)
+        return res.status_code == 200
+    except Exception:
+        return False
+
+
 def anthropic_call(prompt: str, system_prompt: Optional[str] = None, model: str = "claude-3-5-haiku-20241022") -> str:
     """
     Anthropic Claude provider.
@@ -252,7 +287,11 @@ RESEARCH_KEYWORDS = [
 
 
 def available_providers() -> List[str]:
-    return [name for name, env_var in _PROVIDER_ENV_MAP.items() if os.getenv(env_var)]
+    providers = [name for name, env_var in _PROVIDER_ENV_MAP.items() if os.getenv(env_var)]
+    # Include Ollama if LOCAL_LLM_ENABLED and server is reachable
+    if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true" and _is_ollama_available():
+        providers.insert(0, "ollama")
+    return providers
 
 
 def provider_has_key(provider: str) -> bool:
@@ -287,12 +326,19 @@ def smart_router(prompt: str) -> Optional[str]:
 def is_error_response(text: str) -> bool:
     if not text or len(text.strip()) < 5:
         return True
-    # Only match error patterns at the START of the response
     lowered = text.strip().lower()
+    # Patterns that can appear anywhere (substring match)
+    error_substrings = [
+        "api key missing",
+        "api key not set",
+    ]
+    if any(s in lowered for s in error_substrings):
+        return True
+    # Patterns that must appear at the START of the response
     error_prefixes = [
         "openai error:", "gemini error:", "groq error:",
         "anthropic error:", "deepseek error:", "nvidia error:",
-        "openrouter error:", "error:", "api key missing",
+        "openrouter error:", "ollama error:", "error:",
         "unknown provider:", "rate limit exceeded",
     ]
     return any(lowered.startswith(p) for p in error_prefixes)
@@ -347,6 +393,16 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
         timeout = LLM_TIMEOUT
 
     if provider == "auto":
+        # If Ollama is available and LOCAL_LLM_ENABLED, prefer it first
+        if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true" and _is_ollama_available():
+            try:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(_call_provider, "ollama", prompt, system_prompt)
+                    resp = future.result(timeout=timeout)
+                if not is_error_response(resp):
+                    return resp
+            except Exception:
+                pass
         provider = smart_router(prompt)
 
     if provider is None:
@@ -357,7 +413,12 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
         )
 
     provider = provider.lower().strip("[]'\" ")
-    if not provider_has_key(provider):
+
+    # Ollama doesn't require an API key — just check availability
+    if provider == "ollama":
+        if not _is_ollama_available():
+            return "Ollama Error: server not running. Start with: ollama serve"
+    elif not provider_has_key(provider):
         fallback = pick_default_provider()
         if fallback is None:
             return "No API keys configured. Run /setup or add keys to .env."
@@ -428,4 +489,5 @@ def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> 
     if provider == "deepseek":  return deepseek_call(prompt, system_prompt)
     if provider == "nvidia":    return nvidia_call(prompt, system_prompt)
     if provider == "anthropic": return anthropic_call(prompt, system_prompt)
+    if provider == "ollama":    return ollama_call(prompt, system_prompt)
     return f"Unknown provider: {provider}"

@@ -34,6 +34,11 @@ ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 FINANCIAL_DATASETS_KEY = os.getenv("FINANCIAL_DATASETS_API_KEY")
 TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
 
+# Local LLM (Ollama)
+LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true"
+OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4")
+
 # Settings
 DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "groq")
 MEMORY_LIMIT = int(os.getenv("MEMORY_LIMIT", "100"))
