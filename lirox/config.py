@@ -1,4 +1,4 @@
-"""Lirox v2.0 — Central Configuration"""
+"""Lirox v3.0 — Central Configuration"""
 import os
 from pathlib import Path
 
@@ -9,11 +9,12 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-APP_VERSION = "1.0.0b1"
+APP_VERSION = "3.0.0"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
 DATA_DIR = str(_REPO_ROOT / "data")
 MEMORY_DIR = str(_REPO_ROOT / "data" / "memory")
+SESSIONS_DIR = str(_REPO_ROOT / "data" / "sessions")
 OUTPUTS_DIR = str(_REPO_ROOT / "outputs")
 
 for ef in [_REPO_ROOT / ".env", _REPO_ROOT / ".env.local"]:
@@ -24,37 +25,45 @@ else:
     load_dotenv()
 
 # API Keys
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY")
-NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+OPENAI_API_KEY        = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY        = os.getenv("GEMINI_API_KEY")
+OPENROUTER_API_KEY    = os.getenv("OPENROUTER_API_KEY")
+GROQ_API_KEY          = os.getenv("GROQ_API_KEY")
+DEEPSEEK_API_KEY      = os.getenv("DEEPSEEK_API_KEY")
+NVIDIA_API_KEY        = os.getenv("NVIDIA_API_KEY")
+ANTHROPIC_API_KEY     = os.getenv("ANTHROPIC_API_KEY")
 FINANCIAL_DATASETS_KEY = os.getenv("FINANCIAL_DATASETS_API_KEY")
-TAVILY_API_KEY = os.getenv("TAVILY_API_KEY")
+TAVILY_API_KEY        = os.getenv("TAVILY_API_KEY")
 
 # Local LLM (Ollama)
-LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true"
-OLLAMA_ENDPOINT = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma4")
+LOCAL_LLM_ENABLED  = os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true"
+OLLAMA_ENDPOINT    = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+OLLAMA_MODEL       = os.getenv("OLLAMA_MODEL", "gemma4")
 
 # Settings
-DEFAULT_MODEL = os.getenv("DEFAULT_MODEL", "groq")
-MEMORY_LIMIT = int(os.getenv("MEMORY_LIMIT", "100"))
-MAX_AGENT_ITERATIONS = int(os.getenv("MAX_AGENT_ITERATIONS", "15"))
-THINKING_ENABLED = os.getenv("THINKING_ENABLED", "true").lower() == "true"
-LLM_TIMEOUT = int(os.getenv("LLM_TIMEOUT", "60"))
-PLAN_CONFIRM = True
-MAX_RETRIES = 3
-CONTEXT_MAX_CHARS = 4000
+DEFAULT_MODEL         = os.getenv("DEFAULT_MODEL", "groq")
+MEMORY_LIMIT          = int(os.getenv("MEMORY_LIMIT", "100"))
+MAX_AGENT_ITERATIONS  = int(os.getenv("MAX_AGENT_ITERATIONS", "15"))
+THINKING_ENABLED      = os.getenv("THINKING_ENABLED", "true").lower() == "true"
+LLM_TIMEOUT           = int(os.getenv("LLM_TIMEOUT", "60"))
+PLAN_CONFIRM          = True
+MAX_RETRIES           = 3
+CONTEXT_MAX_CHARS     = 4000
 
 # Content truncation limits
-MAX_LLM_PROMPT_CHARS = 8000
-MAX_TOOL_RESULT_CHARS = 2000
-MAX_MEMORY_ENTRY_CHARS = 500
-MAX_CONTEXT_CHARS = 4000
+MAX_LLM_PROMPT_CHARS    = 8000
+MAX_TOOL_RESULT_CHARS   = 2000
+MAX_MEMORY_ENTRY_CHARS  = 500
+MAX_CONTEXT_CHARS       = 4000
 MAX_SEARCH_RESULT_CHARS = 10000
+
+# Thinking Modes
+class ThinkingMode:
+    FAST    = "fast"      # Minimal reasoning, direct answer, skip thinking engine
+    THINK   = "think"     # Standard CoT reasoning, detailed answer
+    COMPLEX = "complex"   # Full structured output: plan + reasoning + answer + recommendation
+
+DEFAULT_THINKING_MODE = os.getenv("DEFAULT_THINKING_MODE", ThinkingMode.THINK)
 
 # Terminal Safety
 ALLOWED_COMMANDS = [
@@ -62,7 +71,9 @@ ALLOWED_COMMANDS = [
     "mkdir", "touch", "cat", "cp", "mv", "rm", "echo", "tee", "python", "python3",
     "node", "npx", "git", "cargo", "go", "rustc", "gcc", "make", "curl", "wget",
     "ping", "grep", "awk", "sed", "sort", "uniq", "tr", "cut", "xargs", "uname",
-    "date", "cal", "env", "tar", "zip", "unzip", "gzip", "docker", "pytest", "black", "flake8", "mypy", "eslint", "shasum",
+    "date", "cal", "env", "tar", "zip", "unzip", "gzip", "docker", "pytest",
+    "black", "flake8", "mypy", "eslint", "shasum", "open", "xdg-open", "osascript",
+    "screencapture", "scrot", "xdotool", "wmctrl", "xwininfo",
 ]
 BLOCK_PATTERNS = [
     "rm -rf /", "rm -rf ~", "shutdown", "reboot", "mv /", "rm /",
@@ -72,9 +83,9 @@ BLOCK_PATTERNS = [
 # Browser
 BROWSER_CONFIG = {
     "cdp_endpoint": os.getenv("CDP_ENDPOINT", "http://localhost:9222"),
-    "timeout": int(os.getenv("BROWSER_TIMEOUT", "30")),
-    "headless": True,
-    "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+    "timeout":      int(os.getenv("BROWSER_TIMEOUT", "30")),
+    "headless":     True,
+    "user_agent":   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
 }
 BROWSER_TIMEOUT = 15
 
@@ -87,8 +98,14 @@ SAFE_DIRS = [
     os.path.join(_HOME, "Downloads"),
 ]
 SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in SAFE_DIRS]
-PARALLEL_MAX_WORKERS = 4
-RETRY_BACKOFF = 1.0
 
-for d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, str(Path(MEMORY_DIR) / "daily")]:
+PARALLEL_MAX_WORKERS = 4
+RETRY_BACKOFF        = 1.0
+
+# Desktop Control (pyautogui)
+DESKTOP_ENABLED = os.getenv("DESKTOP_ENABLED", "false").lower() == "true"
+
+# Ensure directories exist
+for d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, SESSIONS_DIR,
+          str(Path(MEMORY_DIR) / "daily")]:
     os.makedirs(d, exist_ok=True)

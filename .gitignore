@@ -65,3 +65,8 @@ test_tasks.json
 data/browser_cookies/
 data/browser_sessions.json
 lightpanda
+
+# Runtime Data & Logs
+data/agent.log
+data/memory/daily/
+data/sessions/

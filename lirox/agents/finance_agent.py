@@ -1,4 +1,13 @@
-"""Finance Agent — Dexter-inspired market analysis with tool routing."""
+"""
+Lirox v3.0 — Finance Agent
+Personality: Buffett + Munger value investor.
+Features:
+  - First interaction onboarding (asks for API setup)
+  - Proactive suggestions based on past question patterns
+  - Per-agent isolated memory
+  - Mode-aware responses
+  - Sanitized LLM tool call args
+"""
 from __future__ import annotations
 
 import json
@@ -7,11 +16,33 @@ from typing import Generator
 
 from lirox.agents.base_agent import BaseAgent, AgentEvent
 from lirox.utils.llm import generate_response
-from lirox.config import MAX_LLM_PROMPT_CHARS
+from lirox.config import MAX_LLM_PROMPT_CHARS, ThinkingMode
 
-FINANCE_SYS = """You are the Finance Agent — a research-grade financial analyst.
+FINANCE_SYS = """You are the {agent_name} Finance Agent — a research-grade financial analyst.
 Philosophy: Buffett + Munger — value investing, margin of safety, invert always invert.
-Format: Compact tables (Rev, OM, EPS, P/E, FCF). Lead with answer, then data."""
+Format: Lead with direct answer. Use compact tables for data (Rev, OM, EPS, P/E, FCF).
+Date: {date}
+{user_context}"""
+
+ONBOARDING_MSG = """📊 **Welcome to your Finance Agent!**
+
+I'm your personal financial analyst — but I'm still learning your style.
+
+To make me more powerful, you can add:
+  • **`FINANCIAL_DATASETS_API_KEY`** — Real SEC filings, fundamentals data
+  • **`TAVILY_API_KEY`** — Real-time financial news and research
+
+Without these, I'll use yfinance for live prices and my own analysis.
+
+**How would you like me to greet you?** I'll remember your preferences as we work together.
+
+What's your first financial question?"""
+
+PROACTIVE_TEMPLATES = [
+    "💡 Last time you asked about **{topic}** — want a quick update on today's price/news?",
+    "📈 You've been tracking **{topic}** — here's what I'd check first today:",
+    "🔍 Based on your research pattern, you might also want to look at **{topic}**.",
+]
 
 
 class FinanceAgent(BaseAgent):
@@ -21,97 +52,158 @@ class FinanceAgent(BaseAgent):
 
     @property
     def description(self) -> str:
-        return "Market analysis, stock research, portfolio insights"
+        return "Market analysis, stock research, portfolio insights, valuation"
+
+    def get_onboarding_message(self) -> str:
+        return ONBOARDING_MSG
+
+    def _get_proactive_greeting(self) -> str:
+        """Generate a proactive greeting based on past question patterns."""
+        patterns = self.memory.get_pattern_insights(limit=1)
+        if not patterns:
+            return ""
+        topic = patterns[0].upper()
+        import random
+        template = random.choice(PROACTIVE_TEMPLATES)
+        return template.format(topic=topic)
 
     def run(
-        self, query: str, system_prompt: str = "", context: str = ""
+        self, query: str, system_prompt: str = "", context: str = "", mode: str = ThinkingMode.THINK
     ) -> Generator[AgentEvent, None, None]:
         from lirox.utils.structured_logger import get_logger, log_with_metadata
         import time
-        logger = get_logger(f"lirox.agents.{self.name}")
-        start = time.time()
-        log_with_metadata(logger, "INFO", "Agent started", agent=self.name, query=query[:100])
-
         from datetime import datetime
 
-        sys_p = FINANCE_SYS + f"\nDate: {datetime.now().strftime('%B %d, %Y')}"
-        mem = self.memory.search("portfolio risk investment", limit=3)
-        if mem:
-            sys_p += f"\n\nUser Context:\n{mem}"
+        logger = get_logger(f"lirox.agents.{self.name}")
+        start  = time.time()
+        log_with_metadata(logger, "INFO", "Finance Agent started", query=query[:100], mode=mode)
+
+
+
+        # ── Subsequent sessions: proactive greeting
+        if len(self.memory.conversation_buffer) > 0:
+            greeting = self._get_proactive_greeting()
+            if greeting:
+                yield {"type": "agent_progress", "message": greeting}
 
         yield {"type": "agent_progress", "message": "Finance Agent analyzing..."}
 
-        routing = generate_response(
-            f"Return JSON array of tool calls for: {query}\n"
-            f"Tools: market_data, fundamentals, screener, web_search\nJSON:",
-            provider="auto",
-            system_prompt="Return ONLY valid JSON array.",
-        )
-        tools = self._parse(routing)
+        # Build system prompt
+        agent_name   = self.profile_data.get("agent_name", "Lirox")
+        user_context = ""
+        mem_ctx      = self.memory.get_relevant_context(query)
+        if mem_ctx:
+            user_context = f"User Context:\n{mem_ctx}"
 
+        sys_p = FINANCE_SYS.format(
+            agent_name   = agent_name,
+            date         = datetime.now().strftime("%B %d, %Y"),
+            user_context = user_context,
+        )
+
+        if mode == ThinkingMode.FAST:
+            sys_p += "\n\nBe concise — give the key number and one-sentence analysis."
+
+        # ── Tool routing via LLM
+        routing_resp = generate_response(
+            f"Return a JSON array of tool calls needed for this query: {query}\n"
+            f"Available tools: market_data, fundamentals, screener, web_search\n"
+            f"Each tool call: {{\"tool\": \"name\", \"args\": {{...}}}}\n"
+            f"Return ONLY valid JSON array, no other text.",
+            provider="auto",
+            system_prompt="You are a tool router. Return ONLY a valid JSON array.",
+        )
+        tools = self._parse_tools(routing_resp)
+
+        results = []
         if tools:
-            results = []
             for tc in tools:
-                # Handle both {"tool": ...} and {"name": ...} formats from different models
                 tool_name = tc.get("tool") or tc.get("name") or tc.get("function") or ""
+                tool_args = tc.get("args") or tc.get("arguments") or {}
                 if not tool_name:
                     continue
-                tool_args = tc.get("args") or tc.get("arguments") or tc.get("parameters") or {}
                 yield {"type": "tool_call", "message": f"Fetching {tool_name}..."}
+                # Sanitize args before passing to tools
+                tool_args = self._sanitize_args(tool_name, tool_args)
                 r = self._exec(tool_name, tool_args)
                 results.append({"tool": tool_name, "result": r})
                 self.scratchpad.add_tool_result(tool_name, r)
                 yield {"type": "tool_result", "message": f"{tool_name}: done"}
 
-            yield {"type": "agent_progress", "message": "Synthesizing..."}
-            synth = (
-                f"Query: {query}\n"
-                f"Data:\n{json.dumps(results, indent=2, default=str)[:MAX_LLM_PROMPT_CHARS]}"
-            )
-            answer = generate_response(synth, provider="auto", system_prompt=sys_p)
-        else:
-            # Direct fallback — fetch real data via yfinance
-            tickers = re.findall(r'\b([A-Z]{2,5})\b', query)
+        # ── Direct yfinance fallback
+        if not results:
+            tickers     = re.findall(r'\b([A-Z]{2,5})\b', query)
             direct_data = []
             try:
                 import yfinance as yf
                 for ticker in tickers[:3]:
-                    info = yf.Ticker(ticker).fast_info
-                    price = getattr(info, 'last_price', None)
-                    if price:
-                        direct_data.append(f"{ticker}: ${price:,.2f}")
+                    if re.match(r'^[A-Z]{2,5}$', ticker):
+                        info  = yf.Ticker(ticker).fast_info
+                        price = getattr(info, 'last_price', None)
+                        if price:
+                            direct_data.append(f"{ticker}: ${price:,.2f}")
                 if "bitcoin" in query.lower() or "btc" in query.lower():
-                    btc_price = getattr(yf.Ticker("BTC-USD").fast_info, 'last_price', None)
-                    if btc_price:
-                        direct_data.append(f"Bitcoin (BTC): ${btc_price:,.2f}")
+                    btc = getattr(yf.Ticker("BTC-USD").fast_info, 'last_price', None)
+                    if btc:
+                        direct_data.append(f"Bitcoin (BTC): ${btc:,.2f}")
             except Exception:
                 pass
-
             if direct_data:
-                price_ctx = "Live prices fetched:\n" + "\n".join(direct_data) + "\n\n"
-                answer = generate_response(price_ctx + query, provider="auto", system_prompt=sys_p)
-            else:
-                answer = generate_response(query, provider="auto", system_prompt=sys_p)
+                results.append({"tool": "yfinance", "result": "\n".join(direct_data)})
 
-        log_with_metadata(logger, "INFO", "Agent completed", agent=self.name, duration_ms=int((time.time()-start)*1000))
+        # ── Synthesize
+        yield {"type": "agent_progress", "message": "Synthesizing analysis..."}
+        if results:
+            synth_prompt = (
+                f"Query: {query}\n"
+                f"Data:\n{json.dumps(results, indent=2, default=str)[:MAX_LLM_PROMPT_CHARS]}"
+            )
+            if context:
+                synth_prompt += f"\n\nReasoning context:\n{context}"
+        else:
+            synth_prompt = query
+            if context:
+                synth_prompt = f"Reasoning:\n{context}\n\n{synth_prompt}"
+
+        answer = generate_response(synth_prompt, provider="auto", system_prompt=sys_p)
+        self.memory.save_exchange(query, answer)
+
+        log_with_metadata(logger, "INFO", "Finance Agent completed",
+                          duration_ms=int((time.time() - start) * 1000))
         yield {"type": "done", "answer": answer, "sources": []}
 
-    def _parse(self, text: str) -> list:
+    def _sanitize_args(self, tool: str, args: dict) -> dict:
+        """Sanitize tool args to prevent injection. BUG-05 fix."""
+        safe = {}
+        if tool in ("market_data", "web_search"):
+            q = str(args.get("query", ""))[:200]
+            q = re.sub(r'[^\w\s\-.,?!$%]', '', q)
+            safe["query"] = q
+        elif tool == "fundamentals":
+            ticker = str(args.get("ticker", "")).upper()
+            if re.match(r'^[A-Z]{1,5}(-USD)?$', ticker):
+                safe["ticker"] = ticker
+            else:
+                safe["ticker"] = ""
+        elif tool == "screener":
+            criteria = str(args.get("criteria", ""))[:200]
+            safe["criteria"] = criteria
+        return safe
+
+    def _parse_tools(self, text: str) -> list:
         text = re.sub(r"```json?\s*", "", text.strip())
         text = re.sub(r"```\s*", "", text)
         try:
             r = json.loads(text)
             return r if isinstance(r, list) else []
-        except Exception as e:
-            from lirox.utils.structured_logger import get_logger
-            get_logger("lirox.agents.finance").warning(f"Non-critical error parsing json list: {e}")
+        except Exception:
+            pass
         m = re.search(r"\[.*\]", text, re.DOTALL)
         if m:
             try:
                 return json.loads(m.group())
-            except Exception as e:
-                from lirox.utils.structured_logger import get_logger
-                get_logger("lirox.agents.finance").warning(f"Non-critical error parsing json array: {e}")
+            except Exception:
+                pass
         return []
 
     ALLOWED_TOOLS = {"market_data", "fundamentals", "screener", "web_search"}
@@ -132,6 +224,6 @@ class FinanceAgent(BaseAgent):
             elif tool == "web_search":
                 from lirox.tools.search.duckduckgo import search_ddg
                 return search_ddg(args.get("query", ""))
-            return f"Unknown tool: {tool}"
         except Exception as e:
-            return f"Error ({tool}): {e}"
+            return f"Tool error ({tool}): {e}"
+        return f"Unknown tool: {tool}"

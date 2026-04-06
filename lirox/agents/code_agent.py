@@ -1,12 +1,6 @@
-"""Lirox v2.1 — Code Agent: Full-stack developer assistant.
-
-Capabilities:
-- Read/write/edit files with real execution
-- Run terminal commands safely
-- Auto-scan project structure for context
-- Cross-agent data fetching (browser/search when needed)
-- Execution plan with user confirmation for destructive ops
-- Smart JSON action parsing from LLM output
+"""Lirox v3.0 — Code Agent
+Full-stack developer assistant with code reading, writing, desktop control, and bug fixes.
+BUG-03, BUG-04, BUG-14 patched.
 """
 from __future__ import annotations
 
@@ -17,7 +11,7 @@ import re
 from typing import Generator
 
 from lirox.agents.base_agent import BaseAgent, AgentEvent
-from lirox.config import MAX_TOOL_RESULT_CHARS, MAX_CONTEXT_CHARS
+from lirox.config import MAX_TOOL_RESULT_CHARS, MAX_CONTEXT_CHARS, PROJECT_ROOT, ThinkingMode
 from lirox.utils.llm import generate_response
 from lirox.utils.structured_logger import get_logger, log_with_metadata
 
@@ -31,6 +25,7 @@ CAPABILITIES:
 - Scan and understand entire project structures
 - Debug with root-cause analysis
 - Generate production-quality code with type hints
+- Desk control: take screenshots and operate UI if DESKTOP_ENABLED=true
 
 WORKING DIRECTORY: {cwd}
 
@@ -43,7 +38,8 @@ EXECUTION RULES:
   "bash": ["command1", "command2"],
   "files": [{{"path": "relative/path", "content": "file content"}}],
   "read_files": ["path/to/read1.py"],
-  "search_web": "query to search if you need external info"
+  "search_web": "query to search if you need external info",
+  "desktop": [{{"action": "screenshot"}}, {{"action": "open_app", "name": "Safari"}}, {{"action": "open_url", "url": "https://github.com"}}]
 }}
 
 2. Set "needs_confirmation": true for:
@@ -51,13 +47,10 @@ EXECUTION RULES:
    - Any operation that could break things
 
 3. Set "needs_confirmation": false for:
-   - Creating new files in outputs/, reading files, ls/cat commands
+   - Creating new files in outputs/, reading files, ls/cat commands, screenshots
 
-4. For questions that don't need execution, just respond normally (no JSON).
-
-FORMAT: Clean, professional responses. Use emojis sparingly for status (✅ ❌ 📁 🔧).
-Always explain WHAT you did and WHY after execution."""
-
+4. For questions that don't need execution, just respond normally (no JSON). If giving options for a bug fix, clearly detail Option A and Option B in standard markdown.
+"""
 
 class CodeAgent(BaseAgent):
     @property
@@ -66,20 +59,21 @@ class CodeAgent(BaseAgent):
 
     @property
     def description(self) -> str:
-        return "Full-stack developer: read/write/edit files, run commands, debug, review"
+        return "Full-stack developer: read/write/edit files, run commands, view desktop, debug, review"
 
     def run(
-        self, query: str, system_prompt: str = "", context: str = ""
+        self, query: str, system_prompt: str = "", context: str = "", mode: str = ThinkingMode.THINK
     ) -> Generator[AgentEvent, None, None]:
         start = time.time()
-        log_with_metadata(logger, "INFO", "Code Agent started", query=query[:100])
+        log_with_metadata(logger, "INFO", "Code Agent started", query=query[:100], mode=mode)
 
         cwd = os.getcwd()
-        from lirox.agent.profile import UserProfile
-        from lirox.tools.file_io import FileIOTool
-        profile = UserProfile()
-        agent_name = profile.data.get("agent_name", "Lirox")
+        # BUG-14 FIX: Do not instantiate UserProfile locally
+        agent_name = self.profile_data.get("agent_name", "Lirox")
         sys_p = CODE_SYS.format(cwd=cwd, agent_name=agent_name)
+
+        if mode == ThinkingMode.FAST:
+            sys_p += "\n\nSPEED MODE: Output minimal boilerplate, give code straight away."
 
         yield {"type": "agent_progress", "message": "🔍 Analyzing your request..."}
 
@@ -87,6 +81,7 @@ class CodeAgent(BaseAgent):
         file_contents_ctx = ""
         path_matches = re.findall(r'((?:[a-zA-Z]:[\\/]|/)[\w.\\/\-_ ]+\.(?:txt|py|html|js|css|md|json|csv|yaml|yml))', query)
         if path_matches:
+            from lirox.tools.file_io import FileIOTool
             fio = FileIOTool()
             for path in path_matches:
                 path = path.strip()
@@ -101,7 +96,6 @@ class CodeAgent(BaseAgent):
 
         # ── Pre-list: if query mentions a directory, list its files
         dir_matches = re.findall(r'((?:[a-zA-Z]:[\\/](?:Users|home)|/(?:Users|home))[\w.\\/\-_ ]+)', query)
-        # Also catch bare paths like /Users/foo/Desktop/cv or C:\Users\...
         for token in query.split():
             clean_token = token.rstrip('/\\')
             is_win_abs = len(clean_token) >= 3 and clean_token[1:3] == ':\\' and clean_token[0].isalpha()
@@ -114,13 +108,13 @@ class CodeAgent(BaseAgent):
                 yield {"type": "tool_call", "message": f"📁 Listing: {dpath}"}
                 try:
                     entries = os.listdir(dpath)
+                    from lirox.tools.file_io import FileIOTool
                     fio = FileIOTool()
                     dir_summary = f"\n\n=== DIRECTORY: {dpath} ===\n"
                     for entry in sorted(entries):
                         full = os.path.join(dpath, entry)
                         if os.path.isfile(full) and not entry.startswith('.'):
                             dir_summary += f"  {entry} ({os.path.getsize(full)} bytes)\n"
-                            # Auto-read small text files
                             if entry.endswith(('.txt', '.md', '.py', '.js', '.css', '.html')) and os.path.getsize(full) < 10000:
                                 try:
                                     fc = fio.read_file(full)
@@ -141,24 +135,53 @@ class CodeAgent(BaseAgent):
             yield {"type": "agent_progress", "message": "📁 Scanning project structure..."}
             project_ctx = self._scan(cwd)
 
+        # Desktop Context
+        desktop_ctx = ""
+        if any(k in query.lower() for k in ["screen", "desktop", "click", "open app"]):
+            from lirox.config import DESKTOP_ENABLED
+            if DESKTOP_ENABLED:
+                try:
+                    from lirox.tools.desktop import get_open_windows
+                    desktop_ctx = f"Desktop Control ENABLED. Open windows: {get_open_windows()}"
+                except Exception:
+                    pass
+
         # Build full prompt with real file contents injected
         prompt = query
+        if desktop_ctx:
+            prompt = f"{desktop_ctx}\n\n{prompt}"
         if file_contents_ctx:
-            prompt = f"Here is the actual file content you need:\n{file_contents_ctx}\n\nTask: {query}"
+            prompt = f"Here is the actual file content you need:\n{file_contents_ctx}\n\nTask: {prompt}"
         if project_ctx:
             prompt = f"Project Structure:\n{project_ctx}\n\n{prompt}"
         if context:
-            prompt = f"Reasoning:\n{context}\n\n{prompt}"
+            prompt = f"Reasoning Context:\n{context}\n\n{prompt}"
+
+        # ── Include previous memory context
+        mem_ctx = self.memory.get_relevant_context(query)
+        if mem_ctx:
+            prompt = f"Relevant Past Context:\n{mem_ctx}\n\n{prompt}"
 
         yield {"type": "agent_progress", "message": "🧠 Generating solution..."}
         answer = generate_response(prompt, provider="auto", system_prompt=sys_p)
 
+        # ── Parse Actions (JSON)
         parsed = self._parse_json_actions(answer)
+
+        # BUG-03 fix: Keep the full answer, especially options
+        options_match = re.search(r'(Option A[\s\S]+?)(\n\n|$)', answer, re.IGNORECASE)
+        options_text = options_match.group(1) if options_match else ""
+
         if parsed:
             yield from self._execute_actions(parsed, query)
+            final_answer = parsed.get("explanation", "Executed actions.")
+            if options_text:
+                final_answer += f"\n\n{options_text}"
+            answer = final_answer
         else:
-            # ── Fallback: extract write-target paths and code blocks from prose response
             yield from self._fallback_write_extraction(answer, query)
+
+        self.memory.save_exchange(query, answer)
 
         log_with_metadata(logger, "INFO", "Code Agent completed",
                           duration_ms=int((time.time() - start) * 1000))
@@ -169,17 +192,26 @@ class CodeAgent(BaseAgent):
         plan = actions.get("plan", [])
         needs_confirm = actions.get("needs_confirmation", True)
 
-        # Show the plan
         if plan:
             plan_text = "\n".join(f"  {i+1}. {step}" for i, step in enumerate(plan))
             yield {"type": "agent_progress", "message": f"📋 Execution Plan:\n{plan_text}"}
 
-        # If needs confirmation, note it
         if needs_confirm:
             yield {"type": "agent_progress",
                    "message": f"⚠️ {explanation}\n  [Proceeding with safe operations...]"}
 
-        # Handle web search if agent needs external data
+        # Desktop Tasks
+        for desktop_action in actions.get("desktop", []):
+            try:
+                from lirox.tools.desktop import execute_desktop_task
+                yield {"type": "tool_call", "message": f"🖥️ Desktop: {desktop_action.get('action')}"}
+                res = execute_desktop_task(desktop_action)
+                self.scratchpad.add_tool_result("desktop", res)
+                yield {"type": "tool_result", "message": f"✅ {res}"}
+            except Exception as e:
+                yield {"type": "tool_result", "message": f"⚠️ Desktop action failed: {e}"}
+
+        # Web Search
         search_query = actions.get("search_web")
         if search_query:
             yield {"type": "tool_call", "message": f"🌐 Searching: {search_query}"}
@@ -191,7 +223,7 @@ class CodeAgent(BaseAgent):
             except Exception as e:
                 yield {"type": "tool_result", "message": f"⚠️ Search failed: {e}"}
 
-        # Read files first
+        # Read Files
         for path in actions.get("read_files", []):
             yield {"type": "tool_call", "message": f"📖 Reading: {path}"}
             try:
@@ -202,7 +234,7 @@ class CodeAgent(BaseAgent):
             except Exception as e:
                 yield {"type": "tool_result", "message": f"❌ Can't read {path}: {e}"}
 
-        # Execute bash commands
+        # Bash Commands
         for cmd in actions.get("bash", []):
             from lirox.tools.terminal import is_safe, run_command
             safe, reason = is_safe(cmd)
@@ -215,32 +247,31 @@ class CodeAgent(BaseAgent):
             status = "✅" if "error" not in out.lower() else "⚠️"
             yield {"type": "tool_result", "message": f"{status} {out[:300]}"}
 
-        # Write/create files
+        # Write Files (with BUG-04 fix)
         for f in actions.get("files", []):
             path = f.get("path", "")
             content = f.get("content", "")
             if not path or not content:
                 continue
-            from lirox.tools.file_io import FileIOTool
-            fio = FileIOTool()
-            safe, reason = fio._is_safe_path(path)
-            if not safe:
-                yield {"type": "error", "message": f"❌ Blocked path: {path} — {reason}"}
+            
+            # BUG-04 FIX: Enforce writing within PROJECT_ROOT
+            abs_path = os.path.abspath(path)
+            if not abs_path.startswith(os.path.abspath(PROJECT_ROOT)):
+                yield {"type": "error", "message": f"❌ Blocked Path Vulnerability: {path} is outside project root."}
                 continue
+
             yield {"type": "tool_call", "message": f"📝 Writing: {path}"}
             try:
-                res = fio.write_file(path, content)
+                from lirox.tools.file_io import FileIOTool
+                res = FileIOTool().write_file(path, content)
                 self.scratchpad.add_tool_result("file_write", res)
                 yield {"type": "tool_result", "message": f"✅ {res}"}
             except Exception as e:
                 yield {"type": "error", "message": f"❌ Write failed: {e}"}
 
-        # Final summary
-        final = f"✅ {explanation}\n\nAll operations completed."
-        yield {"type": "done", "answer": final, "sources": []}
+        yield {"type": "done", "answer": f"✅ {explanation}", "sources": []}
 
     def _parse_json_actions(self, text: str) -> dict:
-        """Extract JSON action block from LLM response."""
         m = re.search(r"```json\s*\n(.*?)\n\s*```", text, re.DOTALL)
         if m:
             try:
@@ -248,7 +279,6 @@ class CodeAgent(BaseAgent):
                 return r if isinstance(r, dict) else {}
             except Exception:
                 pass
-        # Fallback: find raw JSON object containing action keys
         m2 = re.search(r'\{[^{}]*"(?:bash|files|explanation)"[^{}]*\}', text, re.DOTALL)
         if m2:
             try:
@@ -258,55 +288,38 @@ class CodeAgent(BaseAgent):
         return {}
 
     def _fallback_write_extraction(self, answer: str, query: str) -> Generator[AgentEvent, None, None]:
-        """
-        Fallback: when LLM doesn't output JSON but the query asked to write a file,
-        extract the output path from the query and any code blocks from the response,
-        then write them directly.
-        """
         from lirox.tools.file_io import FileIOTool
         from lirox.tools.terminal import is_safe, run_command
 
-        # Check if query asked to write to a specific file
         write_match = re.search(
             r'(?:write|save|create|output)\s+(?:to|at|into)?\s*((?:[a-zA-Z]:[\\/]|[/~])[\w.\\/\-_ ]+\.(?:html|py|js|css|md|txt|json|yaml))',
             query, re.IGNORECASE
         )
-        # Also check if query has "to /path/file.ext"
         path_match = re.search(
             r'(?:to|into|at)\s+((?:[a-zA-Z]:[\\/]|[/~])[\w.\\/\-_ ]+\.(?:html|py|js|css|md|txt|json|yaml))',
             query, re.IGNORECASE
         )
-        target_path = None
-        if write_match:
-            target_path = write_match.group(1).strip()
-        elif path_match:
-            target_path = path_match.group(1).strip()
-
-        # Also check if query asks to run a script
+        target_path = write_match.group(1).strip() if write_match else (path_match.group(1).strip() if path_match else None)
         run_match = re.search(
             r'(?:run|execute|then run)\s+(python3?\s+(?:[a-zA-Z]:[\\/]|\/)[\w.\\/\-_ ]+\.py|python3?\s+[\w.\\/\-_ ]+\.py)',
             query, re.IGNORECASE
         )
 
-        # Extract code blocks from LLM prose answer
         code_blocks = re.findall(r'```(?:\w+)?\n(.*?)\n```', answer, re.DOTALL)
-
-        files_written = []
         if target_path and code_blocks:
-            # Use the largest code block as the file content
             code = max(code_blocks, key=len)
-            fio = FileIOTool()
             yield {"type": "tool_call", "message": f"📝 Writing extracted code → {target_path}"}
             try:
-                # Ensure parent directory exists
-                os.makedirs(os.path.dirname(os.path.abspath(target_path)), exist_ok=True)
-                res = fio.write_file(target_path, code)
-                files_written.append(target_path)
-                yield {"type": "tool_result", "message": f"✅ {res}"}
+                abs_path = os.path.abspath(target_path)
+                if not abs_path.startswith(os.path.abspath(PROJECT_ROOT)):
+                    yield {"type": "error", "message": f"❌ Blocked Path Vulnerability: {target_path} is outside project root."}
+                else:
+                    os.makedirs(os.path.dirname(abs_path), exist_ok=True)
+                    res = FileIOTool().write_file(target_path, code)
+                    yield {"type": "tool_result", "message": f"✅ {res}"}
             except Exception as e:
                 yield {"type": "error", "message": f"❌ Write failed: {e}"}
 
-        # Run a script if query requested it
         if run_match:
             cmd = run_match.group(1).strip()
             safe, reason = is_safe(cmd)
@@ -321,7 +334,6 @@ class CodeAgent(BaseAgent):
         yield {"type": "done", "answer": answer, "sources": []}
 
     def _scan(self, path: str) -> str:
-        """Scan project directory for context."""
         parts = []
         skip = {"node_modules", "__pycache__", ".git", "venv", ".venv",
                 "dist", "build", ".next", ".cache", "coverage"}
