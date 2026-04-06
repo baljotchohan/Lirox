@@ -46,6 +46,15 @@ def activate_desktop_mode() -> threading.Thread:
     _overlay_stop.clear()
 
     def _run_overlay():
+        # macOS (Darwin): NSWindow must be created on the main thread.
+        # Since this runs in a daemon thread, we skip the Tkinter overlay
+        # entirely on macOS to prevent the NSInternalInconsistencyException crash.
+        # The terminal already displays activation status — the overlay is cosmetic only.
+        if _SYSTEM == "Darwin":
+            # Wait until stop is signalled, then return cleanly.
+            _overlay_stop.wait()
+            return
+
         try:
             import tkinter as tk
             root = tk.Tk()
