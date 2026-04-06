@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Multi-Agent Entry Point: Mode system, sessions, history, desktop control"""
+"""Lirox — Multi-Agent Entry Point"""
 import os
 import sys
 import time
@@ -7,13 +7,13 @@ import argparse
 
 def check_dependencies():
     required = {
-        "rich":          "rich",
+        "rich":           "rich",
         "prompt_toolkit": "prompt-toolkit",
-        "psutil":        "psutil",
-        "dotenv":        "python-dotenv",
-        "bs4":           "beautifulsoup4",
-        "lxml":          "lxml",
-        "requests":      "requests",
+        "psutil":         "psutil",
+        "dotenv":         "python-dotenv",
+        "bs4":            "beautifulsoup4",
+        "lxml":           "lxml",
+        "requests":       "requests",
     }
     missing = [pkg for mod, pkg in required.items() if not _try_import(mod.split(".")[0])]
     if missing:
@@ -44,29 +44,12 @@ from lirox.ui.display import (
     console,
 )
 from lirox.utils.llm import available_providers
-from lirox.config import APP_VERSION, ThinkingMode
+from lirox.config import APP_VERSION
 
 
-# ── Mode Display Helpers ──────────────────────────────────────────────────────
-
-MODE_LABELS = {
-    ThinkingMode.FAST:    "[bold cyan]⚡ FAST[/]",
-    ThinkingMode.THINK:   "[bold yellow]🧠 THINK[/]",
-    ThinkingMode.COMPLEX: "[bold magenta]🔮 COMPLEX[/]",
-}
-
-MODE_DESCRIPTIONS = {
-    ThinkingMode.FAST:    "Quick answers, minimal reasoning",
-    ThinkingMode.THINK:   "Detailed, thoughtful responses",
-    ThinkingMode.COMPLEX: "Full structured output: plan + analysis + recommendation",
-}
-
-
-def get_prompt_label(agent_name: str, mode: str) -> list:
-    mode_emoji = {"fast": "⚡", "think": "🧠", "complex": "🔮"}.get(mode, "✦")
+def get_prompt_label(agent_name: str) -> list:
     return [
         ('class:prompt',  f"[{agent_name}] "),
-        ('class:mode',    f"{mode_emoji} "),
         ('class:symbol',  "✦ "),
     ]
 
@@ -74,23 +57,14 @@ def get_prompt_label(agent_name: str, mode: str) -> list:
 def main():
     check_dependencies()
 
-    parser = argparse.ArgumentParser(description="Lirox v3.0 — Multi-Agent AI Kernel")
-    parser.add_argument("--setup",        action="store_true", help="Run setup wizard")
-    parser.add_argument("--verbose",      action="store_true", help="Verbose thinking output")
-    parser.add_argument("--no-thinking",  action="store_true", help="Disable thinking engine")
-    parser.add_argument("--mode",         default="think",     help="Thinking mode: fast|think|complex")
+    parser = argparse.ArgumentParser(description="Lirox — Multi-Agent AI Kernel")
+    parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
+    parser.add_argument("--verbose", action="store_true", help="Show thinking traces in terminal")
     args = parser.parse_args()
-
-    if args.no_thinking:
-        os.environ["THINKING_ENABLED"] = "false"
 
     from lirox.agent.profile import UserProfile
     profile      = UserProfile()
     orchestrator = MasterOrchestrator(profile_data=profile.data)
-
-    # Set initial mode from args
-    if args.mode in (ThinkingMode.FAST, ThinkingMode.THINK, ThinkingMode.COMPLEX):
-        orchestrator.thinking_mode = args.mode
 
     show_welcome()
 
@@ -102,7 +76,7 @@ def main():
             console.print("\n  [dim]Setup skipped.[/]")
 
     show_status_card(profile.data, available_providers())
-    _show_mode_status(orchestrator.thinking_mode)
+    console.print("  [dim]Thinking: always-on complex mode  ·  /help for commands[/]\n")
 
     from prompt_toolkit import PromptSession
     from prompt_toolkit.styles import Style
@@ -113,25 +87,22 @@ def main():
 
     style = Style.from_dict({
         'prompt': 'ansiyellow bold',
-        'mode':   'ansicyan',
         'symbol': 'ansiyellow',
     })
-    
+
     commands = [
         "/help",
-        "/mode fast", "/mode think", "/mode complex",
         "/agent finance", "/agent code", "/agent browser", "/agent research", "/agent chat",
         "/agents", "/history", "/session", "/models", "/memory", "/think", "/profile",
         "/reset", "/desktop", "/test", "/import-memory", "/export-profile",
-        "/uninstall", "/update", "/exit"
+        "/uninstall", "/update", "/exit",
     ]
-    
+
     class SlashCommandCompleter(Completer):
         def get_completions(self, document, complete_event):
             text = document.text_before_cursor.lstrip()
             if not text.startswith('/'):
                 return
-            
             text_lower = text.lower()
             for cmd in commands:
                 if cmd.startswith(text_lower):
@@ -141,9 +112,7 @@ def main():
 
     while True:
         try:
-            current_mode = orchestrator.thinking_mode
-            prompt_label = get_prompt_label(agent_name, current_mode)
-
+            prompt_label = get_prompt_label(agent_name)
             line = session.prompt(prompt_label, style=style).strip()
             if not line:
                 continue
@@ -170,28 +139,25 @@ def main():
             error_panel("KERNEL ERROR", str(e))
 
 
-def _show_mode_status(mode: str):
-    label = MODE_LABELS.get(mode, mode)
-    desc  = MODE_DESCRIPTIONS.get(mode, "")
-    console.print(f"  Mode: {label}  [dim]{desc}[/]")
-    console.print(f"  [dim]Switch: /mode fast | /mode think | /mode complex[/]")
-    console.print()
-
-
 def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
     last_agent = "chat"
     status     = None
     try:
-        for ev in orch.run(query, mode=orch.thinking_mode):
+        for ev in orch.run(query):
             t = ev.type
             if t == "thinking":
                 if ev.message == "Analyzing..." and not verbose:
-                    status = console.status("[bold purple]🧠 Reasoning...[/]", spinner="dots")
-                    status.start()
+                    if status is None:
+                        status = console.status("[bold purple]🧠 Thinking...[/]", spinner="dots")
+                        status.start()
                 elif verbose:
+                    if status:
+                        status.stop()
+                        status = None
                     show_thinking(ev.message)
                 else:
-                    if status:
+                    # Non-verbose: stop spinner on first real thinking chunk
+                    if ev.message != "Analyzing..." and status:
                         status.stop()
                         status = None
             elif t == "plan_display":
@@ -199,7 +165,6 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     status.stop()
                     status = None
                 console.print(ev.message)
-                # Plan confirmation is displayed; user continues conversation to confirm
             else:
                 if status:
                     status.stop()
@@ -224,23 +189,8 @@ def handle_command(
     parts = cmd.strip().split()
     base  = parts[0].lower()
 
-    # ── Mode switching ────────────────────────────────────────────────────────
-    if base == "/mode":
-        if len(parts) < 2:
-            _show_mode_status(orch.thinking_mode)
-            console.print("  Usage: /mode fast | /mode think | /mode complex")
-            return
-        new_mode = parts[1].lower()
-        if orch.set_mode(new_mode):
-            label = MODE_LABELS.get(new_mode, new_mode)
-            desc  = MODE_DESCRIPTIONS.get(new_mode, "")
-            success_message(f"Switched to {label} — {desc}")
-            console.print(f"  [dim]New session started.[/]")
-        else:
-            error_panel("INVALID MODE", f"Valid modes: fast, think, complex")
-
     # ── Agent switching ───────────────────────────────────────────────────────
-    elif base == "/agent":
+    if base == "/agent":
         if len(parts) < 2:
             console.print("  Usage: /agent finance | code | browser | research | chat")
             return
@@ -249,6 +199,11 @@ def handle_command(
         if agent_name in valid:
             orch.set_agent(agent_name)
             success_message(f"Switched to {agent_name.capitalize()} Agent — new session started.")
+            if agent_name != "chat":
+                agent = orch._get_agent(orch.session_store.current().active_agent
+                                        and __import__('lirox.orchestrator.master', fromlist=['AgentType']).AgentType(agent_name))
+                if agent and hasattr(agent, 'get_onboarding_message'):
+                    console.print(f"\n  {agent.get_onboarding_message()}\n")
         else:
             error_panel("INVALID AGENT", f"Valid agents: {', '.join(sorted(valid))}")
 
@@ -259,14 +214,13 @@ def handle_command(
 
     # ── Session info ──────────────────────────────────────────────────────────
     elif base == "/session":
-        s = orch.session_store.current()
+        s    = orch.session_store.current()
         name = s.name or f"Session {s.session_id}"
         info_panel(
             f"CURRENT SESSION\n\n"
-            f"  Name   : {name}\n"
-            f"  ID     : {s.session_id}\n"
-            f"  Agent  : {s.active_agent}\n"
-            f"  Mode   : {s.thinking_mode}\n"
+            f"  Name    : {name}\n"
+            f"  ID      : {s.session_id}\n"
+            f"  Agent   : {s.active_agent}\n"
             f"  Messages: {len(s.entries)}\n"
             f"  Started : {s.created_at[:16].replace('T', ' ')}"
         )
@@ -280,24 +234,23 @@ def handle_command(
         t.add_column("Command",     style="bold white")
         t.add_column("Description", style="dim white")
         for c, d in [
-            ("/help",              "Show this help"),
-            ("/mode fast|think|complex", "Switch thinking mode"),
-            ("/agent <name>",      "Switch agent (finance|code|browser|research|chat)"),
-            ("/agents",            "List all agents"),
-            ("/history [n]",       "Show last N sessions (default 20)"),
-            ("/session",           "Show current session info"),
-            ("/models",            "Show LLM providers"),
-            ("/memory",            "Memory stats"),
-            ("/think <q>",         "Run thinking engine on query"),
-            ("/profile",           "Show profile"),
-            ("/reset",             "Reset session memory"),
-            ("/desktop",           "Toggle desktop control (requires DESKTOP_ENABLED=true)"),
-            ("/test",              "Run diagnostics"),
-            ("/import-memory",     "Import memory from ChatGPT/Claude/Gemini"),
-            ("/export-profile",    "Export your profile as JSON"),
-            ("/uninstall",         "Remove all Lirox data from this device"),
-            ("/update",            "Update Lirox to the latest version"),
-            ("/exit",              "Shutdown"),
+            ("/help",               "Show this help"),
+            ("/agent <name>",       "Switch agent (finance|code|browser|research|chat)"),
+            ("/agents",             "List all agents"),
+            ("/history [n]",        "Show last N sessions (default 20)"),
+            ("/session",            "Show current session info"),
+            ("/models",             "Show LLM providers"),
+            ("/memory",             "Memory stats"),
+            ("/think <q>",          "Run thinking engine on query"),
+            ("/profile",            "Show profile"),
+            ("/reset",              "Reset session memory"),
+            ("/desktop",            "Desktop control status"),
+            ("/test",               "Run diagnostics"),
+            ("/import-memory",      "Import memory from ChatGPT/Claude/Gemini"),
+            ("/export-profile",     "Export your profile as JSON"),
+            ("/uninstall",          "Remove all Lirox data from this device"),
+            ("/update",             "Update Lirox to the latest version"),
+            ("/exit",               "Shutdown"),
         ]:
             t.add_row(c, d)
         console.print(
@@ -311,22 +264,22 @@ def handle_command(
     # ── Agents list ───────────────────────────────────────────────────────────
     elif base == "/agents":
         from rich.table import Table
-
         t = Table(show_header=True, header_style="bold #FFC107")
         t.add_column("Agent")
         t.add_column("Icon")
         t.add_column("Capability")
-        t.add_column("Planning")
+        t.add_column("Pipeline")
         for n, ic, d, p, c in [
-            ("Finance",  "📊", "Markets, stocks, portfolios, valuation", "✓", "cyan"),
-            ("Code",     "💻", "Write, debug, review, execute code + desktop", "✓", "green"),
-            ("Browser",  "🌐", "Web navigation, content extraction, live data", "—", "orange1"),
-            ("Research", "🔬", "Deep multi-source research (Perplexity-style)", "—", "medium_purple1"),
-            ("Chat",     "💬", "General conversation (no planning mode)", "—", "yellow"),
+            ("Finance",  "📊", "Markets, stocks, portfolios, valuation",          "5-stage", "cyan"),
+            ("Code",     "💻", "Write, debug, review, execute code + desktop",    "11-stage", "green"),
+            ("Browser",  "🌐", "Web navigation, content extraction, live data",   "Direct",  "orange1"),
+            ("Research", "🔬", "Deep multi-source research (Perplexity-style)",   "5-stage", "medium_purple1"),
         ]:
             t.add_row(f"[{c}]{n}[/]", ic, d, p)
         console.print(t)
-        console.print()
+        console.print(
+            "\n  [dim]Thinking: Always-on complex mode for all agents[/]\n"
+        )
 
     # ── Models ────────────────────────────────────────────────────────────────
     elif base == "/models":
@@ -342,7 +295,7 @@ def handle_command(
         for agent_type, mem in orch._agent_memory.items():
             s = mem.get_stats()
             stats_lines.append(
-                f"  {agent_type.value:10}: {s['buffer_size']} msgs, {s['long_term_facts']} facts"
+                f"  {agent_type.value:10}: {s['buffer_size']} msgs, {s.get('long_term_facts', 0)} facts"
             )
         if not orch._agent_memory:
             stats_lines.append("  No agents activated yet.")
@@ -380,8 +333,8 @@ def handle_command(
                 "Desktop control is DISABLED.\n\n"
                 "To enable:\n"
                 "  1. Add DESKTOP_ENABLED=true to your .env\n"
-                "  2. Install: pip install pyautogui pillow\n"
-                "  3. macOS: grant Accessibility permissions in System Preferences\n"
+                "  2. Install: pip install pyautogui pillow pytesseract\n"
+                "  3. macOS: grant Accessibility in System Settings → Privacy → Accessibility\n"
                 "  4. Restart Lirox"
             )
         else:
@@ -389,7 +342,7 @@ def handle_command(
                 from lirox.tools.desktop import take_screenshot, get_open_windows
                 path    = take_screenshot()
                 windows = get_open_windows()
-                success_message(f"Desktop control ACTIVE\n  Screenshot: {path}\n  Open windows:\n{windows}")
+                success_message(f"Desktop control ACTIVE\n  Screenshot: {path}\n  Windows:\n{windows}")
             except Exception as e:
                 error_panel("DESKTOP ERROR", str(e))
 
@@ -398,13 +351,13 @@ def handle_command(
         info_panel("Running diagnostics...")
         from lirox.config import DESKTOP_ENABLED
         for n, f in [
-            ("Providers",      lambda: ", ".join(available_providers()) or "None"),
-            ("Global Memory",  lambda: f"{orch.global_memory.get_stats()['buffer_size']} buffered"),
-            ("Sessions",       lambda: f"{len(orch.session_store.list_sessions())} sessions stored"),
-            ("Thinking Mode",  lambda: orch.thinking_mode),
-            ("Desktop Ctrl",   lambda: "ENABLED" if DESKTOP_ENABLED else "disabled"),
-            ("Version",        lambda: f"v{APP_VERSION}"),
-            ("Agents",         lambda: "Finance, Code, Browser, Research, Chat"),
+            ("Providers",     lambda: ", ".join(available_providers()) or "None"),
+            ("Global Memory", lambda: f"{orch.global_memory.get_stats()['buffer_size']} buffered"),
+            ("Sessions",      lambda: f"{len(orch.session_store.list_sessions())} sessions stored"),
+            ("Thinking",      lambda: "Always-on complex mode"),
+            ("Desktop Ctrl",  lambda: "ENABLED" if DESKTOP_ENABLED else "disabled"),
+            ("Version",       lambda: f"v{APP_VERSION}"),
+            ("Agents",        lambda: "Finance (5-stage) · Code (11-stage) · Browser · Research (5-stage)"),
         ]:
             try:
                 console.print(f"  [green]✓[/] {n:22}: {f()}")
@@ -413,7 +366,6 @@ def handle_command(
         success_message("Diagnostics complete.")
 
     elif base in ("/uninstall", "/update", "/import-memory", "/export-profile"):
-        # Keep existing implementations from v2.1 unchanged
         _legacy_commands(orch, profile, cmd, base)
 
     else:
@@ -421,7 +373,6 @@ def handle_command(
 
 
 def _legacy_commands(orch, profile, cmd, base):
-    """Preserve existing /uninstall, /update, /import-memory, /export-profile from v2.1"""
     import shutil, subprocess
     from lirox.config import PROJECT_ROOT, DATA_DIR, OUTPUTS_DIR
 
@@ -430,27 +381,24 @@ def _legacy_commands(orch, profile, cmd, base):
         console.print()
         console.print(_Panel(
             "[bold red]⚠️ UNINSTALL LIROX[/]\n\n"
-            "This will remove all Lirox data from your device:\n"
+            "This will remove all Lirox data:\n"
             "  • Profile and settings\n"
             "  • Memory and learning data\n"
             "  • Configuration (.env)\n\n"
-            "The Python package itself must be removed separately:\n"
-            "  [bold]pip uninstall lirox[/]",
+            "Package: run 'pip uninstall lirox' separately.",
             border_style="red"
         ))
         if confirm_prompt("Delete ALL Lirox data? This cannot be undone."):
             for path in [
                 os.path.join(PROJECT_ROOT, "profile.json"),
                 os.path.join(PROJECT_ROOT, ".env"),
-                os.path.join(PROJECT_ROOT, "skills_config.json"),
             ]:
                 if os.path.exists(path):
                     os.remove(path)
             for dir_path in [DATA_DIR, OUTPUTS_DIR]:
                 if os.path.exists(dir_path):
                     shutil.rmtree(dir_path, ignore_errors=True)
-            success_message("All Lirox data deleted. Run 'pip uninstall lirox' to remove the package.")
-            info_panel("Goodbye. 👋")
+            success_message("All data deleted. Run 'pip uninstall lirox' to remove the package.")
             sys.exit(0)
 
     elif base == "/update":
@@ -465,7 +413,8 @@ def _legacy_commands(orch, profile, cmd, base):
                     success_message("Lirox is already up to date.")
                 else:
                     console.print(f"[dim]{result.stdout.strip()}[/]")
-                    subprocess.run([sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT], capture_output=True)
+                    subprocess.run([sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT],
+                                   capture_output=True)
                     success_message("Lirox updated. Please restart.")
             else:
                 info_panel("Not a Git repo.\nRun: pip install --upgrade lirox")
