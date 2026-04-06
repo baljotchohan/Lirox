@@ -1,7 +1,9 @@
 """
-Lirox v2.0 — API Rate Limiter & Resource Monitor
+Lirox — API Rate Limiter & Resource Monitor
 
 Prevents API abuse and monitors system resources to ensure safe autonomous execution.
+BUG-17 FIX: ResourceMonitor uses polling via check_resources() only (no background thread).
+If a background monitor thread is ever needed, use threading.Event() stop flag.
 """
 
 import time

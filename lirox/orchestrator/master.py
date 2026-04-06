@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Master Orchestrator: Mode-aware, Session-managed, Isolated agents"""
+"""Lirox — Master Orchestrator: Session-managed, isolated agents, always-on deep thinking"""
 from __future__ import annotations
 
 import re
@@ -7,10 +7,31 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, Generator, Optional
 
-from lirox.config import THINKING_ENABLED, ThinkingMode
+from lirox.config import THINKING_ENABLED
 from lirox.memory.manager import MemoryManager
 from lirox.memory.session_store import SessionStore
 from lirox.thinking.scratchpad import Scratchpad
+
+# COMPLEX format instructions injected into all agent calls via context
+COMPLEX_FORMAT_SUFFIX = (
+    "\n\n---\nOUTPUT FORMAT (REQUIRED):\n"
+    "## 🎯 Direct Answer\n[Answer the question directly]\n\n"
+    "## 🧠 Reasoning & Analysis\n[Your analysis and reasoning]\n\n"
+    "## 📋 Recommended Plan\n[Step-by-step action plan if applicable]\n\n"
+    "## 💡 My Recommendation\n[Your concrete recommendation]\n\n"
+    "## ⚠️ Key Risks / Caveats\n[Important warnings or limitations]"
+)
+
+# Agent identity header — prevents hallucination and role confusion
+AGENT_IDENTITY_HEADER = """
+═══════════════════════════════════════════
+  YOU ARE: {agent_name} — {agent_role}
+  NEVER pretend to be another agent.
+  NEVER route tasks to other agents in your response.
+  NEVER say "I'll hand this to the Finance Agent" etc.
+  If the task is outside your domain, say so clearly.
+═══════════════════════════════════════════
+"""
 
 
 class AgentType(Enum):
@@ -18,7 +39,7 @@ class AgentType(Enum):
     CODE     = "code"
     BROWSER  = "browser"
     RESEARCH = "research"
-    CHAT     = "chat"
+    CHAT     = "chat"  # handled directly by orchestrator
 
 
 @dataclass
@@ -33,12 +54,11 @@ class OrchestratorEvent:
 class MasterOrchestrator:
     def __init__(self, profile_data: Dict[str, Any] = None):
         self.profile_data   = profile_data or {}
-        self.global_memory  = MemoryManager()       # shared cross-agent context
+        self.global_memory  = MemoryManager()
         self.session_store  = SessionStore()
-        self.thinking_mode  = ThinkingMode.THINK
         self._agents:        Dict[AgentType, Any] = {}
-        self._agent_memory:  Dict[AgentType, MemoryManager] = {}   # per-agent isolated memory
-        self._agent_scratch: Dict[AgentType, Scratchpad] = {}      # per-agent scratchpad
+        self._agent_memory:  Dict[AgentType, MemoryManager] = {}
+        self._agent_scratch: Dict[AgentType, Scratchpad] = {}
 
     # ── Skills Wiring ─────────────────────────────────────────────────────────
 
@@ -51,7 +71,7 @@ class MasterOrchestrator:
             if skills and hasattr(agent, 'skills'):
                 agent.skills = skills
         except ImportError:
-            pass  # Skills system not installed — non-fatal
+            pass
         except Exception as e:
             from lirox.utils.structured_logger import get_logger
             get_logger("lirox.orchestrator").warning(f"Skills wiring error: {e}")
@@ -85,29 +105,28 @@ class MasterOrchestrator:
                 from lirox.agents.research_agent import ResearchAgent
                 self._agents[t] = ResearchAgent(mem, sp, self.profile_data)
             else:
-                from lirox.agents.chat_agent import ChatAgent
-                self._agents[t] = ChatAgent(mem, sp, self.profile_data)
+                # CHAT — direct orchestrator answer, no specialist agent
+                return None
             self._load_skills_for_agent(t, self._agents[t])
-        return self._agents[t]
+        return self._agents.get(t)
 
     # ── Intent Classification ─────────────────────────────────────────────────
 
     def classify_intent(self, query: str) -> AgentType:
+        """BUG-01/06 FIX: Always called for every query when no explicit agent override."""
         q = query.lower()
 
         # URL → always browser
         if re.search(r"https?://\S+", q):
             return AgentType.BROWSER
 
-        # Bigram and contextual scoring
         scores = {
-            AgentType.FINANCE: 0,
-            AgentType.CODE:    0,
-            AgentType.BROWSER: 0,
+            AgentType.FINANCE:  0,
+            AgentType.CODE:     0,
+            AgentType.BROWSER:  0,
             AgentType.RESEARCH: 0,
         }
 
-        # Finance — specific financial terms (avoid collision with "create plan")
         finance_terms = [
             "stock", "price of", "market cap", "ticker", "earnings", "revenue",
             "p/e ratio", "dividend", "portfolio", "invest in", "trade",
@@ -121,12 +140,11 @@ class MasterOrchestrator:
             if k in q:
                 scores[AgentType.FINANCE] += 2
 
-        # Ticker detection: uppercase 2-5 letter words (AAPL, TSLA, BTC)
+        # Ticker detection: uppercase 2-5 letter words
         tickers = re.findall(r'\b[A-Z]{2,5}\b', query)
         if tickers:
             scores[AgentType.FINANCE] += len(tickers)
 
-        # Code — programming-specific (avoid "write report" going to code)
         code_specific = [
             "python", "javascript", "typescript", "react", "flask", "django",
             "dockerfile", "sql query", "debug this", "fix the bug", "refactor",
@@ -142,7 +160,6 @@ class MasterOrchestrator:
             if k in q:
                 scores[AgentType.CODE] += 2
 
-        # Browser — explicit navigation / live data
         browser_terms = [
             "browse to", "navigate to", "scrape", "fill form", "login to", "sign in to",
             "trending on github", "trending on", "live data", "real-time",
@@ -152,7 +169,6 @@ class MasterOrchestrator:
             if k in q:
                 scores[AgentType.BROWSER] += 2
 
-        # Research — deep analysis, comparison, comprehensive
         research_terms = [
             "research", "deep dive", "comprehensive analysis", "compare",
             "report on", "detailed study", "findings", "everything about",
@@ -167,12 +183,32 @@ class MasterOrchestrator:
         score = scores[best]
         return best if score >= 2 else AgentType.CHAT
 
-    # ── Mode-Aware Thinking ───────────────────────────────────────────────────
+    def needs_agent(self, query: str) -> bool:
+        """
+        BUG-06 FIX: True only if this query requires a specialist agent with tools.
+        Pure conversational queries are answered directly by the orchestrator.
+        """
+        task_signals = [
+            # code
+            "write", "create", "build", "fix", "debug", "run", "execute", "deploy",
+            "refactor", "test", "generate code", "make a",
+            # finance
+            "stock", "price", "trade", "invest", "portfolio", "ticker", "market",
+            "analyze", "valuation", "crypto", "bitcoin",
+            # research
+            "research", "find", "search", "look up", "what is", "who is",
+            "latest news", "trending", "investigate",
+            # desktop
+            "open", "click", "screenshot", "screen", "desktop", "launch", "type",
+            "navigate to", "use my computer",
+        ]
+        q = query.lower()
+        return any(sig in q for sig in task_signals)
 
-    def _build_thinking_trace(self, query: str, mode: str) -> str:
-        if mode == ThinkingMode.FAST:
-            return ""  # No thinking for fast mode
+    # ── Thinking Engine ───────────────────────────────────────────────────────
 
+    def _build_thinking_trace(self, query: str) -> str:
+        """Always builds a thinking trace — deep thinking is always-on."""
         context = self.global_memory.get_relevant_context(query)
         try:
             from lirox.thinking.chain_of_thought import ThinkingEngine
@@ -180,62 +216,104 @@ class MasterOrchestrator:
         except Exception:
             return ""
 
+    # ── Soul / Identity ───────────────────────────────────────────────────────
+
+    def _get_identity_prompt(self) -> str:
+        try:
+            from lirox.soul import get_identity_prompt
+            return get_identity_prompt()
+        except Exception:
+            return "You are Lirox, an autonomous AI agent. Be helpful, precise, and direct."
+
     # ── Main Run ─────────────────────────────────────────────────────────────
 
     def run(
         self, query: str, system_prompt: str = "", mode: str = None, agent_override: str = None
     ) -> Generator[OrchestratorEvent, None, None]:
-
-        mode  = mode or self.thinking_mode
+        # mode param kept for API compatibility but always treated as "complex" internally
         start = time.time()
 
-        # ── Session tracking
         session = self.session_store.current()
-        session.add("user", query, agent=session.active_agent, mode=mode)
+        session.add("user", query, agent=session.active_agent, mode="complex")
 
-        # ── Thinking phase (skip for FAST mode)
+        # ── Thinking phase (always-on) ─────────────────────────────────────
         thinking_trace = ""
-        if THINKING_ENABLED and mode != ThinkingMode.FAST:
+        if THINKING_ENABLED:
             yield OrchestratorEvent(type="thinking", message="Analyzing...")
             try:
-                thinking_trace = self._build_thinking_trace(query, mode)
+                thinking_trace = self._build_thinking_trace(query)
                 if thinking_trace:
                     yield OrchestratorEvent(type="thinking", message=thinking_trace)
             except Exception as e:
                 from lirox.utils.structured_logger import get_logger
                 get_logger("lirox.orchestrator").warning(f"Thinking engine error: {e}")
 
-        # ── Route to agent
+        # ── Route to agent ────────────────────────────────────────────────
+        # BUG-01/06 FIX: ALWAYS use classify_intent unless user explicitly ran /agent
         if agent_override:
             try:
                 agent_type = AgentType(agent_override.lower())
             except ValueError:
-                agent_type = AgentType(session.active_agent)
-        else:
+                agent_type = self.classify_intent(query)
+        elif session.agent_explicitly_set:
+            # User manually chose an agent via /agent command — respect it
             try:
                 agent_type = AgentType(session.active_agent)
             except ValueError:
-                agent_type = AgentType.CHAT
-
-        # For COMPLEX mode, override agent system prompt with structured output requirement
-        if mode == ThinkingMode.COMPLEX:
-            system_prompt = (
-                system_prompt or ""
-            ) + "\n\nOUTPUT FORMAT (REQUIRED):\n"  \
-              "## 🎯 Direct Answer\n[Answer the question directly]\n\n"  \
-              "## 🧠 Reasoning & Analysis\n[Your analysis and reasoning]\n\n"  \
-              "## 📋 Recommended Plan\n[Step-by-step action plan if applicable]\n\n"  \
-              "## 💡 My Recommendation\n[Your concrete recommendation]\n\n"  \
-              "## ⚠️ Key Risks / Caveats\n[Important warnings or limitations]"
-
-        yield OrchestratorEvent(
-            type="agent_start",
-            agent=agent_type.value,
-            message=f"[{mode.upper()}] Routing to {agent_type.value} agent",
-        )
+                agent_type = self.classify_intent(query)
+        else:
+            # BUG-01 ROOT FIX: Always classify, never default to "chat" blindly
+            agent_type = self.classify_intent(query)
 
         # Update session's active agent
         session.active_agent = agent_type.value
+
+        # ── Direct conversational answer (no specialist agent needed) ──────
+        if agent_type == AgentType.CHAT or (
+            not session.agent_explicitly_set and not self.needs_agent(query)
+        ):
+            yield OrchestratorEvent(
+                type="agent_start", agent="chat",
+                message="Answering directly"
+            )
+            try:
+                from lirox.utils.llm import generate_response
+                identity = self._get_identity_prompt()
+                prompt = query
+                if thinking_trace:
+                    prompt = f"Thinking:\n{thinking_trace}\n\nUser: {query}"
+                direct_answer = generate_response(
+                    prompt,
+                    provider="auto",
+                    system_prompt=identity + COMPLEX_FORMAT_SUFFIX,
+                )
+                self.global_memory.save_exchange(query, direct_answer)
+                session.add("assistant", direct_answer, agent="chat", mode="complex")
+                self.session_store.save_current()
+                yield OrchestratorEvent(
+                    type="done",
+                    agent="chat",
+                    message=direct_answer,
+                    data={"agents_used": ["chat"], "total_time": time.time() - start},
+                )
+            except Exception as e:
+                yield OrchestratorEvent(type="error", message=str(e))
+            return
+
+        # ── Specialist agent routing ───────────────────────────────────────
+        yield OrchestratorEvent(
+            type="agent_start",
+            agent=agent_type.value,
+            message=f"Routing to {agent_type.value} agent",
+        )
+
+        # BUG-15 FIX: Inject COMPLEX format via context param, not system_prompt
+        # (agents that build their own system_prompt would ignore passed system_prompt)
+        complex_context = thinking_trace
+        if complex_context:
+            complex_context += COMPLEX_FORMAT_SUFFIX
+        else:
+            complex_context = COMPLEX_FORMAT_SUFFIX.strip()
 
         agent       = self._get_agent(agent_type)
         result_text = ""
@@ -244,8 +322,8 @@ class MasterOrchestrator:
             for event in agent.run(
                 query,
                 system_prompt=system_prompt,
-                context=thinking_trace,
-                mode=mode,
+                context=complex_context,
+                mode="complex",          # BUG-02: always pass mode
             ):
                 yield OrchestratorEvent(
                     type    = event.get("type", "agent_progress"),
@@ -259,9 +337,9 @@ class MasterOrchestrator:
             yield OrchestratorEvent(type="error", message=str(e))
             result_text = f"Error: {e}"
 
-        # ── Persist
+        # ── Persist ──────────────────────────────────────────────────────
         self.global_memory.save_exchange(query, result_text)
-        session.add("assistant", result_text, agent=agent_type.value, mode=mode)
+        session.add("assistant", result_text, agent=agent_type.value, mode="complex")
         self.session_store.save_current()
 
         yield OrchestratorEvent(
@@ -270,23 +348,11 @@ class MasterOrchestrator:
             data    = {
                 "agents_used": [agent_type.value],
                 "total_time":  time.time() - start,
-                "mode":        mode,
+                "mode":        "complex",
             },
         )
 
-    # ── Mode Switching ────────────────────────────────────────────────────────
-
-    def set_mode(self, mode: str) -> bool:
-        valid = {ThinkingMode.FAST, ThinkingMode.THINK, ThinkingMode.COMPLEX}
-        if mode.lower() in valid:
-            self.thinking_mode = mode.lower()
-            # Start a new session when mode changes
-            self.session_store.new_session(
-                agent=self.session_store.current().active_agent,
-                mode=mode.lower()
-            )
-            return True
-        return False
+    # ── Agent Switching ───────────────────────────────────────────────────────
 
     def set_agent(self, agent_name: str) -> bool:
         mapping = {
@@ -297,11 +363,12 @@ class MasterOrchestrator:
             "chat":     AgentType.CHAT,
         }
         if agent_name.lower() in mapping:
-            agent_type = mapping[agent_name.lower()]
-            # Start new session on agent switch
-            session = self.session_store.new_session(
+            session = self.session_store.current()
+            session.active_agent = agent_name.lower()
+            session.agent_explicitly_set = True  # mark as user-chosen
+            self.session_store.new_session(
                 agent=agent_name.lower(),
-                mode=self.thinking_mode
+                mode="complex"
             )
             return True
         return False

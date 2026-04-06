@@ -57,7 +57,8 @@ class Session:
         self.created_at = datetime.now().isoformat()
         self.entries: List[SessionEntry] = []
         self.active_agent = "chat"
-        self.thinking_mode = "think"
+        self.thinking_mode = "complex"
+        self.agent_explicitly_set: bool = False  # BUG-01/06 FIX: track explicit /agent switches
 
     def add(self, role: str, content: str, agent: str = "", mode: str = ""):
         # Auto-name on first user message
@@ -68,21 +69,23 @@ class Session:
 
     def to_dict(self) -> dict:
         return {
-            "session_id":   self.session_id,
-            "name":         self.name,
-            "created_at":   self.created_at,
-            "active_agent": self.active_agent,
-            "thinking_mode": self.thinking_mode,
-            "entries":      [e.to_dict() for e in self.entries],
+            "session_id":         self.session_id,
+            "name":               self.name,
+            "created_at":          self.created_at,
+            "active_agent":       self.active_agent,
+            "thinking_mode":      self.thinking_mode,
+            "agent_explicitly_set": self.agent_explicitly_set,
+            "entries":            [e.to_dict() for e in self.entries],
         }
 
     @staticmethod
     def from_dict(d: dict) -> "Session":
         s = Session(d["session_id"], d["name"])
-        s.created_at    = d.get("created_at", "")
-        s.active_agent  = d.get("active_agent", "chat")
-        s.thinking_mode = d.get("thinking_mode", "think")
-        s.entries       = [SessionEntry.from_dict(e) for e in d.get("entries", [])]
+        s.created_at     = d.get("created_at", "")
+        s.active_agent   = d.get("active_agent", "chat")
+        s.thinking_mode  = d.get("thinking_mode", "complex")
+        s.agent_explicitly_set = d.get("agent_explicitly_set", False)
+        s.entries        = [SessionEntry.from_dict(e) for e in d.get("entries", [])]
         return s
 
     def summary(self) -> str:

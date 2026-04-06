@@ -1,24 +1,27 @@
 """
-Lirox v2.0 — LLM Utility Layer
+Lirox — LLM Utility Layer
 
 Provider support: Gemini, Groq, OpenAI, OpenRouter, DeepSeek, NVIDIA, Anthropic, Ollama (local)
 Features:
   - Smart provider routing based on task type
   - Automatic fallback chain: primary → secondary → tertiary
   - is_task_request caching (per input hash) to avoid redundant LLM calls
-  - 60-second timeout (up from 30s) for long research tasks
+  - 60-second timeout for long research tasks
   - generate_response_stream() generator for SSE/WebSocket streaming
   - Anthropic Claude provider (claude-3-5-haiku for speed, claude-opus for heavy)
   - Ollama local LLM support (gemma4, llama3, mistral, etc.) — zero API cost
 """
 
+import atexit
 import os
 import hashlib
 import requests
 import concurrent.futures
 from typing import List, Dict, Optional, Generator
 
+# BUG-03 FIX: Create pool and register atexit shutdown to prevent OS thread leak
 _FALLBACK_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=5)
+atexit.register(_FALLBACK_POOL.shutdown, wait=False)
 
 
 # ─── Lirox Memory Compressor — Ollama Inference Options ──────────────────────
@@ -483,7 +486,10 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
             return f"No API key configured for: {provider}"
         provider = fallback
 
-    # Primary attempt with proper executor cleanup
+    # BUG-04 FIX: Initialize response=None before any attempt to prevent unbound variable
+    response = None
+
+    # Primary attempt
     try:
         future = _FALLBACK_POOL.submit(_call_provider, provider, prompt, system_prompt)
         response = future.result(timeout=timeout)
@@ -493,7 +499,7 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
         response = f"Error: {e}"
 
     # Fallback chain
-    if is_error_response(response):
+    if response is None or is_error_response(response):
         avail = available_providers()
         fallbacks = [p for p in _PROVIDER_PRIORITY if p in avail and p != provider]
         for fb in fallbacks:
@@ -505,6 +511,9 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
             except (concurrent.futures.TimeoutError, Exception):
                 continue
 
+    # BUG-04: Explicit None check before returning
+    if response is None:
+        return "Error: All providers failed to return a response."
     return response
 
 

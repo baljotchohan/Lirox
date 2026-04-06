@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Central Configuration"""
+"""Lirox — Central Configuration"""
 import os
 from pathlib import Path
 
@@ -9,7 +9,7 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-APP_VERSION = "3.0.0"
+APP_VERSION = "1.0"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
 DATA_DIR = str(_REPO_ROOT / "data")
@@ -50,20 +50,15 @@ PLAN_CONFIRM          = True
 MAX_RETRIES           = 3
 CONTEXT_MAX_CHARS     = 4000
 
+# Always-on thinking depth — never user-configurable
+THINKING_DEPTH = "complex"
+
 # Content truncation limits
 MAX_LLM_PROMPT_CHARS    = 8000
 MAX_TOOL_RESULT_CHARS   = 2000
 MAX_MEMORY_ENTRY_CHARS  = 500
 MAX_CONTEXT_CHARS       = 4000
 MAX_SEARCH_RESULT_CHARS = 10000
-
-# Thinking Modes
-class ThinkingMode:
-    FAST    = "fast"      # Minimal reasoning, direct answer, skip thinking engine
-    THINK   = "think"     # Standard CoT reasoning, detailed answer
-    COMPLEX = "complex"   # Full structured output: plan + reasoning + answer + recommendation
-
-DEFAULT_THINKING_MODE = os.getenv("DEFAULT_THINKING_MODE", ThinkingMode.THINK)
 
 # Terminal Safety
 ALLOWED_COMMANDS = [

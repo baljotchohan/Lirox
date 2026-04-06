@@ -19,7 +19,7 @@ class BrowserAgent(BaseAgent):
         return "Web browsing, content extraction, navigation"
 
     def run(
-        self, query: str, system_prompt: str = "", context: str = ""
+        self, query: str, system_prompt: str = "", context: str = "", mode: str = "complex"
     ) -> Generator[AgentEvent, None, None]:
         from lirox.utils.structured_logger import get_logger, log_with_metadata
         import time
