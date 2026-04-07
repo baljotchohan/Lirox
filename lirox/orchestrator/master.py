@@ -249,28 +249,26 @@ class MasterOrchestrator:
                 get_logger("lirox.orchestrator").warning(f"Thinking engine error: {e}")
 
         # ── Route to agent ────────────────────────────────────────────────
-        # BUG-01/06 FIX: Respect explicit agent selection
+        # FIX: Only use agents when user explicitly chooses OR query has task signals
+
         if agent_override:
+            # User ran /agent command — respect it
             try:
                 agent_type = AgentType(agent_override.lower())
             except ValueError:
-                agent_type = self.classify_intent(query)
+                agent_type = AgentType.CHAT
         elif session.agent_explicitly_set:
-            # User manually chose an agent via /agent command — STICK TO IT
+            # User manually set agent via /agent — stick with it
             try:
                 agent_type = AgentType(session.active_agent)
             except ValueError:
-                # Fallback to chat if the active_agent string is invalid
                 agent_type = AgentType.CHAT
         else:
-            # Automatic activation / routing
-            if session.active_agent != "chat":
-                # If we are already in a specialized agent (auto-activated previously), 
-                # stay there to avoid "switching" mid-session.
-                agent_type = AgentType(session.active_agent)
-            else:
-                # Fresh chat session — classify intent to see if we should activate a specialist
+            # NEW: Only classify if query HAS task signals
+            if self.needs_agent(query):
                 agent_type = self.classify_intent(query)
+            else:
+                agent_type = AgentType.CHAT  # Default to chat
 
         # Update session's active agent (persist the "sticky" agent)
         session.active_agent = agent_type.value
