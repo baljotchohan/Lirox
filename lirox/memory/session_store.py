@@ -130,11 +130,12 @@ class SessionStore:
 
     # ── Session Lifecycle ────────────────────────────────────────────────────
 
-    def new_session(self, agent: str = "chat", mode: str = "think") -> Session:
+    def new_session(self, agent: str = "chat", mode: str = "think", explicit: bool = False) -> Session:
         """Create a new session and make it current."""
         s = Session()
         s.active_agent  = agent
         s.thinking_mode = mode
+        s.agent_explicitly_set = explicit
         self._current   = s
         return s
 

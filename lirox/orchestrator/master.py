@@ -249,23 +249,30 @@ class MasterOrchestrator:
                 get_logger("lirox.orchestrator").warning(f"Thinking engine error: {e}")
 
         # ── Route to agent ────────────────────────────────────────────────
-        # BUG-01/06 FIX: ALWAYS use classify_intent unless user explicitly ran /agent
+        # BUG-01/06 FIX: Respect explicit agent selection
         if agent_override:
             try:
                 agent_type = AgentType(agent_override.lower())
             except ValueError:
                 agent_type = self.classify_intent(query)
         elif session.agent_explicitly_set:
-            # User manually chose an agent via /agent command — respect it
+            # User manually chose an agent via /agent command — STICK TO IT
             try:
                 agent_type = AgentType(session.active_agent)
             except ValueError:
-                agent_type = self.classify_intent(query)
+                # Fallback to chat if the active_agent string is invalid
+                agent_type = AgentType.CHAT
         else:
-            # BUG-01 ROOT FIX: Always classify, never default to "chat" blindly
-            agent_type = self.classify_intent(query)
+            # Automatic activation / routing
+            if session.active_agent != "chat":
+                # If we are already in a specialized agent (auto-activated previously), 
+                # stay there to avoid "switching" mid-session.
+                agent_type = AgentType(session.active_agent)
+            else:
+                # Fresh chat session — classify intent to see if we should activate a specialist
+                agent_type = self.classify_intent(query)
 
-        # Update session's active agent
+        # Update session's active agent (persist the "sticky" agent)
         session.active_agent = agent_type.value
 
         # ── Direct conversational answer (no specialist agent needed) ──────
@@ -364,11 +371,16 @@ class MasterOrchestrator:
         }
         if agent_name.lower() in mapping:
             session = self.session_store.current()
+            # Mark current session as explicit if we aren't creating a fresh one, 
+            # though set_agent usually starts a new one.
             session.active_agent = agent_name.lower()
-            session.agent_explicitly_set = True  # mark as user-chosen
+            session.agent_explicitly_set = True
+            
+            # Start fresh session with the chosen agent and explicit flag
             self.session_store.new_session(
                 agent=agent_name.lower(),
-                mode="complex"
+                mode="complex",
+                explicit=True
             )
             return True
         return False
