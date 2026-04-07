@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Single Personal Agent Entry Point"""
+"""Lirox v0.5 — Mind Agent Entry Point"""
 import os
 import sys
 import time
@@ -50,7 +50,7 @@ def get_prompt_label(agent_name: str) -> list:
 def main():
     check_dependencies()
 
-    parser = argparse.ArgumentParser(description="Lirox v3.0 — Personal AI Agent")
+    parser = argparse.ArgumentParser(description="Lirox v0.5 — Personal AI Agent")
     parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
     parser.add_argument("--update",  action="store_true", help="Update Lirox")
     parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
@@ -91,6 +91,7 @@ def main():
     commands = [
         "/help", "/history", "/session", "/models", "/memory", "/think",
         "/profile", "/reset", "/desktop", "/test", "/pause", "/resume",
+        "/train", "/learnings", "/add-skill", "/skills", "/add-agent", "/agents", "/improve", "/soul", "/mind",
         "/import-memory", "/export-profile", "/uninstall", "/update", "/exit",
     ]
 
@@ -238,6 +239,15 @@ def handle_command(
             ("/pause",           "Pause agent while it controls the desktop"),
             ("/resume",          "Resume a paused agent"),
             ("/test",            "Run diagnostics"),
+            ("/train",           "Train Mind Agent on recent sessions"),
+            ("/learnings",       "View Mind Agent's user knowledge"),
+            ("/add-skill <desc>","Generate a new skill via LLM"),
+            ("/skills",          "List available skills"),
+            ("/add-agent <desc>","Generate a new sub-agent via LLM"),
+            ("/agents",          "List available sub-agents"),
+            ("/improve",         "Run AI code improver on Lirox"),
+            ("/soul",            "View Mind Agent's soul"),
+            ("/mind",            "View full Mind Agent state"),
             ("/import-memory",   "Import memory from ChatGPT/Claude/Gemini"),
             ("/export-profile",  "Export profile as JSON"),
             ("/uninstall",       "Remove all Lirox data"),
@@ -353,7 +363,7 @@ def handle_command(
             ("Thinking",     lambda: "Always-on complex mode"),
             ("Desktop Ctrl", lambda: "ENABLED" if DESKTOP_ENABLED else "disabled"),
             ("Version",      lambda: f"v{APP_VERSION}"),
-            ("Architecture", lambda: "Single PersonalAgent"),
+            ("Architecture", lambda: "Mind Agent + Personal Agent OS"),
         ]
         for name, fn in tests:
             try:
@@ -361,6 +371,118 @@ def handle_command(
             except Exception as e:
                 console.print(f"  [red]✖[/] {name:22}: {e}")
         success_message("Diagnostics complete.")
+
+    # ── LIROX V4.0 MIND COMMANDS ──────────────────────────────────────────────
+    elif base == "/train":
+        info_panel("Training Engine activated...")
+        from lirox.mind.agent import get_trainer
+        t = get_trainer(orch.global_memory)
+        stats = t.train_from_recent_sessions(orch.session_store, limit=5)
+        success_message(
+            f"Training complete!\n"
+            f"  Sessions analyzed: {stats['sessions_analyzed']}\n"
+            f"  New facts: {stats['facts_added']}\n"
+            f"  Topics updated: {stats['topics_updated']}\n"
+            f"  Projects tracked: {stats['projects_added']}"
+        )
+
+    elif base == "/learnings":
+        from lirox.mind.agent import get_learnings
+        learn = get_learnings()
+        info_panel(f"🧠 LEARNINGS STORE\n\n{learn.to_context_string()}")
+
+    elif base == "/soul":
+        from lirox.mind.agent import get_soul
+        soul = get_soul()
+        info_panel(f"👻 LIVING SOUL\n\n{soul.summary()}")
+
+    elif base == "/mind":
+        from lirox.mind.agent import get_soul, get_learnings, get_skills, get_sub_agents
+        soul = get_soul()
+        stats = get_learnings().get_stats()
+        sk = len(get_skills().list_skills())
+        sa = len(get_sub_agents().list_agents())
+        info_panel(
+            f"🧠 MIND AGENT STATE\n\n"
+            f"  Identity : {soul.get_name()}\n"
+            f"  Nature   : {soul.soul['core_identity'][:60]}...\n\n"
+            f"  Knowledge: {stats['facts']} facts, {stats['preferences']} prefs, {stats['projects']} projects, {stats['topics']} topics\n"
+            f"  Skills   : {sk} loaded\n"
+            f"  Agents   : {sa} loaded\n"
+            f"  Age      : {soul.soul['interactions']} interactions"
+        )
+
+    elif base == "/improve":
+        info_panel("Self-Improver running... (this takes a minute)")
+        from lirox.mind.agent import get_improver
+        imp = get_improver()
+        res = imp.improve()
+        if res["improvements"]:
+            fixes = "\n".join(f"  • {i['file']}: {i.get('fix', i.get('error', ''))}" for i in res["improvements"])
+        else:
+            fixes = "  None needed right now."
+        success_message(
+            f"Improvement cycle complete.\n"
+            f"  Files audited: {res['files_audited']}\n"
+            f"  Issues found: {res['issues_found']}\n"
+            f"  Patches applied: {res['patches_applied']}\n\n"
+            f"Patches:\n{fixes}"
+        )
+        from rich.markdown import Markdown
+        sugg = imp.suggest_improvements()
+        console.print(Markdown("### Improvement Suggestions\n" + sugg))
+
+    elif base == "/add-skill":
+        desc = cmd[10:].strip()
+        if not desc:
+            info_panel("Usage: /add-skill <description of what the skill should do>")
+        else:
+            info_panel("Building new skill via LLM...")
+            from lirox.mind.agent import get_skills
+            reg = get_skills()
+            try:
+                name = reg.generate_skill(desc)
+                success_message(f"Skill '{name}' created successfully!")
+            except Exception as e:
+                error_panel("SKILL GENERATION ERROR", str(e))
+
+    elif base == "/skills":
+        from lirox.mind.agent import get_skills
+        reg = get_skills()
+        skills = reg.list_skills()
+        if not skills:
+            info_panel("No skills loaded. Use /add-skill to create one.")
+        else:
+            lines = ["LOADED SKILLS\n"]
+            for s in skills:
+                lines.append(f"  • {s['name']}: {s['description']}")
+            info_panel("\n".join(lines))
+
+    elif base == "/add-agent":
+        desc = cmd[10:].strip()
+        if not desc:
+            info_panel("Usage: /add-agent <description of the agent and what it does>")
+        else:
+            info_panel("Building new sub-agent via LLM...")
+            from lirox.mind.agent import get_sub_agents
+            reg = get_sub_agents()
+            try:
+                name = reg.generate_agent(desc)
+                success_message(f"Agent '{name}' created successfully!")
+            except Exception as e:
+                error_panel("AGENT GENERATION ERROR", str(e))
+
+    elif base == "/agents":
+        from lirox.mind.agent import get_sub_agents
+        reg = get_sub_agents()
+        agents = reg.list_agents()
+        if not agents:
+            info_panel("No sub-agents loaded. Use /add-agent to create one.")
+        else:
+            lines = ["LOADED SUB-AGENTS\n"]
+            for a in agents:
+                lines.append(f"  • {a['name']}: {a['description']} (Role: {a['role']})")
+            info_panel("\n".join(lines))
 
     # ── Legacy commands ───────────────────────────────────────────────────────
     elif base in ("/uninstall", "/update", "/import-memory", "/export-profile"):
@@ -428,12 +550,25 @@ def _legacy_commands(orch, profile, cmd, base):
         run_update()
 
     elif base == "/import-memory":
-        from lirox.ui.wizard import _show_memory_import_prompt
-        _show_memory_import_prompt(
-            profile,
-            profile.data.get("user_name", "User"),
-            profile.data.get("agent_name", "Lirox"),
-        )
+        console.print("\n  [bold #FFC107]To import memory from a file (Conversations JSON, txt, md):[/]")
+        filepath = console.input("  [dim]Path to export file: [/]").strip()
+        if filepath:
+            from lirox.memory.import_handler import MemoryImporter
+            from lirox.mind.agent import get_learnings
+            from lirox.ui.display import info_panel, success_message, error_panel
+            info_panel("Importing memory...")
+            res = MemoryImporter(get_learnings()).import_file(filepath)
+            if "error" in res:
+                error_panel("IMPORT ERROR", res["error"])
+            else:
+                success_message(
+                    f"Import successful!\n"
+                    f"  Source: {res['source']}\n"
+                    f"  Imported: {res['imported']} messages\n"
+                    f"  Facts added: {res['facts_added']}\n"
+                    f"  Topics updated: {res['topics_added']}\n"
+                    f"  Projects found: {res.get('projects_added', 0)}"
+                )
 
     elif base == "/export-profile":
         import json as _json

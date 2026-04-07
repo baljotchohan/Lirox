@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Master Orchestrator (Single Agent Architecture)"""
+"""Lirox v0.5 — Master Orchestrator (Mind Agent Architecture)"""
 from __future__ import annotations
 
 import time
@@ -23,6 +23,7 @@ COMPLEX_FORMAT_SUFFIX = (
 
 class AgentType(Enum):
     PERSONAL = "personal"
+    MIND     = "mind"
     CHAT     = "chat"   # direct LLM, no agent overhead for simple queries
 
 
@@ -62,12 +63,27 @@ class MasterOrchestrator:
             )
         return self._agent
 
+    def _get_mind_agent(self):
+        if getattr(self, "_mind_agent", None) is None:
+            if AgentType.MIND not in self._agent_memory:
+                self._agent_memory[AgentType.MIND] = MemoryManager(agent_name="mind")
+            if AgentType.MIND not in self._agent_scratch:
+                self._agent_scratch[AgentType.MIND] = Scratchpad()
+            from lirox.mind.agent import MindAgent
+            self._mind_agent = MindAgent(
+                memory       = self._agent_memory[AgentType.MIND],
+                scratchpad   = self._agent_scratch[AgentType.MIND],
+                profile_data = self.profile_data,
+            )
+        return self._mind_agent
+
     # ── Helper ────────────────────────────────────────────────────────────────
 
     def _get_identity_prompt(self) -> str:
         try:
-            from lirox.soul import get_identity_prompt
-            return get_identity_prompt()
+            from lirox.mind.agent import get_soul, get_learnings
+            learn_ctx = get_learnings().to_context_string()
+            return get_soul().to_system_prompt(learn_ctx)
         except Exception:
             return "You are Lirox, an autonomous personal AI agent."
 
@@ -120,29 +136,43 @@ class MasterOrchestrator:
                 from lirox.utils.structured_logger import get_logger
                 get_logger("lirox.orchestrator").warning(f"Thinking error: {e}")
 
-        # ── Direct chat (no tool use needed) ─────────────────────────────────
+        # ── Direct chat handled by Mind Agent (v4) ───────────────────────────
         if not self._needs_agent(query):
-            yield OrchestratorEvent(type="agent_start", agent="personal",
-                                    message="Answering directly")
+            agent       = self._get_mind_agent()
+            agent_name  = "mind"
+            yield OrchestratorEvent(type="agent_start", agent=agent_name,
+                                    message="Mind Agent advising...")
+            
+            result_text = ""
             try:
-                from lirox.utils.llm import generate_response
-                identity = self._get_identity_prompt()
-                prompt   = query
-                if thinking_trace:
-                    prompt = f"Thinking:\n{thinking_trace}\n\nUser: {query}"
-                answer = generate_response(
-                    prompt, provider="auto",
-                    system_prompt=identity + COMPLEX_FORMAT_SUFFIX,
-                )
-                self.global_memory.save_exchange(query, answer)
-                session.add("assistant", answer, agent="personal", mode="complex")
-                self.session_store.save_current()
-                yield OrchestratorEvent(
-                    type="done", agent="personal", message=answer,
-                    data={"total_time": time.time() - start},
-                )
+                for event in agent.run(
+                    query,
+                    system_prompt=system_prompt,
+                    context=thinking_trace,
+                    mode="advisor",
+                ):
+                    yield OrchestratorEvent(
+                        type    = event.get("type", "agent_progress"),
+                        agent   = agent_name,
+                        message = event.get("message", ""),
+                        data    = event,
+                    )
+                    if event.get("type") == "done":
+                        result_text = event.get("answer", event.get("message", ""))
             except Exception as e:
                 yield OrchestratorEvent(type="error", message=str(e))
+                result_text = f"Error: {e}"
+
+            self.global_memory.save_exchange(query, result_text)
+            session.add("assistant", result_text, agent=agent_name, mode="complex")
+            self.session_store.save_current()
+
+            yield OrchestratorEvent(
+                type    = "done",
+                agent   = agent_name,
+                message = result_text,
+                data    = {"total_time": time.time() - start, "mode": "complex"},
+            )
             return
 
         # ── Personal agent tool-use path ──────────────────────────────────────

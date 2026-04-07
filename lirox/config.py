@@ -9,7 +9,7 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-APP_VERSION = "3.0"
+APP_VERSION = "0.5.0"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
 DATA_DIR = str(_REPO_ROOT / "data")
@@ -112,7 +112,16 @@ PROTECTED_PATHS = [
 PARALLEL_MAX_WORKERS = 4
 RETRY_BACKOFF        = 1.0
 
+# ── Mind Agent Paths ──────────────────────────────────────────────────────────
+MIND_DIR         = str(_REPO_ROOT / "data" / "mind")
+MIND_SOUL_FILE   = str(_REPO_ROOT / "data" / "mind" / "soul.json")
+MIND_LEARN_FILE  = str(_REPO_ROOT / "data" / "mind" / "learnings.json")
+MIND_PATTERN_FILE= str(_REPO_ROOT / "data" / "mind" / "patterns.json")
+MIND_SKILLS_DIR  = str(_REPO_ROOT / "data" / "mind" / "skills")
+MIND_AGENTS_DIR  = str(_REPO_ROOT / "data" / "mind" / "agents")
+
 # ── Ensure directories exist ──────────────────────────────────────────────────
 for d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, SESSIONS_DIR,
-          str(Path(MEMORY_DIR) / "daily")]:
+          str(Path(MEMORY_DIR) / "daily"),
+          MIND_DIR, MIND_SKILLS_DIR, MIND_AGENTS_DIR]:
     os.makedirs(d, exist_ok=True)

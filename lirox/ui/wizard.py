@@ -1,4 +1,4 @@
-"""Lirox v2.1 — Advanced First-Run Onboarding Wizard"""
+"""Lirox v0.5 — Mind Agent Setup Wizard"""
 import os
 import json
 from pathlib import Path
@@ -241,137 +241,12 @@ def _setup_cloud_keys():
 
 
 def _show_memory_import_prompt(profile, user_name, agent_name):
-    """Show the prompt the user should paste into ChatGPT/Claude/Gemini to export their memory."""
+    """Show instructions to import memory using a file path."""
     console.print()
-
-    export_prompt = f"""You are helping me export my preferences, context, and learned facts to a new AI assistant called {agent_name}.
-
-Please analyze ALL of our conversation history and your memory of me, then output a JSON block with this exact structure:
-
-```json
-{{
-  "user_name": "{user_name}",
-  "profession": "your best guess of my profession",
-  "interests": ["list", "of", "my", "key", "interests"],
-  "communication_style": "how I prefer to communicate (direct/detailed/casual/formal)",
-  "goals": ["my", "active", "goals", "or", "projects"],
-  "technical_skills": ["languages", "frameworks", "tools", "I", "use"],
-  "preferences": {{
-    "tone": "direct or detailed or casual",
-    "output_format": "what format I usually want (code/analysis/brief)",
-    "topics_i_care_about": ["list"]
-  }},
-  "learned_facts": [
-    "fact 1 about me",
-    "fact 2 about me",
-    "up to 30 facts you know about me"
-  ]
-}}
-```
-
-Be thorough. Include everything you know about me — my work, preferences, patterns, tools, and context. This will help my new agent {agent_name} understand me from day one."""
-
     console.print(Panel(
-        "[bold #FFC107]📋 Memory Export Prompt[/]\n\n"
-        "Copy the prompt below and paste it into:\n"
-        "  • ChatGPT (chat.openai.com)\n"
-        "  • Claude (claude.ai)\n"
-        "  • Gemini (gemini.google.com)\n\n"
-        "Then copy the JSON response and paste it back here.\n",
+        "[bold #FFC107]📋 Memory Import[/]\n\n"
+        "You can export your conversation history from ChatGPT, Claude, or Gemini\n"
+        "and import it into Lirox so it knows you from day one.\n\n"
+        "Run the command [bold]/import-memory[/] and provide the file path to the JSON export.\n",
         border_style="#FFC107", box=ROUNDED, width=70
     ))
-
-    # Show the prompt in a copyable format
-    console.print(Panel(
-        export_prompt,
-        border_style="cyan", title="[cyan] COPY THIS PROMPT [/]", width=70
-    ))
-
-    console.print("\n  [bold #FFC107]After you get the JSON response, paste it below.[/]")
-    console.print("  [dim](Press Enter twice when done, or type 'skip' to skip)[/]\n")
-
-    lines = []
-    while True:
-        try:
-            line = input("  ")
-            if line.strip().lower() == "skip":
-                console.print("  [dim]Skipped memory import.[/]")
-                return
-            lines.append(line)
-            # Detect end of JSON
-            full = "\n".join(lines)
-            if full.strip().endswith("}"):
-                # Try parsing
-                import re
-                json_match = re.search(r'\{.*\}', full, re.DOTALL)
-                if json_match:
-                    try:
-                        data = json.loads(json_match.group())
-                        _import_memory_data(profile, data)
-                        return
-                    except json.JSONDecodeError:
-                        continue
-        except EOFError:
-            break
-
-    # Try one final parse
-    full = "\n".join(lines)
-    import re
-    json_match = re.search(r'```json\s*(.*?)\s*```', full, re.DOTALL)
-    if not json_match:
-        json_match = re.search(r'\{.*\}', full, re.DOTALL)
-    if json_match:
-        try:
-            data = json.loads(json_match.group(1) if '```' in full else json_match.group())
-            _import_memory_data(profile, data)
-        except Exception:
-            console.print("  [yellow]⚠ Couldn't parse the JSON. You can try again with /import-memory[/]")
-    else:
-        console.print("  [dim]No JSON detected. Skipping.[/]")
-
-
-def _import_memory_data(profile, data: dict):
-    """Import parsed memory JSON into the user profile."""
-    imported = 0
-
-    if data.get("profession"):
-        profile.update("profession", data["profession"])
-        imported += 1
-
-    if data.get("communication_style"):
-        profile.update("tone", data["communication_style"])
-        imported += 1
-
-    for goal in data.get("goals", []):
-        if goal:
-            profile.add_goal(str(goal))
-            imported += 1
-
-    for fact in data.get("learned_facts", []):
-        if fact:
-            profile.add_learned_fact(str(fact))
-            imported += 1
-
-    for interest in data.get("interests", []):
-        if interest:
-            profile.add_learned_preference("interests", str(interest))
-            imported += 1
-
-    for skill in data.get("technical_skills", []):
-        if skill:
-            profile.add_learned_preference("technical_skills", str(skill))
-            imported += 1
-
-    prefs = data.get("preferences", {})
-    if isinstance(prefs, dict):
-        for k, v in prefs.items():
-            if isinstance(v, list):
-                for item in v:
-                    profile.add_learned_preference(k, str(item))
-                    imported += 1
-            elif v:
-                profile.update(f"pref_{k}", v)
-                imported += 1
-
-    console.print(f"\n  [bold green]✅ Imported {imported} items into your profile![/]")
-    console.print(f"  [dim]{profile.data.get('agent_name', 'Lirox')} now knows you better from day one.[/]\n")

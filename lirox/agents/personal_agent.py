@@ -21,7 +21,7 @@ from lirox.agents.base_agent import BaseAgent, AgentEvent
 from lirox.memory.manager import MemoryManager
 from lirox.thinking.scratchpad import Scratchpad
 from lirox.utils.llm import generate_response
-from lirox.soul import get_identity_prompt
+from lirox.mind.agent import get_soul, get_learnings
 
 
 # ── Intent categories ─────────────────────────────────────────────────────────
@@ -276,7 +276,7 @@ class PersonalAgent(BaseAgent):
             f"Task: {query}\nResult of file operation:\n{result}\n\n"
             f"Provide a clear, concise summary of what was done and the results.",
             provider="auto",
-            system_prompt=get_identity_prompt(),
+            system_prompt=get_soul().to_system_prompt(get_learnings().to_context_string()),
         )
         self.memory.save_exchange(query, final)
         yield {"type": "done", "answer": final}
@@ -327,7 +327,7 @@ class PersonalAgent(BaseAgent):
             f"Task: {query}\nCommand output:\n{result}\n\n"
             f"Summarize what happened and whether it succeeded.",
             provider="auto",
-            system_prompt=get_identity_prompt(),
+            system_prompt=get_soul().to_system_prompt(get_learnings().to_context_string()),
         )
         self.memory.save_exchange(query, final)
         yield {"type": "done", "answer": final}
@@ -354,7 +354,7 @@ class PersonalAgent(BaseAgent):
             f"User query: {query}\n\nSearch results:\n{str(search_results)[:4000]}\n\n"
             f"Provide a comprehensive, well-structured answer based on these results.",
             provider="auto",
-            system_prompt=get_identity_prompt(),
+            system_prompt=get_soul().to_system_prompt(get_learnings().to_context_string()),
         )
         self.memory.save_exchange(query, final)
         yield {"type": "done", "answer": final}
@@ -366,7 +366,7 @@ class PersonalAgent(BaseAgent):
     ) -> Generator[AgentEvent, None, None]:
         yield {"type": "agent_progress", "message": "Thinking…"}
 
-        base_sys = system_prompt or get_identity_prompt()
+        base_sys = system_prompt or get_soul().to_system_prompt(get_learnings().to_context_string())
         prompt   = query
         if mem_ctx:
             prompt = f"{mem_ctx}\n\nUser: {query}"
