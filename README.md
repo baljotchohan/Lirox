@@ -76,6 +76,28 @@ pip install -r requirements.txt
 
 ---
 
+## Updating
+
+To update Lirox to the latest version:
+
+**Using Git (Recommended):**
+```bash
+git pull
+pip install -e .
+```
+
+**Using the Lirox CLI:**
+```bash
+lirox --update
+```
+
+**Inside the Lirox Shell:**
+```
+/update
+```
+
+---
+
 ## Configuration
 
 Copy `.env.example` to `.env` and fill in your keys:

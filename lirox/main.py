@@ -59,8 +59,13 @@ def main():
 
     parser = argparse.ArgumentParser(description="Lirox — Multi-Agent AI Kernel")
     parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
+    parser.add_argument("--update",  action="store_true", help="Update Lirox to the latest version")
     parser.add_argument("--verbose", action="store_true", help="Show thinking traces in terminal")
     args = parser.parse_args()
+
+    if args.update:
+        run_update()
+        sys.exit(0)
 
     from lirox.agent.profile import UserProfile
     profile      = UserProfile()
@@ -372,6 +377,37 @@ def handle_command(
         console.print(f"  [dim]Unknown command: {base}. Type /help for options.[/]")
 
 
+def run_update():
+    """Update Lirox to the latest version via Git or Pip."""
+    import subprocess
+    from lirox.config import PROJECT_ROOT
+    from lirox.ui.display import (
+        info_panel,
+        success_message,
+        error_panel,
+        console,
+    )
+
+    info_panel("Checking for updates...")
+    try:
+        if os.path.exists(os.path.join(PROJECT_ROOT, ".git")):
+            result = subprocess.run(
+                ["git", "-C", PROJECT_ROOT, "pull"],
+                capture_output=True, text=True, check=True
+            )
+            if "Already up to date." in result.stdout:
+                success_message("Lirox is already up to date.")
+            else:
+                console.print(f"[dim]{result.stdout.strip()}[/]")
+                subprocess.run([sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT],
+                               capture_output=True)
+                success_message("Lirox updated. Please restart.")
+        else:
+            info_panel("Not a Git repo.\nRun: pip install --upgrade lirox")
+    except Exception as e:
+        error_panel("UPDATE FAILED", str(e))
+
+
 def _legacy_commands(orch, profile, cmd, base):
     import shutil, subprocess
     from lirox.config import PROJECT_ROOT, DATA_DIR, OUTPUTS_DIR
@@ -402,24 +438,7 @@ def _legacy_commands(orch, profile, cmd, base):
             sys.exit(0)
 
     elif base == "/update":
-        info_panel("Checking for updates...")
-        try:
-            if os.path.exists(os.path.join(PROJECT_ROOT, ".git")):
-                result = subprocess.run(
-                    ["git", "-C", PROJECT_ROOT, "pull"],
-                    capture_output=True, text=True, check=True
-                )
-                if "Already up to date." in result.stdout:
-                    success_message("Lirox is already up to date.")
-                else:
-                    console.print(f"[dim]{result.stdout.strip()}[/]")
-                    subprocess.run([sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT],
-                                   capture_output=True)
-                    success_message("Lirox updated. Please restart.")
-            else:
-                info_panel("Not a Git repo.\nRun: pip install --upgrade lirox")
-        except Exception as e:
-            error_panel("UPDATE FAILED", str(e))
+        run_update()
 
     elif base == "/import-memory":
         from lirox.ui.wizard import _show_memory_import_prompt
