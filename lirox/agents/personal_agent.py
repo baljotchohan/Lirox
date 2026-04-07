@@ -14,6 +14,7 @@ Capabilities:
 """
 from __future__ import annotations
 
+import json as _json
 import re
 from typing import Generator, Dict, Any, Optional
 
@@ -22,6 +23,43 @@ from lirox.memory.manager import MemoryManager
 from lirox.thinking.scratchpad import Scratchpad
 from lirox.utils.llm import generate_response
 from lirox.mind.agent import get_soul, get_learnings
+
+
+def _extract_json(text: str) -> dict:
+    """
+    Extract the first complete JSON object from *text*.
+
+    Uses bracket-counting rather than a greedy regex so that nested objects
+    (e.g. {"key": {"inner": 1}}) are parsed correctly.  Falls back to the
+    greedy-regex approach only when bracket counting finds nothing.
+
+    Raises ValueError if no valid JSON object can be found.
+    """
+    # Bracket-counting pass — finds the first balanced { … }
+    depth = 0
+    start = None
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if start is None:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                candidate = text[start:i + 1]
+                try:
+                    return _json.loads(candidate)
+                except _json.JSONDecodeError:
+                    # Keep scanning — might be a false positive
+                    start = None
+                    depth = 0
+
+    # Greedy-regex fallback (handles simple flat objects)
+    m = re.search(r"\{.*\}", text, re.DOTALL)
+    if m:
+        return _json.loads(m.group())
+
+    raise ValueError("No valid JSON object found in LLM response")
 
 
 # ── Intent categories ─────────────────────────────────────────────────────────
@@ -178,6 +216,7 @@ class PersonalAgent(BaseAgent):
 
         try:
             step_counter = [0]
+            last_event_type = [None]
             for event in ctrl.run_task(query):
                 etype = event.get("type", "agent_progress")
                 msg   = event.get("message", "")
@@ -192,6 +231,7 @@ class PersonalAgent(BaseAgent):
                     hud.set_paused(False)
                     continue
 
+                last_event_type[0] = etype
                 yield event
 
                 if etype in ("done", "error"):
@@ -200,7 +240,7 @@ class PersonalAgent(BaseAgent):
 
         finally:
             ctrl.stop()
-            success = True  # assume success unless error event was last
+            success = last_event_type[0] != "error"
             hud.stop(success=success)
 
     # ── File sub-handler ──────────────────────────────────────────────────────
@@ -240,10 +280,7 @@ class PersonalAgent(BaseAgent):
         import json as _json
         result = ""
         try:
-            m = re.search(r"\{.*\}", action_raw, re.DOTALL)
-            if not m:
-                raise ValueError("No JSON")
-            op_dict = _json.loads(m.group())
+            op_dict = _extract_json(action_raw)
             op      = op_dict.get("op", "")
             path    = op_dict.get("path", "")
             content = op_dict.get("content", "")
@@ -306,10 +343,7 @@ class PersonalAgent(BaseAgent):
         import json as _json
         result = ""
         try:
-            m = re.search(r"\{.*\}", action_raw, re.DOTALL)
-            if not m:
-                raise ValueError("No JSON")
-            cmd_dict = _json.loads(m.group())
+            cmd_dict = _extract_json(action_raw)
             command  = cmd_dict.get("command", "")
             reason   = cmd_dict.get("reason", "")
 

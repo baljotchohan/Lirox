@@ -9,6 +9,9 @@ Safe command execution with:
 """
 
 import subprocess
+import os
+import re
+import sys
 import shlex
 from lirox.config import ALLOWED_COMMANDS, BLOCK_PATTERNS
 
@@ -44,7 +47,6 @@ def is_safe(cmd):
 
     # 3. Comprehensive Chain/Pipe Parsing
     # We split by all shell delimiters to ensure NO command escapes validation
-    import re
     # Split by: &&, ||, ;, | (with optional surrounding whitespace)
     delimiters = r'\s*&&\s*|\s*\|\|\s*|\s*;\s*|\s*\|\s*'
     sub_commands = re.split(delimiters, cmd)
@@ -57,15 +59,21 @@ def is_safe(cmd):
         try:
             # shlex.split handles quotes correctly (e.g. echo "rm -rf /")
             parts = shlex.split(sub_cmd)
-            # Filter out variable assignments like VAR=val
-            potential_cmd = [p for p in parts if '=' not in p]
+            # Filter out variable assignments like VAR=val or VAR="val=with=equals"
+            # A token is a variable assignment if it starts with a valid identifier
+            # followed immediately by '=', regardless of the value after the '='.
+            potential_cmd = []
+            for p in parts:
+                # Match shell variable assignment: IDENTIFIER=...
+                if re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', p):
+                    continue  # skip — this is an assignment, not a command
+                potential_cmd.append(p)
             base_cmd = potential_cmd[0] if potential_cmd else ""
         except (ValueError, IndexError):
             return False, "Malformed command structure"
 
         if base_cmd and base_cmd not in ALLOWED_COMMANDS:
             # Special case for absolute paths: check the basename and directory
-            import os
             basename = os.path.basename(base_cmd)
             is_absolute = os.path.isabs(base_cmd)
             
@@ -95,8 +103,6 @@ def run_command(cmd: str) -> str:
     [FIX #1] Prevents shell injection by using subprocess array form.
     [FIX #2] Uses sys.executable for python3 commands to avoid Xcode resolver.
     """
-    import sys
-
     safe, reason = is_safe(cmd)
     if not safe:
         return f"[Blocked] {reason}"
