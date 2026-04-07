@@ -54,8 +54,10 @@ def _extract_json(text: str) -> dict:
                     start = None
                     depth = 0
 
-    # Greedy-regex fallback (handles simple flat objects)
-    m = re.search(r"\{.*\}", text, re.DOTALL)
+    # Greedy-regex fallback: handles simple flat objects where bracket-counting
+    # found no valid JSON (e.g. when the text contains unmatched braces in
+    # surrounding prose but a simple flat JSON appears later in the text).
+    m = re.search(r"\{[^{}]*\}", text)
     if m:
         return _json.loads(m.group())
 
@@ -215,15 +217,15 @@ class PersonalAgent(BaseAgent):
         hud.start(query)
 
         try:
-            step_counter = [0]
-            last_event_type = [None]
+            step_counter = 0
+            last_event_type = None
             for event in ctrl.run_task(query):
                 etype = event.get("type", "agent_progress")
                 msg   = event.get("message", "")
 
                 if etype in ("tool_call", "agent_progress"):
-                    step_counter[0] += 1
-                    hud.update_step(step_counter[0], msg)
+                    step_counter += 1
+                    hud.update_step(step_counter, msg)
 
                 elif etype == "paused":
                     hud.set_paused(True)
@@ -231,7 +233,7 @@ class PersonalAgent(BaseAgent):
                     hud.set_paused(False)
                     continue
 
-                last_event_type[0] = etype
+                last_event_type = etype
                 yield event
 
                 if etype in ("done", "error"):
@@ -240,7 +242,7 @@ class PersonalAgent(BaseAgent):
 
         finally:
             ctrl.stop()
-            success = last_event_type[0] != "error"
+            success = last_event_type != "error"
             hud.stop(success=success)
 
     # ── File sub-handler ──────────────────────────────────────────────────────

@@ -14,8 +14,8 @@ class MemoryManager:
         self._lock               = threading.Lock()
         self.conversation_buffer: List[Dict] = []
         # Each agent gets its own long-term memory file
-        safe_name  = agent_name.replace("/", "_").replace("\\", "_")
-        self.lt_path = os.path.join(MEMORY_DIR, f"long_term_{safe_name}.json")
+        self._safe_name = agent_name.replace("/", "_").replace("\\", "_")
+        self.lt_path = os.path.join(MEMORY_DIR, f"long_term_{self._safe_name}.json")
         self._lt     = self._load(self.lt_path) or {"facts": [], "preferences": {}}
 
     def save_exchange(self, user_msg: str, asst_msg: str):
@@ -26,10 +26,9 @@ class MemoryManager:
             if len(self.conversation_buffer) > MEMORY_LIMIT * 2:
                 self.conversation_buffer = self.conversation_buffer[-MEMORY_LIMIT:]
 
-        safe_name = self.agent_name.replace("/", "_").replace("\\", "_")
         daily = os.path.join(
             MEMORY_DIR, "daily",
-            f"{safe_name}_{datetime.now().strftime('%Y-%m-%d')}.jsonl"
+            f"{self._safe_name}_{datetime.now().strftime('%Y-%m-%d')}.jsonl"
         )
         try:
             with open(daily, "a") as f:

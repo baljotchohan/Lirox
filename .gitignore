@@ -68,5 +68,5 @@ lightpanda
 
 # Runtime Data & Logs
 data/agent.log
-data/memory/daily/
+data/memory/
 data/sessions/
