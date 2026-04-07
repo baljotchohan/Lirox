@@ -1,4 +1,4 @@
-"""Lirox — Multi-Agent Entry Point"""
+"""Lirox v3.0 — Single Personal Agent Entry Point"""
 import os
 import sys
 import time
@@ -32,16 +32,9 @@ def _try_import(m: str) -> bool:
 
 from lirox.orchestrator.master import MasterOrchestrator
 from lirox.ui.display import (
-    show_welcome,
-    show_status_card,
-    show_thinking,
-    show_agent_event,
-    show_answer,
-    error_panel,
-    info_panel,
-    success_message,
-    confirm_prompt,
-    console,
+    show_welcome, show_status_card, show_thinking, show_agent_event,
+    show_answer, error_panel, info_panel, success_message,
+    confirm_prompt, show_desktop_locked, console,
 )
 from lirox.utils.llm import available_providers
 from lirox.config import APP_VERSION
@@ -49,18 +42,18 @@ from lirox.config import APP_VERSION
 
 def get_prompt_label(agent_name: str) -> list:
     return [
-        ('class:prompt',  f"[{agent_name}] "),
-        ('class:symbol',  "✦ "),
+        ("class:prompt", f"[{agent_name}] "),
+        ("class:symbol", "✦ "),
     ]
 
 
 def main():
     check_dependencies()
 
-    parser = argparse.ArgumentParser(description="Lirox — Multi-Agent AI Kernel")
+    parser = argparse.ArgumentParser(description="Lirox v3.0 — Personal AI Agent")
     parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
-    parser.add_argument("--update",  action="store_true", help="Update Lirox to the latest version")
-    parser.add_argument("--verbose", action="store_true", help="Show thinking traces in terminal")
+    parser.add_argument("--update",  action="store_true", help="Update Lirox")
+    parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
     args = parser.parse_args()
 
     if args.update:
@@ -81,7 +74,7 @@ def main():
             console.print("\n  [dim]Setup skipped.[/]")
 
     show_status_card(profile.data, available_providers())
-    console.print("  [dim]Thinking: always-on complex mode  ·  /help for commands[/]\n")
+    console.print("  [dim]Always-on deep thinking  ·  /help for commands[/]\n")
 
     from prompt_toolkit import PromptSession
     from prompt_toolkit.styles import Style
@@ -91,32 +84,38 @@ def main():
     last_int   = 0.0
 
     style = Style.from_dict({
-        'prompt': 'ansiyellow bold',
-        'symbol': 'ansiyellow',
+        "prompt": "ansiyellow bold",
+        "symbol": "ansiyellow",
     })
 
     commands = [
-        "/help",
-        "/agent finance", "/agent code", "/agent browser", "/agent research", "/agent chat",
-        "/agents", "/history", "/session", "/models", "/memory", "/think", "/profile",
-        "/reset", "/desktop", "/test", "/import-memory", "/export-profile",
-        "/uninstall", "/update", "/exit",
+        "/help", "/history", "/session", "/models", "/memory", "/think",
+        "/profile", "/reset", "/desktop", "/test", "/pause", "/resume",
+        "/import-memory", "/export-profile", "/uninstall", "/update", "/exit",
     ]
 
     class SlashCommandCompleter(Completer):
         def get_completions(self, document, complete_event):
             text = document.text_before_cursor.lstrip()
-            if not text.startswith('/'):
+            if not text.startswith("/"):
                 return
-            text_lower = text.lower()
             for cmd in commands:
-                if cmd.startswith(text_lower):
+                if cmd.startswith(text.lower()):
                     yield Completion(cmd, start_position=-len(text))
 
-    session = PromptSession(completer=SlashCommandCompleter(), complete_while_typing=True)
+    session = PromptSession(
+        completer=SlashCommandCompleter(), complete_while_typing=True
+    )
 
     while True:
         try:
+            # ── Block input during desktop control ────────────────────────────
+            from lirox.tools.desktop import is_agent_locked
+            if is_agent_locked():
+                show_desktop_locked()
+                time.sleep(0.5)
+                continue
+
             prompt_label = get_prompt_label(agent_name)
             line = session.prompt(prompt_label, style=style).strip()
             if not line:
@@ -131,6 +130,13 @@ def main():
             process_query(orchestrator, line, verbose=args.verbose)
 
         except KeyboardInterrupt:
+            # If agent is running, treat Ctrl+C as pause
+            from lirox.tools.desktop import is_agent_locked, request_pause
+            if is_agent_locked():
+                request_pause()
+                console.print("\n  [yellow]⏸  Pause requested. Agent will stop after current step.[/]")
+                continue
+
             now = time.time()
             if now - last_int < 2.0:
                 print("\n[!] Force quit.")
@@ -145,15 +151,17 @@ def main():
 
 
 def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
-    last_agent = "chat"
+    last_agent = "personal"
     status     = None
     try:
         for ev in orch.run(query):
             t = ev.type
             if t == "thinking":
-                if ev.message == "Analyzing..." and not verbose:
+                if ev.message == "Analyzing…" and not verbose:
                     if status is None:
-                        status = console.status("[bold purple]🧠 Thinking...[/]", spinner="dots")
+                        status = console.status(
+                            "[bold purple]🧠 Thinking…[/]", spinner="dots"
+                        )
                         status.start()
                 elif verbose:
                     if status:
@@ -161,8 +169,7 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                         status = None
                     show_thinking(ev.message)
                 else:
-                    # Non-verbose: stop spinner on first real thinking chunk
-                    if ev.message != "Analyzing..." and status:
+                    if ev.message != "Analyzing…" and status:
                         status.stop()
                         status = None
             elif t == "plan_display":
@@ -175,9 +182,9 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     status.stop()
                     status = None
                 if t == "agent_start":
-                    last_agent = ev.agent
+                    last_agent = ev.agent or last_agent
                     show_agent_event(ev.agent, t, ev.message)
-                elif t in ("tool_call", "tool_result", "agent_progress"):
+                elif t in ("tool_call", "tool_result", "agent_progress", "paused"):
                     show_agent_event(ev.agent or last_agent, t, ev.message)
                 elif t == "error":
                     show_agent_event(ev.agent or last_agent, "error", ev.message)
@@ -194,30 +201,64 @@ def handle_command(
     parts = cmd.strip().split()
     base  = parts[0].lower()
 
-    # ── Agent switching ───────────────────────────────────────────────────────
-    if base == "/agent":
-        if len(parts) < 2:
-            console.print("  Usage: /agent finance | code | browser | research | chat")
-            return
-        agent_name = parts[1].lower()
-        valid = {"finance", "code", "browser", "research", "chat"}
-        if agent_name in valid:
-            orch.set_agent(agent_name)
-            success_message(f"Switched to {agent_name.capitalize()} Agent — new session started.")
-            if agent_name != "chat":
-                agent = orch._get_agent(orch.session_store.current().active_agent
-                                        and __import__('lirox.orchestrator.master', fromlist=['AgentType']).AgentType(agent_name))
-                if agent and hasattr(agent, 'get_onboarding_message'):
-                    console.print(f"\n  {agent.get_onboarding_message()}\n")
+    # ── Pause / Resume ────────────────────────────────────────────────────────
+    if base == "/pause":
+        from lirox.tools.desktop import request_pause, is_agent_locked
+        if is_agent_locked():
+            request_pause()
+            console.print("  [yellow]⏸  Pause requested. Agent will stop after current step.[/]")
         else:
-            error_panel("INVALID AGENT", f"Valid agents: {', '.join(sorted(valid))}")
+            console.print("  [dim]No agent running.[/]")
+
+    elif base == "/resume":
+        from lirox.tools.desktop import clear_pause, is_agent_locked
+        if is_agent_locked():
+            clear_pause()
+            console.print("  [green]▶  Resumed.[/]")
+        else:
+            console.print("  [dim]No agent paused.[/]")
+
+    # ── Help ──────────────────────────────────────────────────────────────────
+    elif base == "/help":
+        from rich.table import Table as _Table
+        from rich.panel import Panel as _Panel
+        t = _Table(show_header=True, header_style="bold #FFC107", border_style="dim")
+        t.add_column("Command",     style="bold white")
+        t.add_column("Description", style="dim white")
+        for c, d in [
+            ("/help",            "Show this help"),
+            ("/history [n]",     "Show last N sessions (default 20)"),
+            ("/session",         "Current session info"),
+            ("/models",          "Available LLM providers"),
+            ("/memory",          "Memory stats"),
+            ("/think <q>",       "Run thinking engine on query"),
+            ("/profile",         "Show your profile"),
+            ("/reset",           "Reset session memory"),
+            ("/desktop",         "Desktop control status + setup guide"),
+            ("/pause",           "Pause agent while it controls the desktop"),
+            ("/resume",          "Resume a paused agent"),
+            ("/test",            "Run diagnostics"),
+            ("/import-memory",   "Import memory from ChatGPT/Claude/Gemini"),
+            ("/export-profile",  "Export profile as JSON"),
+            ("/uninstall",       "Remove all Lirox data"),
+            ("/update",          "Update Lirox"),
+            ("/exit",            "Shutdown"),
+        ]:
+            t.add_row(c, d)
+        console.print(
+            _Panel(
+                t,
+                title=f"[bold #FFC107]LIROX v{APP_VERSION} — COMMANDS[/]",
+                border_style="#FFC107",
+            )
+        )
 
     # ── History ───────────────────────────────────────────────────────────────
     elif base == "/history":
         limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
         info_panel(orch.session_store.format_history(limit))
 
-    # ── Session info ──────────────────────────────────────────────────────────
+    # ── Session ───────────────────────────────────────────────────────────────
     elif base == "/session":
         s    = orch.session_store.current()
         name = s.name or f"Session {s.session_id}"
@@ -225,65 +266,9 @@ def handle_command(
             f"CURRENT SESSION\n\n"
             f"  Name    : {name}\n"
             f"  ID      : {s.session_id}\n"
-            f"  Agent   : {s.active_agent}\n"
+            f"  Agent   : personal\n"
             f"  Messages: {len(s.entries)}\n"
             f"  Started : {s.created_at[:16].replace('T', ' ')}"
-        )
-
-    # ── Help ─────────────────────────────────────────────────────────────────
-    elif base == "/help":
-        from rich.table import Table
-        from rich.panel import Panel
-
-        t = Table(show_header=True, header_style="bold #FFC107", border_style="dim")
-        t.add_column("Command",     style="bold white")
-        t.add_column("Description", style="dim white")
-        for c, d in [
-            ("/help",               "Show this help"),
-            ("/agent <name>",       "Switch agent (finance|code|browser|research|chat)"),
-            ("/agents",             "List all agents"),
-            ("/history [n]",        "Show last N sessions (default 20)"),
-            ("/session",            "Show current session info"),
-            ("/models",             "Show LLM providers"),
-            ("/memory",             "Memory stats"),
-            ("/think <q>",          "Run thinking engine on query"),
-            ("/profile",            "Show profile"),
-            ("/reset",              "Reset session memory"),
-            ("/desktop",            "Desktop control status"),
-            ("/test",               "Run diagnostics"),
-            ("/import-memory",      "Import memory from ChatGPT/Claude/Gemini"),
-            ("/export-profile",     "Export your profile as JSON"),
-            ("/uninstall",          "Remove all Lirox data from this device"),
-            ("/update",             "Update Lirox to the latest version"),
-            ("/exit",               "Shutdown"),
-        ]:
-            t.add_row(c, d)
-        console.print(
-            Panel(
-                t,
-                title=f"[bold #FFC107]LIROX v{APP_VERSION} — COMMANDS[/]",
-                border_style="#FFC107",
-            )
-        )
-
-    # ── Agents list ───────────────────────────────────────────────────────────
-    elif base == "/agents":
-        from rich.table import Table
-        t = Table(show_header=True, header_style="bold #FFC107")
-        t.add_column("Agent")
-        t.add_column("Icon")
-        t.add_column("Capability")
-        t.add_column("Pipeline")
-        for n, ic, d, p, c in [
-            ("Finance",  "📊", "Markets, stocks, portfolios, valuation",          "5-stage", "cyan"),
-            ("Code",     "💻", "Write, debug, review, execute code + desktop",    "11-stage", "green"),
-            ("Browser",  "🌐", "Web navigation, content extraction, live data",   "Direct",  "orange1"),
-            ("Research", "🔬", "Deep multi-source research (Perplexity-style)",   "5-stage", "medium_purple1"),
-        ]:
-            t.add_row(f"[{c}]{n}[/]", ic, d, p)
-        console.print(t)
-        console.print(
-            "\n  [dim]Thinking: Always-on complex mode for all agents[/]\n"
         )
 
     # ── Models ────────────────────────────────────────────────────────────────
@@ -296,17 +281,18 @@ def handle_command(
 
     # ── Memory ────────────────────────────────────────────────────────────────
     elif base == "/memory":
-        stats_lines = ["MEMORY STATS (per agent)\n"]
-        for agent_type, mem in orch._agent_memory.items():
+        lines = ["MEMORY STATS\n"]
+        for at, mem in orch._agent_memory.items():
             s = mem.get_stats()
-            stats_lines.append(
-                f"  {agent_type.value:10}: {s['buffer_size']} msgs, {s.get('long_term_facts', 0)} facts"
+            lines.append(
+                f"  {at.value:12}: {s['buffer_size']} msgs, "
+                f"{s.get('long_term_facts', 0)} facts"
             )
         if not orch._agent_memory:
-            stats_lines.append("  No agents activated yet.")
-        global_s = orch.global_memory.get_stats()
-        stats_lines.append(f"\n  Global memory: {global_s['buffer_size']} msgs")
-        info_panel("\n".join(stats_lines))
+            lines.append("  Agent not yet activated.")
+        gs = orch.global_memory.get_stats()
+        lines.append(f"\n  Global memory: {gs['buffer_size']} msgs")
+        info_panel("\n".join(lines))
 
     # ── Think ─────────────────────────────────────────────────────────────────
     elif base == "/think":
@@ -321,7 +307,7 @@ def handle_command(
     elif base == "/profile":
         info_panel(f"PROFILE\n\n{profile.summary()}")
 
-    # ── Reset ────────────────────────────────────────────────────────────────
+    # ── Reset ─────────────────────────────────────────────────────────────────
     elif base == "/reset":
         if confirm_prompt("Reset all session memory?"):
             for mem in orch._agent_memory.values():
@@ -330,7 +316,7 @@ def handle_command(
             orch.session_store.new_session()
             success_message("Memory reset. New session started.")
 
-    # ── Desktop ──────────────────────────────────────────────────────────────
+    # ── Desktop ───────────────────────────────────────────────────────────────
     elif base == "/desktop":
         from lirox.config import DESKTOP_ENABLED
         if not DESKTOP_ENABLED:
@@ -338,38 +324,45 @@ def handle_command(
                 "Desktop control is DISABLED.\n\n"
                 "To enable:\n"
                 "  1. Add DESKTOP_ENABLED=true to your .env\n"
-                "  2. Install: pip install pyautogui pillow pytesseract\n"
-                "  3. macOS: grant Accessibility in System Settings → Privacy → Accessibility\n"
-                "  4. Restart Lirox"
+                "  2. pip install pyautogui pillow pytesseract\n"
+                "  3. macOS: System Settings → Privacy → Accessibility → grant Terminal\n"
+                "  4. Linux: sudo apt install scrot xdotool tesseract-ocr\n"
+                "  5. Restart Lirox"
             )
         else:
             try:
                 from lirox.tools.desktop import take_screenshot, get_open_windows
                 path    = take_screenshot()
                 windows = get_open_windows()
-                success_message(f"Desktop control ACTIVE\n  Screenshot: {path}\n  Windows:\n{windows}")
+                success_message(
+                    f"Desktop control ACTIVE\n"
+                    f"  Screenshot: {path}\n"
+                    f"  Windows:\n{windows}"
+                )
             except Exception as e:
                 error_panel("DESKTOP ERROR", str(e))
 
-    # ── Test ─────────────────────────────────────────────────────────────────
+    # ── Test / Diagnostics ────────────────────────────────────────────────────
     elif base == "/test":
-        info_panel("Running diagnostics...")
+        info_panel("Running diagnostics…")
         from lirox.config import DESKTOP_ENABLED
-        for n, f in [
-            ("Providers",     lambda: ", ".join(available_providers()) or "None"),
-            ("Global Memory", lambda: f"{orch.global_memory.get_stats()['buffer_size']} buffered"),
-            ("Sessions",      lambda: f"{len(orch.session_store.list_sessions())} sessions stored"),
-            ("Thinking",      lambda: "Always-on complex mode"),
-            ("Desktop Ctrl",  lambda: "ENABLED" if DESKTOP_ENABLED else "disabled"),
-            ("Version",       lambda: f"v{APP_VERSION}"),
-            ("Agents",        lambda: "Finance (5-stage) · Code (11-stage) · Browser · Research (5-stage)"),
-        ]:
+        tests = [
+            ("Providers",    lambda: ", ".join(available_providers()) or "None"),
+            ("Global Memory",lambda: f"{orch.global_memory.get_stats()['buffer_size']} buffered"),
+            ("Sessions",     lambda: f"{len(orch.session_store.list_sessions())} sessions"),
+            ("Thinking",     lambda: "Always-on complex mode"),
+            ("Desktop Ctrl", lambda: "ENABLED" if DESKTOP_ENABLED else "disabled"),
+            ("Version",      lambda: f"v{APP_VERSION}"),
+            ("Architecture", lambda: "Single PersonalAgent"),
+        ]
+        for name, fn in tests:
             try:
-                console.print(f"  [green]✓[/] {n:22}: {f()}")
+                console.print(f"  [green]✓[/] {name:22}: {fn()}")
             except Exception as e:
-                console.print(f"  [red]✖[/] {n:22}: {e}")
+                console.print(f"  [red]✖[/] {name:22}: {e}")
         success_message("Diagnostics complete.")
 
+    # ── Legacy commands ───────────────────────────────────────────────────────
     elif base in ("/uninstall", "/update", "/import-memory", "/export-profile"):
         _legacy_commands(orch, profile, cmd, base)
 
@@ -378,17 +371,9 @@ def handle_command(
 
 
 def run_update():
-    """Update Lirox to the latest version via Git or Pip."""
     import subprocess
     from lirox.config import PROJECT_ROOT
-    from lirox.ui.display import (
-        info_panel,
-        success_message,
-        error_panel,
-        console,
-    )
-
-    info_panel("Checking for updates...")
+    info_panel("Checking for updates…")
     try:
         if os.path.exists(os.path.join(PROJECT_ROOT, ".git")):
             result = subprocess.run(
@@ -399,8 +384,10 @@ def run_update():
                 success_message("Lirox is already up to date.")
             else:
                 console.print(f"[dim]{result.stdout.strip()}[/]")
-                subprocess.run([sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT],
-                               capture_output=True)
+                subprocess.run(
+                    [sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT],
+                    capture_output=True
+                )
                 success_message("Lirox updated. Please restart.")
         else:
             info_panel("Not a Git repo.\nRun: pip install --upgrade lirox")
@@ -409,32 +396,32 @@ def run_update():
 
 
 def _legacy_commands(orch, profile, cmd, base):
-    import shutil, subprocess
+    import shutil
     from lirox.config import PROJECT_ROOT, DATA_DIR, OUTPUTS_DIR
+    from rich.panel import Panel as _Panel
 
     if base == "/uninstall":
-        from rich.panel import Panel as _Panel
         console.print()
         console.print(_Panel(
-            "[bold red]⚠️ UNINSTALL LIROX[/]\n\n"
-            "This will remove all Lirox data:\n"
+            "[bold red]⚠️  UNINSTALL LIROX[/]\n\n"
+            "This removes ALL Lirox data:\n"
             "  • Profile and settings\n"
             "  • Memory and learning data\n"
             "  • Configuration (.env)\n\n"
             "Package: run 'pip uninstall lirox' separately.",
             border_style="red"
         ))
-        if confirm_prompt("Delete ALL Lirox data? This cannot be undone."):
+        if confirm_prompt("Delete ALL Lirox data? Cannot be undone."):
             for path in [
                 os.path.join(PROJECT_ROOT, "profile.json"),
                 os.path.join(PROJECT_ROOT, ".env"),
             ]:
                 if os.path.exists(path):
                     os.remove(path)
-            for dir_path in [DATA_DIR, OUTPUTS_DIR]:
-                if os.path.exists(dir_path):
-                    shutil.rmtree(dir_path, ignore_errors=True)
-            success_message("All data deleted. Run 'pip uninstall lirox' to remove the package.")
+            for dp in [DATA_DIR, OUTPUTS_DIR]:
+                if os.path.exists(dp):
+                    shutil.rmtree(dp, ignore_errors=True)
+            success_message("All data deleted.")
             sys.exit(0)
 
     elif base == "/update":
@@ -442,8 +429,11 @@ def _legacy_commands(orch, profile, cmd, base):
 
     elif base == "/import-memory":
         from lirox.ui.wizard import _show_memory_import_prompt
-        _show_memory_import_prompt(profile, profile.data.get("user_name", "User"),
-                                   profile.data.get("agent_name", "Lirox"))
+        _show_memory_import_prompt(
+            profile,
+            profile.data.get("user_name", "User"),
+            profile.data.get("agent_name", "Lirox"),
+        )
 
     elif base == "/export-profile":
         import json as _json

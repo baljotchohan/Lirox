@@ -1,4 +1,4 @@
-"""Lirox — Central Configuration"""
+"""Lirox v3.0 — Central Configuration"""
 import os
 from pathlib import Path
 
@@ -9,7 +9,7 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-APP_VERSION = "1.0"
+APP_VERSION = "3.0"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
 DATA_DIR = str(_REPO_ROOT / "data")
@@ -24,43 +24,50 @@ for ef in [_REPO_ROOT / ".env", _REPO_ROOT / ".env.local"]:
 else:
     load_dotenv()
 
-# API Keys
-OPENAI_API_KEY        = os.getenv("OPENAI_API_KEY")
-GEMINI_API_KEY        = os.getenv("GEMINI_API_KEY")
-OPENROUTER_API_KEY    = os.getenv("OPENROUTER_API_KEY")
-GROQ_API_KEY          = os.getenv("GROQ_API_KEY")
-DEEPSEEK_API_KEY      = os.getenv("DEEPSEEK_API_KEY")
-NVIDIA_API_KEY        = os.getenv("NVIDIA_API_KEY")
-ANTHROPIC_API_KEY     = os.getenv("ANTHROPIC_API_KEY")
-FINANCIAL_DATASETS_KEY = os.getenv("FINANCIAL_DATASETS_API_KEY")
-TAVILY_API_KEY        = os.getenv("TAVILY_API_KEY")
+# ── API Keys ──────────────────────────────────────────────────────────────────
+OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+GROQ_API_KEY       = os.getenv("GROQ_API_KEY")
+DEEPSEEK_API_KEY   = os.getenv("DEEPSEEK_API_KEY")
+NVIDIA_API_KEY     = os.getenv("NVIDIA_API_KEY")
+ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY")
+TAVILY_API_KEY     = os.getenv("TAVILY_API_KEY")
 
-# Local LLM (Ollama)
-LOCAL_LLM_ENABLED  = os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true"
-OLLAMA_ENDPOINT    = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-OLLAMA_MODEL       = os.getenv("OLLAMA_MODEL", "gemma4")
+# ── Local LLM ─────────────────────────────────────────────────────────────────
+LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true"
+OLLAMA_ENDPOINT   = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL", "gemma4")
 
-# Settings
-DEFAULT_MODEL         = os.getenv("DEFAULT_MODEL", "groq")
-MEMORY_LIMIT          = int(os.getenv("MEMORY_LIMIT", "100"))
-MAX_AGENT_ITERATIONS  = int(os.getenv("MAX_AGENT_ITERATIONS", "15"))
-THINKING_ENABLED      = os.getenv("THINKING_ENABLED", "true").lower() == "true"
-LLM_TIMEOUT           = int(os.getenv("LLM_TIMEOUT", "60"))
-PLAN_CONFIRM          = True
-MAX_RETRIES           = 3
-CONTEXT_MAX_CHARS     = 4000
+# ── Core Settings ─────────────────────────────────────────────────────────────
+DEFAULT_MODEL        = os.getenv("DEFAULT_MODEL", "groq")
+MEMORY_LIMIT         = int(os.getenv("MEMORY_LIMIT", "100"))
+MAX_AGENT_ITERATIONS = int(os.getenv("MAX_AGENT_ITERATIONS", "30"))
+THINKING_ENABLED     = os.getenv("THINKING_ENABLED", "true").lower() == "true"
+LLM_TIMEOUT          = int(os.getenv("LLM_TIMEOUT", "60"))
+PLAN_CONFIRM         = True
+MAX_RETRIES          = 3
+CONTEXT_MAX_CHARS    = 4000
 
-# Always-on thinking depth — never user-configurable
+# ── Always-on thinking ────────────────────────────────────────────────────────
 THINKING_DEPTH = "complex"
 
-# Content truncation limits
+# ── Content limits ────────────────────────────────────────────────────────────
 MAX_LLM_PROMPT_CHARS    = 8000
 MAX_TOOL_RESULT_CHARS   = 2000
 MAX_MEMORY_ENTRY_CHARS  = 500
 MAX_CONTEXT_CHARS       = 4000
 MAX_SEARCH_RESULT_CHARS = 10000
 
-# Terminal Safety
+# ── Desktop Control ───────────────────────────────────────────────────────────
+# Set DESKTOP_ENABLED=true in .env to unlock full OS control
+DESKTOP_ENABLED = os.getenv("DESKTOP_ENABLED", "false").lower() == "true"
+# Max steps before agent stops and asks for guidance
+DESKTOP_MAX_STEPS = int(os.getenv("DESKTOP_MAX_STEPS", "40"))
+# Delay between desktop actions (seconds) — give UI time to respond
+DESKTOP_ACTION_DELAY = float(os.getenv("DESKTOP_ACTION_DELAY", "0.6"))
+
+# ── Terminal Safety (commands the agent CAN run) ──────────────────────────────
 ALLOWED_COMMANDS = [
     "ls", "pwd", "find", "which", "whoami", "file", "wc", "head", "tail", "du", "df",
     "mkdir", "touch", "cat", "cp", "mv", "rm", "echo", "tee", "python", "python3",
@@ -68,39 +75,44 @@ ALLOWED_COMMANDS = [
     "ping", "grep", "awk", "sed", "sort", "uniq", "tr", "cut", "xargs", "uname",
     "date", "cal", "env", "tar", "zip", "unzip", "gzip", "docker", "pytest",
     "black", "flake8", "mypy", "eslint", "shasum", "open", "xdg-open", "osascript",
-    "screencapture", "scrot", "xdotool", "wmctrl", "xwininfo",
+    "screencapture", "scrot", "xdotool", "wmctrl", "xwininfo", "pbcopy", "pbpaste",
+    "xclip", "code", "vim", "nano", "less", "more", "diff", "patch",
 ]
+
+# ── Absolute block patterns — NEVER execute these ────────────────────────────
 BLOCK_PATTERNS = [
     "rm -rf /", "rm -rf ~", "shutdown", "reboot", "mv /", "rm /",
     "chmod 777", "sudo rm", "dd if", "mkfs", ":(){ :|:& };:", "> /dev",
+    "format c:", "del /f /s", "deltree", "fdisk",
 ]
 
-# Browser
-BROWSER_CONFIG = {
-    "cdp_endpoint": os.getenv("CDP_ENDPOINT", "http://localhost:9222"),
-    "timeout":      int(os.getenv("BROWSER_TIMEOUT", "30")),
-    "headless":     True,
-    "user_agent":   "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
-}
-BROWSER_TIMEOUT = 15
-
-# File Safety
+# ── File Safety — agent can only read/write these dirs ───────────────────────
 _HOME = str(Path.home())
 SAFE_DIRS = [
-    PROJECT_ROOT, OUTPUTS_DIR, DATA_DIR,
+    PROJECT_ROOT,
+    OUTPUTS_DIR,
+    DATA_DIR,
     os.path.join(_HOME, "Desktop"),
     os.path.join(_HOME, "Documents"),
     os.path.join(_HOME, "Downloads"),
+    os.path.join(_HOME, "Projects"),
+    os.path.join(_HOME, "code"),
+    os.path.join(_HOME, "dev"),
 ]
 SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in SAFE_DIRS]
+
+# ── System files the agent CANNOT touch (extra safety layer) ─────────────────
+PROTECTED_PATHS = [
+    "/etc", "/sys", "/proc", "/boot", "/dev",
+    "/usr/bin", "/usr/lib", "/usr/sbin",
+    "/System", "/Library/System", "/private",
+    "C:\\Windows", "C:\\Program Files",
+]
 
 PARALLEL_MAX_WORKERS = 4
 RETRY_BACKOFF        = 1.0
 
-# Desktop Control (pyautogui)
-DESKTOP_ENABLED = os.getenv("DESKTOP_ENABLED", "false").lower() == "true"
-
-# Ensure directories exist
+# ── Ensure directories exist ──────────────────────────────────────────────────
 for d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, SESSIONS_DIR,
           str(Path(MEMORY_DIR) / "daily")]:
     os.makedirs(d, exist_ok=True)

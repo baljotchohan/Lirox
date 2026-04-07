@@ -1,4 +1,4 @@
-"""Lirox — Agent-aware Terminal UI with Rich."""
+"""Lirox v3.0 — Terminal UI"""
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -9,7 +9,7 @@ from lirox.config import APP_VERSION
 
 console = Console()
 
-# Color palette
+# ── Color palette ─────────────────────────────────────────────────────────────
 CLR_LIROX    = "bold #FFC107"
 CLR_ACCENT   = "bold #FFD54F"
 CLR_SUCCESS  = "bold #10b981"
@@ -17,23 +17,14 @@ CLR_ERROR    = "bold #ef4444"
 CLR_WARN     = "bold #f59e0b"
 CLR_DIM      = "dim #94a3b8"
 CLR_THINK    = "bold #a78bfa"
-CLR_FINANCE  = "bold #22d3ee"
-CLR_CODE     = "bold #34d399"
-CLR_BROWSER  = "bold #f97316"
-CLR_RESEARCH = "bold #818cf8"
+CLR_PERSONAL = "bold #FFD700"
 
 AGENT_COLORS = {
-    "finance":  CLR_FINANCE,
-    "code":     CLR_CODE,
-    "browser":  CLR_BROWSER,
-    "research": CLR_RESEARCH,
+    "personal": CLR_PERSONAL,
     "chat":     CLR_ACCENT,
 }
 AGENT_ICONS = {
-    "finance":  "📊",
-    "code":     "💻",
-    "browser":  "🌐",
-    "research": "🔬",
+    "personal": "⚡",
     "chat":     "💬",
     "thinking": "🧠",
 }
@@ -45,24 +36,20 @@ LOGO = """
   [bold #FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗[/]
   [bold #FFC107]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
   [bold #FFC107]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
-                 [bold white]╭─────────╮[/]
-                 [bold white]│[/] [bold #FFD700]PREVIEW[/] [bold white]│[/]
-                 [bold white]╰─────────╯[/]
-"""
+  [dim #FFD700]Intelligence as an Operating System — v{v}[/]
+""".format(v=APP_VERSION)
 
 
 def show_welcome():
     console.print(LOGO)
-    console.print(
-        f"  [{CLR_DIM}]Agents: Finance · Code · Browser · Research[/]"
-    )
-    console.print(f"  [{CLR_DIM}]Type /help for commands · /agents for status[/]\n")
+    console.print(f"  [{CLR_DIM}]Full desktop control · Files · Web · Memory[/]")
+    console.print(f"  [{CLR_DIM}]Type /help for commands · /desktop to check control status[/]\n")
     from lirox.agent.profile import UserProfile
     p = UserProfile()
     if p.is_setup():
         user  = p.data.get("user_name", "")
         agent = p.data.get("agent_name", "Lirox")
-        console.print(f"  [bold #FFC107]Welcome back, {user}! 👋 {agent} is ready.[/]\n")
+        console.print(f"  [bold #FFC107]Welcome back, {user}! 👋  {agent} is ready.[/]\n")
 
 
 def show_thinking(msg: str):
@@ -80,50 +67,58 @@ def show_agent_event(agent: str, etype: str, msg: str):
     color = AGENT_COLORS.get(agent, CLR_ACCENT)
     icon  = AGENT_ICONS.get(agent, "⚡")
     if etype == "agent_start":
-        console.print(
-            f"  [{color}]{icon} {agent.upper()} AGENT[/] [{CLR_DIM}]activated[/]"
-        )
+        console.print(f"  [{color}]{icon} LIROX AGENT[/] [{CLR_DIM}]activated[/]")
     elif etype == "tool_call":
         console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(msg)}[/]")
     elif etype == "tool_result":
-        console.print(f"  [{CLR_DIM}]  ├─ ✓ {escape(msg[:120])}[/]")
+        console.print(f"  [{CLR_DIM}]  ├─ ✓ {escape(msg[:140])}[/]")
     elif etype == "agent_progress":
         console.print(f"  [{CLR_DIM}]  ├─ {escape(msg)}[/]")
+    elif etype == "paused":
+        console.print(f"  [bold yellow]  ⏸  {escape(msg)}[/]")
     elif etype == "error":
         console.print(f"  [{CLR_ERROR}]  ├─ ✖ {escape(msg)}[/]")
 
 
-def show_answer(answer: str, agent: str = "chat"):
-    """BUG-07 FIX: Use Markdown rendering instead of raw Rich markup injection."""
-    icon  = AGENT_ICONS.get(agent, "💬")
+def show_answer(answer: str, agent: str = "personal"):
+    icon  = AGENT_ICONS.get(agent, "⚡")
     color = AGENT_COLORS.get(agent, CLR_ACCENT)
     console.print(f"\n{icon} [{color}]Response:[/]")
     try:
         console.print(Markdown(answer.strip()))
     except Exception:
-        # Fallback: escape any Rich markup in raw text
         console.print(escape(answer.strip()))
     console.print()
 
 
 def show_status_card(profile_data: dict, providers: list):
+    from lirox.config import DESKTOP_ENABLED
     t = Table(box=None, padding=(0, 2), show_header=False)
     t.add_column("Key",   style=CLR_DIM)
     t.add_column("Value", style="white")
-    t.add_row("Operator", profile_data.get("user_name", "Operator"))
-    t.add_row("Agent",    profile_data.get("agent_name", "Lirox"))
-    t.add_row("Version",  f"v{APP_VERSION}")
+    t.add_row("Operator",  profile_data.get("user_name", "Operator"))
+    t.add_row("Agent",     profile_data.get("agent_name", "Lirox"))
+    t.add_row("Version",   f"v{APP_VERSION}")
     t.add_row("Providers", ", ".join(providers) if providers else "None configured")
-    t.add_row("Agents",   "Finance · Code · Browser · Research")
+    t.add_row("Mode",      "Single Personal Agent")
+    t.add_row("Desktop",   "✅ ENABLED" if DESKTOP_ENABLED else "⚠️  disabled (DESKTOP_ENABLED=false)")
     console.print(
         Panel(
             t,
-            title=f"[{CLR_LIROX}]✦ SYSTEM STATUS[/]",
+            title=f"[{CLR_LIROX}]✦ LIROX v{APP_VERSION} — SYSTEM STATUS[/]",
             border_style="#FFC107",
             padding=(0, 1),
         )
     )
     console.print()
+
+
+def show_desktop_locked():
+    """Called from main loop when user tries to type while agent has control."""
+    console.print(
+        f"  [bold yellow]⚠️  Agent is controlling the desktop. "
+        f"Type [bold white]/pause[/] to interrupt.[/]"
+    )
 
 
 def error_panel(title: str, msg: str):

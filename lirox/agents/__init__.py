@@ -1,3 +1,4 @@
-from lirox.agents.base_agent import BaseAgent
+"""Lirox v3.0 — Agents. One agent. PersonalAgent."""
+from lirox.agents.personal_agent import PersonalAgent
 
-__all__ = ["BaseAgent"]
+__all__ = ["PersonalAgent"]

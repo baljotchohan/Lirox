@@ -1,3 +1,4 @@
+# ── Core ──────────────────────────────────────────────────────────────────────
 rich>=13.0.0
 prompt-toolkit>=3.0.0
 psutil>=5.9.0
@@ -5,15 +6,23 @@ python-dotenv>=1.0.0
 beautifulsoup4>=4.12.0
 lxml>=4.9.0
 requests>=2.31.0
-yfinance>=0.2.36
 duckduckgo-search>=6.1.0
 google-genai>=0.3.0
-# Optional — uncomment as needed:
+
+# ── Desktop Control (REQUIRED for /desktop features) ─────────────────────────
+pyautogui>=0.9.54
+pillow>=10.0.0
+pytesseract>=0.3.10
+
+# ── Optional LLM providers ────────────────────────────────────────────────────
 # anthropic>=0.21.0
 # openai>=1.0.0
+
+# ── Optional search ───────────────────────────────────────────────────────────
 # tavily-python>=0.3.0
-# pyautogui>=0.9.54      # Desktop control
-# pillow>=10.0.0          # Screenshots
-# pytesseract>=0.3.10     # OCR screen reading
-# pygetwindow>=0.0.9      # Window management (Windows)
-# pyobjc-framework-Quartz # macOS screen capture
+
+# ── Optional desktop extras ───────────────────────────────────────────────────
+# pygetwindow>=0.0.9      # Windows: enumerate windows
+# pyperclip>=1.9.0        # Cross-platform clipboard (fallback)
+# opencv-python>=4.0.0    # Screen recording (optional)
+# numpy>=1.24.0           # Required for opencv recording
