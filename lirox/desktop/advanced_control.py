@@ -115,7 +115,7 @@ class AdvancedDesktopController:
         if not self._pyautogui:
             raise RuntimeError("pyautogui not available")
 
-        element = self._find_element_by_text(target)
+        element = self._find_element_by_text(target)  # pylint: disable=assignment-from-none
         if not element:
             raise RuntimeError(f"Cannot find UI element: {target}")
 

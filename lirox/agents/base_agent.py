@@ -113,8 +113,4 @@ class BaseAgent(ABC, PlanningMixin):
             return f"Fetch error: {e}"
 
     def get_free_data(self, query: str) -> dict:
-        try:
-            from lirox.tools.free_data import get_free_data
-            return get_free_data(query)
-        except Exception:
-            return {"status": "error", "answer": ""}
+        return {"status": "error", "answer": "free_data deprecated"}

@@ -377,7 +377,7 @@ def handle_command(
         info_panel("Training Engine activated...")
         from lirox.mind.agent import get_trainer
         t = get_trainer(orch.global_memory)
-        stats = t.train_from_recent_sessions(orch.session_store, limit=5)
+        stats = t.train(orch.global_memory, orch.session_store)
         success_message(
             f"Training complete!\n"
             f"  Sessions analyzed: {stats['sessions_analyzed']}\n"
@@ -394,22 +394,22 @@ def handle_command(
     elif base == "/soul":
         from lirox.mind.agent import get_soul
         soul = get_soul()
-        info_panel(f"👻 LIVING SOUL\n\n{soul.summary()}")
+        info_panel(f"👻 LIVING SOUL\n\n{soul.display_summary()}")
 
     elif base == "/mind":
         from lirox.mind.agent import get_soul, get_learnings, get_skills, get_sub_agents
         soul = get_soul()
-        stats = get_learnings().get_stats()
+        learnings_stats = get_learnings().stats_summary()
         sk = len(get_skills().list_skills())
         sa = len(get_sub_agents().list_agents())
         info_panel(
             f"🧠 MIND AGENT STATE\n\n"
             f"  Identity : {soul.get_name()}\n"
-            f"  Nature   : {soul.soul['core_identity'][:60]}...\n\n"
-            f"  Knowledge: {stats['facts']} facts, {stats['preferences']} prefs, {stats['projects']} projects, {stats['topics']} topics\n"
+            f"  Nature   : {soul.state['personality'].get('core', '')[:60]}...\n\n"
+            f"  Knowledge: {learnings_stats}\n"
             f"  Skills   : {sk} loaded\n"
             f"  Agents   : {sa} loaded\n"
-            f"  Age      : {soul.soul['interactions']} interactions"
+            f"  Age      : {soul.state.get('interaction_count', 0)} interactions"
         )
 
     elif base == "/improve":
@@ -441,7 +441,8 @@ def handle_command(
             from lirox.mind.agent import get_skills
             reg = get_skills()
             try:
-                name = reg.generate_skill(desc)
+                res = reg.build_skill_from_description(desc)
+                name = res.get("name", "Unknown")
                 success_message(f"Skill '{name}' created successfully!")
             except Exception as e:
                 error_panel("SKILL GENERATION ERROR", str(e))
@@ -467,7 +468,8 @@ def handle_command(
             from lirox.mind.agent import get_sub_agents
             reg = get_sub_agents()
             try:
-                name = reg.generate_agent(desc)
+                res = reg.build_agent_from_description(desc, name="NewAgent")
+                name = res.get("name", "NewAgent")
                 success_message(f"Agent '{name}' created successfully!")
             except Exception as e:
                 error_panel("AGENT GENERATION ERROR", str(e))
@@ -521,6 +523,7 @@ def _legacy_commands(orch, profile, cmd, base):
     import shutil
     from lirox.config import PROJECT_ROOT, DATA_DIR, OUTPUTS_DIR
     from rich.panel import Panel as _Panel
+    from lirox.ui.display import info_panel, success_message, error_panel
 
     if base == "/uninstall":
         console.print()
@@ -555,7 +558,6 @@ def _legacy_commands(orch, profile, cmd, base):
         if filepath:
             from lirox.memory.import_handler import MemoryImporter
             from lirox.mind.agent import get_learnings
-            from lirox.ui.display import info_panel, success_message, error_panel
             info_panel("Importing memory...")
             res = MemoryImporter(get_learnings()).import_file(filepath)
             if "error" in res:

@@ -22,7 +22,9 @@ from lirox.agents.base_agent import BaseAgent, AgentEvent
 from lirox.memory.manager import MemoryManager
 from lirox.thinking.scratchpad import Scratchpad
 from lirox.utils.llm import generate_response
-from lirox.mind.agent import get_soul, get_learnings
+def _get_agent_system_prompt() -> str:
+    from lirox.mind.agent import get_soul, get_learnings
+    return get_soul().to_system_prompt(get_learnings().to_context_string())
 
 
 def _extract_json(text: str) -> dict:
@@ -216,9 +218,9 @@ class PersonalAgent(BaseAgent):
         ctrl.start()
         hud.start(query)
 
+        step_counter = 0
+        last_event_type = None
         try:
-            step_counter = 0
-            last_event_type = None
             for event in ctrl.run_task(query):
                 etype = event.get("type", "agent_progress")
                 msg   = event.get("message", "")
@@ -315,7 +317,7 @@ class PersonalAgent(BaseAgent):
             f"Task: {query}\nResult of file operation:\n{result}\n\n"
             f"Provide a clear, concise summary of what was done and the results.",
             provider="auto",
-            system_prompt=get_soul().to_system_prompt(get_learnings().to_context_string()),
+            system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
         yield {"type": "done", "answer": final}
@@ -363,7 +365,7 @@ class PersonalAgent(BaseAgent):
             f"Task: {query}\nCommand output:\n{result}\n\n"
             f"Summarize what happened and whether it succeeded.",
             provider="auto",
-            system_prompt=get_soul().to_system_prompt(get_learnings().to_context_string()),
+            system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
         yield {"type": "done", "answer": final}
@@ -390,7 +392,7 @@ class PersonalAgent(BaseAgent):
             f"User query: {query}\n\nSearch results:\n{str(search_results)[:4000]}\n\n"
             f"Provide a comprehensive, well-structured answer based on these results.",
             provider="auto",
-            system_prompt=get_soul().to_system_prompt(get_learnings().to_context_string()),
+            system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
         yield {"type": "done", "answer": final}
@@ -402,7 +404,7 @@ class PersonalAgent(BaseAgent):
     ) -> Generator[AgentEvent, None, None]:
         yield {"type": "agent_progress", "message": "Thinking…"}
 
-        base_sys = system_prompt or get_soul().to_system_prompt(get_learnings().to_context_string())
+        base_sys = system_prompt or _get_agent_system_prompt()
         prompt   = query
         if mem_ctx:
             prompt = f"{mem_ctx}\n\nUser: {query}"

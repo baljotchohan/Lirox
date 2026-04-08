@@ -297,7 +297,7 @@ def open_file(file_path: str) -> str:
         elif _SYSTEM == "Linux":
             subprocess.Popen(["xdg-open", file_path])
         else:
-            os.startfile(file_path)
+            getattr(os, "startfile")(file_path)
         return f"Opened file: {file_path}"
     except Exception as e:
         return f"Open file failed: {e}"
@@ -349,7 +349,7 @@ def copy_to_clipboard(text: str) -> str:
             subprocess.run(["xclip", "-selection", "clipboard"],
                            input=text.encode(), check=True)
         else:
-            import pyperclip
+            import pyperclip  # pylint: disable=import-error
             pyperclip.copy(text)
         return f"Clipboard: {text[:60]}"
     except Exception as e:
@@ -366,7 +366,7 @@ def get_clipboard() -> str:
                 capture_output=True, text=True
             ).stdout
         else:
-            import pyperclip
+            import pyperclip  # pylint: disable=import-error
             return pyperclip.paste()
     except Exception as e:
         return f"Clipboard read error: {e}"
