@@ -144,15 +144,15 @@ class BrowserTool:
 
         Returns list of {"title": ..., "url": ..., "snippet": ...} dicts.
         """
-        url = "https://html.duckduckgo.com/html/"
+        from urllib.parse import urlencode, urlunparse
+        params = urlencode({"q": query})
+        search_url = urlunparse(("https", "html.duckduckgo.com", "/html/", "", params, ""))
         try:
-            html = self.fetch_url(url + f"?q={requests.utils.quote(query)}")
+            html = self.fetch_url(search_url)
         except Exception:
-            # fetch_url may raise; return empty on error
             html = ""
 
-        results = self._parse_search_results(html, max_results)
-        return results
+        return self._parse_search_results(html, max_results)
 
     def _parse_search_results(self, html: str, max_results: int) -> List[Dict[str, str]]:
         """Parse DuckDuckGo HTML search results."""

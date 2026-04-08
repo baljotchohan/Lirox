@@ -33,7 +33,7 @@ class RealTimeDataExtractor:
         changes: List[str]   = []
 
         # Match price patterns: $185.43 or 185.43
-        price_pattern = re.compile(r"\$?([\d,]+\.?\d*)")
+        price_pattern = re.compile(r"\$?([\d,]+(?:\.\d+)?)")
         for match in price_pattern.finditer(text):
             try:
                 value = float(match.group(1).replace(",", ""))
