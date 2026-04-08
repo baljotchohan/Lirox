@@ -10,6 +10,9 @@ Advanced prompt engineering with:
 from __future__ import annotations
 
 
+MAX_ANSWER_PREVIEW_LENGTH = 200
+
+
 class AdvancedPromptEngineer:
     """Build intelligent, context-aware prompts"""
 
@@ -156,8 +159,8 @@ class AdvancedPromptEngineer:
                 if isinstance(interaction, dict):
                     enhanced += f"- Q: {interaction.get('query', '')}\n"
                     answer = interaction.get("answer", "")
-                    truncated = answer[:200]
-                    suffix = "..." if len(answer) > 200 else ""
+                    truncated = answer[:MAX_ANSWER_PREVIEW_LENGTH]
+                    suffix = "..." if len(answer) > MAX_ANSWER_PREVIEW_LENGTH else ""
                     enhanced += f"  A: {truncated}{suffix}\n"
 
         return enhanced

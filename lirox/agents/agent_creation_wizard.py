@@ -81,7 +81,9 @@ class AgentCreationWizard:
                 "format": response_format,
                 "memory": memory_limit,
                 "system_prompt": (
-                    system_prompt[:50] + "..." if system_prompt else "(default)"
+                    system_prompt[:50] + ("..." if len(system_prompt) > 50 else "")
+                    if system_prompt
+                    else "(default)"
                 ),
             }
         )

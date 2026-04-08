@@ -149,7 +149,7 @@ class ScreenMirror:
                     return False
                 # Only allow printable ASCII to prevent control-character injection
                 safe_text = "".join(ch for ch in text if ch.isprintable())
-                pyautogui.typewrite(safe_text)
+                pyautogui.write(safe_text)
             elif action == "press":
                 key = kwargs.get("key", "")
                 if not isinstance(key, str) or not key:
