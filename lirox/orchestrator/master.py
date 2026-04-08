@@ -24,7 +24,11 @@ COMPLEX_FORMAT_SUFFIX = (
 class AgentType(Enum):
     PERSONAL = "personal"
     MIND     = "mind"
-    CHAT     = "chat"   # direct LLM, no agent overhead for simple queries
+    CHAT     = "chat"    # direct LLM, no agent overhead for simple queries
+    FINANCE  = "finance"
+    RESEARCH = "research"
+    CODE     = "code"
+    GENERAL  = "general"
 
 
 @dataclass
@@ -40,6 +44,7 @@ class MasterOrchestrator:
     def __init__(self, profile_data: Dict[str, Any] = None):
         self.profile_data   = profile_data or {}
         self.global_memory  = MemoryManager()
+        self.memory         = self.global_memory   # alias for test compatibility
         self.session_store  = SessionStore()
         self._agent:         Optional[Any] = None
         self._agent_memory:  Dict[AgentType, MemoryManager] = {}
@@ -76,6 +81,33 @@ class MasterOrchestrator:
                 profile_data = self.profile_data,
             )
         return self._mind_agent
+
+    # ── Intent Classification ──────────────────────────────────────────────────
+
+    def classify_intent(self, query: str) -> AgentType:
+        """
+        Classify the intent of a query into an AgentType.
+
+        Returns the most appropriate AgentType for routing the query.
+        """
+        q = query.lower()
+        finance_signals = [
+            "stock", "price", "ticker", "market", "share", "equity",
+            "crypto", "bitcoin", "eth", "invest", "portfolio", "nasdaq",
+            "nyse", "s&p", "dow", "tsla", "aapl", "btc", "usd",
+        ]
+        if any(s in q for s in finance_signals):
+            return AgentType.FINANCE
+
+        research_signals = ["research", "study", "paper", "article", "find info", "learn about"]
+        if any(s in q for s in research_signals):
+            return AgentType.RESEARCH
+
+        code_signals = ["code", "function", "class", "bug", "debug", "programming", "script"]
+        if any(s in q for s in code_signals):
+            return AgentType.CODE
+
+        return AgentType.GENERAL
 
     # ── Helper ────────────────────────────────────────────────────────────────
 
