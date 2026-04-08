@@ -9,7 +9,7 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-APP_VERSION = "0.5.0"
+APP_VERSION = "1.0.0"
 _REPO_ROOT = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
 DATA_DIR = str(_REPO_ROOT / "data")
