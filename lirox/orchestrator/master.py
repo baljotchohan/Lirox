@@ -172,8 +172,6 @@ class MasterOrchestrator:
         if not self._needs_agent(query):
             agent       = self._get_mind_agent()
             agent_name  = "mind"
-            yield OrchestratorEvent(type="agent_start", agent=agent_name,
-                                    message="Mind Agent advising...")
             
             result_text = ""
             try:
@@ -208,8 +206,6 @@ class MasterOrchestrator:
             return
 
         # ── Personal agent tool-use path ──────────────────────────────────────
-        yield OrchestratorEvent(type="agent_start", agent="personal",
-                                message="Personal agent activated")
 
         complex_ctx = thinking_trace
         if complex_ctx:
