@@ -91,7 +91,8 @@ def main():
     commands = [
         "/help", "/history", "/session", "/models", "/memory", "/think",
         "/profile", "/reset", "/desktop", "/test", "/pause", "/resume",
-        "/train", "/learnings", "/add-skill", "/skills", "/add-agent", "/agents", "/improve", "/soul", "/mind",
+        "/train", "/learnings", "/add-skill", "/skills", "/add-agent", "/agents",
+        "/improve", "/soul", "/mind", "/restart", "/screen", "/freeze",
         "/import-memory", "/export-profile", "/uninstall", "/update", "/exit",
     ]
 
@@ -248,6 +249,9 @@ def handle_command(
             ("/improve",         "Run AI code improver on Lirox"),
             ("/soul",            "View Mind Agent's soul"),
             ("/mind",            "View full Mind Agent state"),
+            ("/restart",         "Restart Lirox"),
+            ("/screen [task]",   "Start screen mirroring with agent desktop control"),
+            ("/freeze",          "Freeze desktop for agent control"),
             ("/import-memory",   "Import memory from ChatGPT/Claude/Gemini"),
             ("/export-profile",  "Export profile as JSON"),
             ("/uninstall",       "Remove all Lirox data"),
@@ -485,6 +489,24 @@ def handle_command(
             for a in agents:
                 lines.append(f"  • {a['name']}: {a['description']} (Role: {a['role']})")
             info_panel("\n".join(lines))
+
+    # ── New v1.0.0 commands ───────────────────────────────────────────────────
+    elif base == "/restart":
+        info_panel("🔄 Restarting Lirox...")
+        time.sleep(1)
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    elif base == "/screen":
+        task = cmd[7:].strip() or "Desktop control active"
+        from lirox.tools.screen_mirror import ScreenMirror
+        mirror = ScreenMirror()
+        result = mirror.start_mirroring(task)
+        console.print("[cyan]📺 Screen mirroring active - User input frozen[/]")
+        console.print("[dim]Agent has full desktop control[/]")
+
+    elif base == "/freeze":
+        console.print("[bold cyan]🔒 DESKTOP FROZEN[/]")
+        console.print("[dim]Agent controls desktop. Press ESC to stop.[/]")
 
     # ── Legacy commands ───────────────────────────────────────────────────────
     elif base in ("/uninstall", "/update", "/import-memory", "/export-profile"):
