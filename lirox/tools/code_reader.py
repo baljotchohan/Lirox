@@ -24,12 +24,16 @@ _EXTENSION_MAP: dict[str, str] = {
     ".go":    "go",
     ".rs":    "rust",
     ".cpp":   "cpp",
+    ".cc":    "cpp",
+    ".cxx":   "cpp",
     ".c":     "c",
     ".cs":    "csharp",
     ".rb":    "ruby",
     ".php":   "php",
     ".swift": "swift",
     ".kt":    "kotlin",
+    ".sh":    "shell",
+    ".bash":  "shell",
 }
 
 SUPPORTED_EXTENSIONS: tuple[str, ...] = tuple(_EXTENSION_MAP.keys())
@@ -122,7 +126,7 @@ class CodeReader:
         try:
             with open(resolved, "r", encoding="utf-8") as fh:
                 content = fh.read()
-            line_count = content.count("\n") + (1 if content else 0)
+            line_count = len(content.splitlines())
             size_bytes = os.path.getsize(resolved)
             return {
                 "success": True,

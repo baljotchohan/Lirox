@@ -72,7 +72,7 @@ class SessionManager:
         """
         session = self._store.load_session(session_id)
         if session is not None:
-            self._store._current = session  # noqa: SLF001
+            self._store.set_current(session)
         return session
 
     def save(self) -> None:
