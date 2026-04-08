@@ -167,6 +167,10 @@ class SessionStore:
                 pass
         return None
 
+    def set_current(self, session: Session) -> None:
+        """Make *session* the active session."""
+        self._current = session
+
     # ── History ──────────────────────────────────────────────────────────────
 
     def list_sessions(self, limit: int = 20) -> List[Session]:

@@ -1,4 +1,4 @@
-# Lirox AI OS — v0.5.0
+# Lirox v1.0.0
 
 > The terminal-native, self-growing AI Operational System.
 

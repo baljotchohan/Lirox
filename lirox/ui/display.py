@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Terminal UI"""
+"""Lirox v1.0.0 — Terminal UI"""
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table

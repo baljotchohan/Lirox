@@ -1,4 +1,4 @@
-"""Lirox v0.5 — Mind Agent Entry Point"""
+"""Lirox v1.0.0 — Mind Agent Entry Point"""
 import os
 import sys
 import time
@@ -50,7 +50,7 @@ def get_prompt_label(agent_name: str) -> list:
 def main():
     check_dependencies()
 
-    parser = argparse.ArgumentParser(description="Lirox v0.5 — Personal AI Agent")
+    parser = argparse.ArgumentParser(description="Lirox v1.0.0 — Personal AI Agent")
     parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
     parser.add_argument("--update",  action="store_true", help="Update Lirox")
     parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
