@@ -12,7 +12,7 @@ class FastReasoningEngine:
     # Simple queries that don't need LLM thinking
     SIMPLE_PATTERNS = {
         "weather": r"(weather|temperature|forecast|rain|sunny)",
-        "time": r"(what time|current time|what\'s the time)",
+        "time": r"(what time|current time|what's the time)",
         "definition": r"(what is|define|meaning of|explain)",
         "list": r"(list|show me|give me|enumerate)",
         "math": r"(\d+\s*[\+\-\*/]\s*\d+)",

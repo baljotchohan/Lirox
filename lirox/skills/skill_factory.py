@@ -179,7 +179,7 @@ class SkillCreationWizard:
             "dependencies": config["dependencies"],
             "implementation": config["implementation"],
             "test_cases": config["test_cases"],
-            "created_at": str(datetime.datetime.now()),
+            "created_at": str(datetime.datetime.now(datetime.timezone.utc)),
         }
 
         with open(skill_file, "w") as f:

@@ -185,7 +185,7 @@ class AgentCreationWizard:
             "memory_limit": config["memory"],
             "api_keys": list(config["api_keys"].keys()),
             "system_prompt": config["system_prompt"],
-            "created_at": str(datetime.datetime.now()),
+            "created_at": str(datetime.datetime.now(datetime.timezone.utc)),
         }
 
         with open(agent_file, "w") as f:

@@ -135,11 +135,26 @@ class ScreenMirror:
             import pyautogui
 
             if action == "click":
-                pyautogui.click(kwargs["x"], kwargs["y"])
+                x = kwargs.get("x")
+                y = kwargs.get("y")
+                if x is None or y is None:
+                    return False
+                screen_w, screen_h = pyautogui.size()
+                if not (0 <= x < screen_w and 0 <= y < screen_h):
+                    return False
+                pyautogui.click(int(x), int(y))
             elif action == "type":
-                pyautogui.typewrite(kwargs["text"])
+                text = kwargs.get("text", "")
+                if not isinstance(text, str) or not text:
+                    return False
+                # Only allow printable ASCII to prevent control-character injection
+                safe_text = "".join(ch for ch in text if ch.isprintable())
+                pyautogui.typewrite(safe_text)
             elif action == "press":
-                pyautogui.press(kwargs["key"])
+                key = kwargs.get("key", "")
+                if not isinstance(key, str) or not key:
+                    return False
+                pyautogui.press(key)
 
             self.step_count += 1
             time.sleep(0.1)

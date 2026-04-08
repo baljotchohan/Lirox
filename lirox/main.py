@@ -497,7 +497,7 @@ def handle_command(
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     elif base == "/screen":
-        task = cmd[7:].strip() or "Desktop control active"
+        task = cmd[len("/screen"):].strip() or "Desktop control active"
         from lirox.tools.screen_mirror import ScreenMirror
         mirror = ScreenMirror()
         result = mirror.start_mirroring(task)

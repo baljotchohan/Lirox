@@ -155,7 +155,10 @@ class AdvancedPromptEngineer:
             for interaction in recent_interactions[:3]:
                 if isinstance(interaction, dict):
                     enhanced += f"- Q: {interaction.get('query', '')}\n"
-                    enhanced += f"  A: {interaction.get('answer', '')[:200]}...\n"
+                    answer = interaction.get("answer", "")
+                    truncated = answer[:200]
+                    suffix = "..." if len(answer) > 200 else ""
+                    enhanced += f"  A: {truncated}{suffix}\n"
 
         return enhanced
 
