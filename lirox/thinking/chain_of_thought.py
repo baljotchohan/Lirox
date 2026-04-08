@@ -26,7 +26,11 @@ Be concise."""
                 system_prompt="Strategic reasoning engine. Concise and precise.",
             )
             return self.last_trace
-        except Exception:
+        except Exception as e:
+            import logging
+            logging.getLogger("lirox.thinking").warning(
+                f"ThinkingEngine.reason failed, returning minimal trace: {e}"
+            )
             self.last_trace = f"UNDERSTAND: {query}"
             return self.last_trace
 
