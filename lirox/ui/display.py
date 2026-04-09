@@ -42,8 +42,8 @@ LOGO = """
 
 def show_welcome():
     console.print(LOGO)
-    console.print(f"  [{CLR_DIM}]Full desktop control · Files · Web · Memory[/]")
-    console.print(f"  [{CLR_DIM}]Type /help for commands · /desktop to check control status[/]\n")
+    console.print(f"  [{CLR_DIM}]Files · Web · Memory[/]")
+    console.print(f"  [{CLR_DIM}]Type /help for commands[/]\n")
     from lirox.agent.profile import UserProfile
     p = UserProfile()
     if p.is_setup():
@@ -92,7 +92,6 @@ def show_answer(answer: str, agent: str = "personal"):
 
 
 def show_status_card(profile_data: dict, providers: list):
-    from lirox.config import DESKTOP_ENABLED
     t = Table(box=None, padding=(0, 2), show_header=False)
     t.add_column("Key",   style=CLR_DIM)
     t.add_column("Value", style="white")
@@ -101,7 +100,6 @@ def show_status_card(profile_data: dict, providers: list):
     t.add_row("Version",   f"v{APP_VERSION}")
     t.add_row("Providers", ", ".join(providers) if providers else "None configured")
     t.add_row("Mode",      "Single Personal Agent")
-    t.add_row("Desktop",   "✅ ENABLED" if DESKTOP_ENABLED else "⚠️  disabled (DESKTOP_ENABLED=false)")
     console.print(
         Panel(
             t,
@@ -111,14 +109,6 @@ def show_status_card(profile_data: dict, providers: list):
         )
     )
     console.print()
-
-
-def show_desktop_locked():
-    """Called from main loop when user tries to type while agent has control."""
-    console.print(
-        f"  [bold yellow]⚠️  Agent is controlling the desktop. "
-        f"Type [bold white]/pause[/] to interrupt.[/]"
-    )
 
 
 def error_panel(title: str, msg: str):

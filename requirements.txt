@@ -9,20 +9,9 @@ requests>=2.31.0
 duckduckgo-search>=6.1.0
 google-genai>=0.3.0
 
-# ── Desktop Control (REQUIRED for /desktop features) ─────────────────────────
-pyautogui>=0.9.54
-pillow>=10.0.0
-pytesseract>=0.3.10
-
 # ── Optional LLM providers ────────────────────────────────────────────────────
 # anthropic>=0.21.0
 # openai>=1.0.0
 
 # ── Optional search ───────────────────────────────────────────────────────────
 # tavily-python>=0.3.0
-
-# ── Optional desktop extras ───────────────────────────────────────────────────
-# pygetwindow>=0.0.9      # Windows: enumerate windows
-# pyperclip>=1.9.0        # Cross-platform clipboard (fallback)
-# opencv-python>=4.0.0    # Screen recording (optional)
-# numpy>=1.24.0           # Required for opencv recording

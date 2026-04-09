@@ -145,7 +145,6 @@ class AgentCreationWizard:
         capabilities = [
             ("web_search", "Web search & browsing"),
             ("file_io", "Read/write files"),
-            ("desktop", "Desktop control"),
             ("code", "Code generation & execution"),
             ("analysis", "Data analysis"),
             ("planning", "Task planning"),
