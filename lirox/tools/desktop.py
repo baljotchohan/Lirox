@@ -765,7 +765,7 @@ def file_write(path: str, content: str, mode: str = "w") -> str:
         os.makedirs(os.path.dirname(info) or ".", exist_ok=True)
         with open(info, mode, encoding="utf-8") as f:
             f.write(content)
-        return f"✅ Written {len(content)} chars → {path}"
+        return f"✅ File saved to {info} ({len(content)} chars)"
     except Exception as e:
         return f"Write error: {e}"
 
@@ -798,10 +798,10 @@ def file_delete(path: str) -> str:
         if os.path.isdir(info):
             import shutil
             shutil.rmtree(info)
-            return f"🗑️  Deleted directory: {path}"
+            return f"🗑️  Deleted directory: {info}"
         else:
             os.remove(info)
-            return f"🗑️  Deleted: {path}"
+            return f"🗑️  Deleted: {info}"
     except Exception as e:
         return f"Delete error: {e}"
 
