@@ -3,12 +3,10 @@ Lirox v3.0 — PersonalAgent
 The ONE agent. Everything lives here.
 
 Capabilities:
-  - Full desktop control (mouse, keyboard, screen vision)
   - File read/write/search/delete (safe paths only)
   - Shell command execution (whitelisted)
   - Web search + URL fetch
   - App and URL launching
-  - Clipboard operations
   - Persistent memory of user facts and preferences
   - Chain-of-thought reasoning before every action
 """
@@ -68,14 +66,6 @@ def _extract_json(text: str) -> dict:
 
 # ── Intent categories ─────────────────────────────────────────────────────────
 
-DESKTOP_SIGNALS = [
-    "open", "click", "type", "screenshot", "screen", "desktop", "launch",
-    "press", "move mouse", "drag", "scroll", "window", "app", "application",
-    "navigate", "find on screen", "right click", "double click",
-    "copy to clipboard", "paste from clipboard", "hotkey",
-    "close", "minimize", "maximize", "focus",
-]
-
 FILE_SIGNALS = [
     "read file", "write file", "create file", "edit file", "delete file",
     "list files", "search files", "save to", "open file", "file contents",
@@ -95,12 +85,10 @@ WEB_SIGNALS = [
 
 def classify_task(query: str) -> str:
     """
-    Returns 'desktop', 'file', 'shell', 'web', or 'chat'.
-    Used to decide whether to activate desktop lock + HUD.
+    Returns 'file', 'shell', 'web', or 'chat'.
+    Used to decide which sub-handler to activate.
     """
     q = query.lower()
-    if any(s in q for s in DESKTOP_SIGNALS):
-        return "desktop"
     if any(s in q for s in FILE_SIGNALS):
         return "file"
     if any(s in q for s in SHELL_SIGNALS):
@@ -113,7 +101,7 @@ def classify_task(query: str) -> str:
 class PersonalAgent(BaseAgent):
     """
     Single autonomous personal agent for Lirox v3.0.
-    Handles all task types: desktop, file, shell, web, and chat.
+    Handles all task types: file, shell, web, and chat.
     """
 
     @property
@@ -122,15 +110,14 @@ class PersonalAgent(BaseAgent):
 
     @property
     def description(self) -> str:
-        return "Autonomous personal agent — desktop, files, web, and conversation"
+        return "Autonomous personal agent — files, web, and conversation"
 
     def get_onboarding_message(self) -> str:
         return (
-            "👋 Hi! I'm your **Personal Agent** — I can control your desktop,\n"
+            "👋 Hi! I'm your **Personal Agent** — I can\n"
             "read and write files, run commands, search the web, and remember\n"
             "everything about you.\n\n"
-            "Try: *'Open Chrome'* or *'Create a Python script that...'*\n"
-            "For desktop control, make sure `DESKTOP_ENABLED=true` in your `.env`"
+            "Try: *'Create a Python script that...'* or *'Search for...'*"
         )
 
     # ── Main run ──────────────────────────────────────────────────────────────
@@ -146,7 +133,6 @@ class PersonalAgent(BaseAgent):
         Route the query to the appropriate sub-capability,
         then yield a stream of AgentEvent dicts.
         """
-        from lirox.config import DESKTOP_ENABLED
         from lirox.utils.structured_logger import get_logger
         import time
 
@@ -161,26 +147,8 @@ class PersonalAgent(BaseAgent):
         # ── Task classification ───────────────────────────────────────────────
         task_type = classify_task(query)
 
-        # ── Desktop control tasks ─────────────────────────────────────────────
-        if task_type == "desktop":
-            if not DESKTOP_ENABLED:
-                yield {
-                    "type": "done",
-                    "answer": (
-                        "⚠️  Desktop control is **disabled**.\n\n"
-                        "To enable it:\n"
-                        "1. Add `DESKTOP_ENABLED=true` to your `.env` file\n"
-                        "2. Install dependencies: `pip install pyautogui pillow pytesseract`\n"
-                        "3. macOS: grant Accessibility in System Settings → Privacy\n"
-                        "4. Restart Lirox"
-                    ),
-                }
-                return
-
-            yield from self._run_desktop_task(query, context)
-
         # ── File operations ───────────────────────────────────────────────────
-        elif task_type == "file":
+        if task_type == "file":
             yield from self._run_file_task(query, mem_ctx, context)
 
         # ── Shell execution ───────────────────────────────────────────────────
@@ -200,53 +168,6 @@ class PersonalAgent(BaseAgent):
             f"in {(time.time()-start)*1000:.0f}ms"
         )
 
-    # ── Desktop sub-handler ───────────────────────────────────────────────────
-
-    def _run_desktop_task(self, query: str, context: str) -> Generator[AgentEvent, None, None]:
-        """
-        Activate desktop control mode: yellow border, input lock, live HUD.
-        Then run the vision-action loop via DesktopController.
-        """
-        from lirox.tools.desktop import DesktopController
-        from lirox.ui.desktop_hud import get_hud
-
-        hud  = get_hud()
-        ctrl = DesktopController()
-
-        yield {"type": "agent_progress", "message": "🖥️  Activating desktop control…"}
-
-        ctrl.start()
-        hud.start(query)
-
-        step_counter = 0
-        last_event_type = None
-        try:
-            for event in ctrl.run_task(query):
-                etype = event.get("type", "agent_progress")
-                msg   = event.get("message", "")
-
-                if etype in ("tool_call", "agent_progress"):
-                    step_counter += 1
-                    hud.update_step(step_counter, msg)
-
-                elif etype == "paused":
-                    hud.set_paused(True)
-                    yield event
-                    hud.set_paused(False)
-                    continue
-
-                last_event_type = etype
-                yield event
-
-                if etype in ("done", "error"):
-                    self.memory.save_exchange(query, msg)
-                    break
-
-        finally:
-            ctrl.stop()
-            success = last_event_type != "error"
-            hud.stop(success=success)
-
     # ── File sub-handler ──────────────────────────────────────────────────────
 
     def _run_file_task(
@@ -255,7 +176,7 @@ class PersonalAgent(BaseAgent):
         """
         Ask LLM to plan a file operation, execute it, return results.
         """
-        from lirox.tools.desktop import (
+        from lirox.tools.file_tools import (
             file_read, file_write, file_list, file_delete, file_search
         )
 
@@ -327,7 +248,7 @@ class PersonalAgent(BaseAgent):
     def _run_shell_task(
         self, query: str, mem_ctx: str, context: str
     ) -> Generator[AgentEvent, None, None]:
-        from lirox.tools.desktop import run_shell
+        from lirox.tools.file_tools import run_shell
 
         yield {"type": "agent_progress", "message": "💻 Planning shell command…"}
 

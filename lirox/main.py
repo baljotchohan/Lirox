@@ -34,7 +34,7 @@ from lirox.orchestrator.master import MasterOrchestrator
 from lirox.ui.display import (
     show_welcome, show_status_card, show_thinking, show_agent_event,
     show_answer, error_panel, info_panel, success_message,
-    confirm_prompt, show_desktop_locked, console,
+    confirm_prompt, console,
 )
 from lirox.utils.llm import available_providers
 from lirox.config import APP_VERSION
@@ -90,10 +90,10 @@ def main():
 
     commands = [
         "/help", "/history", "/session", "/models", "/memory", "/think",
-        "/profile", "/reset", "/desktop", "/test",
+        "/profile", "/reset", "/test",
         "/train", "/learnings", "/add-skill", "/skills", "/use-skill",
         "/add-agent", "/agents",
-        "/improve", "/soul", "/mind", "/restart", "/screen",
+        "/improve", "/soul", "/mind", "/restart",
         "/import-memory", "/export-profile", "/uninstall", "/update", "/exit",
     ]
 
@@ -112,13 +112,6 @@ def main():
 
     while True:
         try:
-            # ── Block input during desktop control ────────────────────────────
-            from lirox.tools.desktop import is_agent_locked
-            if is_agent_locked():
-                show_desktop_locked()
-                time.sleep(0.5)
-                continue
-
             prompt_label = get_prompt_label(agent_name)
             line = session.prompt(prompt_label, style=style).strip()
             if not line:
@@ -138,13 +131,6 @@ def main():
             process_query(orchestrator, line, verbose=args.verbose)
 
         except KeyboardInterrupt:
-            # If agent is running, treat Ctrl+C as pause
-            from lirox.tools.desktop import is_agent_locked, request_pause
-            if is_agent_locked():
-                request_pause()
-                console.print("\n  [yellow]⏸  Pause requested. Agent will stop after current step.[/]")
-                continue
-
             now = time.time()
             if now - last_int < 2.0:
                 print("\n[!] Force quit.")
@@ -259,7 +245,6 @@ def handle_command(
             ("/think <q>",               "Run thinking engine on query"),
             ("/profile",                 "Show your profile"),
             ("/reset",                   "Reset session memory"),
-            ("/desktop",                 "Desktop control status + setup guide"),
             ("/test",                    "Run diagnostics"),
             ("/train",                   "Train Mind Agent on recent sessions"),
             ("/learnings",               "View Mind Agent's user knowledge"),
@@ -273,7 +258,6 @@ def handle_command(
             ("/soul",                    "View Mind Agent's soul"),
             ("/mind",                    "View full Mind Agent state"),
             ("/restart",                 "Restart Lirox"),
-            ("/screen [task]",           "Start screen mirroring with agent desktop control"),
             ("/import-memory",           "Import memory from ChatGPT/Claude/Gemini"),
             ("/export-profile",          "Export profile as JSON"),
             ("/uninstall",               "Remove all Lirox data"),
@@ -352,42 +336,14 @@ def handle_command(
             orch.session_store.new_session()
             success_message("Memory reset. New session started.")
 
-    # ── Desktop ───────────────────────────────────────────────────────────────
-    elif base == "/desktop":
-        from lirox.config import DESKTOP_ENABLED
-        if not DESKTOP_ENABLED:
-            info_panel(
-                "Desktop control is DISABLED.\n\n"
-                "To enable:\n"
-                "  1. Add DESKTOP_ENABLED=true to your .env\n"
-                "  2. pip install pyautogui pillow pytesseract\n"
-                "  3. macOS: System Settings → Privacy → Accessibility → grant Terminal\n"
-                "  4. Linux: sudo apt install scrot xdotool tesseract-ocr\n"
-                "  5. Restart Lirox"
-            )
-        else:
-            try:
-                from lirox.tools.desktop import take_screenshot, get_open_windows
-                path    = take_screenshot()
-                windows = get_open_windows()
-                success_message(
-                    f"Desktop control ACTIVE\n"
-                    f"  Screenshot: {path}\n"
-                    f"  Windows:\n{windows}"
-                )
-            except Exception as e:
-                error_panel("DESKTOP ERROR", str(e))
-
     # ── Test / Diagnostics ────────────────────────────────────────────────────
     elif base == "/test":
         info_panel("Running diagnostics…")
-        from lirox.config import DESKTOP_ENABLED
         tests = [
             ("Providers",    lambda: ", ".join(available_providers()) or "None"),
             ("Global Memory",lambda: f"{orch.global_memory.get_stats()['buffer_size']} buffered"),
             ("Sessions",     lambda: f"{len(orch.session_store.list_sessions())} sessions"),
             ("Thinking",     lambda: "Always-on complex mode"),
-            ("Desktop Ctrl", lambda: "ENABLED" if DESKTOP_ENABLED else "disabled"),
             ("Version",      lambda: f"v{APP_VERSION}"),
             ("Architecture", lambda: "Mind Agent + Personal Agent OS"),
         ]
@@ -560,14 +516,6 @@ def handle_command(
         info_panel("🔄 Restarting Lirox...")
         time.sleep(1)
         os.execv(sys.executable, [sys.executable] + sys.argv)
-
-    elif base == "/screen":
-        task = cmd[len("/screen"):].strip() or "Desktop control active"
-        from lirox.tools.screen_mirror import ScreenMirror
-        mirror = ScreenMirror()
-        result = mirror.start_mirroring(task)
-        console.print("[cyan]📺 Screen mirroring active - User input frozen[/]")
-        console.print("[dim]Agent has full desktop control[/]")
 
     # ── Legacy commands ───────────────────────────────────────────────────────
     elif base in ("/uninstall", "/update", "/import-memory", "/export-profile"):

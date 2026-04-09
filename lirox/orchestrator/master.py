@@ -131,7 +131,7 @@ class MasterOrchestrator:
 
     def _needs_agent(self, query: str) -> bool:
         """
-        True if the query requires tool use (desktop, file, shell, web).
+        True if the query requires tool use (file, shell, web).
         Simple conversational queries are answered directly.
         """
         q = query.lower()

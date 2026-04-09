@@ -59,14 +59,6 @@ MAX_MEMORY_ENTRY_CHARS  = 500
 MAX_CONTEXT_CHARS       = 4000
 MAX_SEARCH_RESULT_CHARS = 10000
 
-# ── Desktop Control ───────────────────────────────────────────────────────────
-# Set DESKTOP_ENABLED=true in .env to unlock full OS control
-DESKTOP_ENABLED = os.getenv("DESKTOP_ENABLED", "false").lower() == "true"
-# Max steps before agent stops and asks for guidance
-DESKTOP_MAX_STEPS = int(os.getenv("DESKTOP_MAX_STEPS", "40"))
-# Delay between desktop actions (seconds) — give UI time to respond
-DESKTOP_ACTION_DELAY = float(os.getenv("DESKTOP_ACTION_DELAY", "0.6"))
-
 # ── Terminal Safety (commands the agent CAN run) ──────────────────────────────
 ALLOWED_COMMANDS = [
     "ls", "pwd", "find", "which", "whoami", "file", "wc", "head", "tail", "du", "df",
@@ -75,7 +67,6 @@ ALLOWED_COMMANDS = [
     "ping", "grep", "awk", "sed", "sort", "uniq", "tr", "cut", "xargs", "uname",
     "date", "cal", "env", "tar", "zip", "unzip", "gzip", "docker", "pytest",
     "black", "flake8", "mypy", "eslint", "shasum", "open", "xdg-open", "osascript",
-    "screencapture", "scrot", "xdotool", "wmctrl", "xwininfo", "pbcopy", "pbpaste",
     "xclip", "code", "vim", "nano", "less", "more", "diff", "patch",
 ]
 
