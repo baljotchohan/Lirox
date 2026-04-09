@@ -1,4 +1,4 @@
-"""Lirox v0.5 — Master Orchestrator (Mind Agent Architecture)"""
+"""Lirox v1.0.0 — Master Orchestrator (Mind Agent Architecture)"""
 from __future__ import annotations
 
 import time
@@ -156,6 +156,9 @@ class MasterOrchestrator:
         session = self.session_store.current()
         session.add("user", query, agent="personal", mode="complex")
 
+        # ── Conversation history context (BUG-01 fix) ─────────────────────────
+        history_ctx = self.session_store.get_context_for_agent("personal", limit=10)
+
         # ── Thinking phase ────────────────────────────────────────────────────
         thinking_trace = ""
         if THINKING_ENABLED:
@@ -172,12 +175,21 @@ class MasterOrchestrator:
         if not self._needs_agent(query):
             agent       = self._get_mind_agent()
             agent_name  = "mind"
-            
+
+            # Build system prompt with conversation history (BUG-01 fix)
+            mind_system = system_prompt
+            if history_ctx:
+                mind_system = (
+                    f"{system_prompt}\n\nCONVERSATION HISTORY:\n{history_ctx}"
+                    if system_prompt else
+                    f"CONVERSATION HISTORY:\n{history_ctx}"
+                )
+
             result_text = ""
             try:
                 for event in agent.run(
                     query,
-                    system_prompt=system_prompt,
+                    system_prompt=mind_system,
                     context=thinking_trace,
                     mode="advisor",
                 ):
@@ -213,13 +225,22 @@ class MasterOrchestrator:
         else:
             complex_ctx = COMPLEX_FORMAT_SUFFIX.strip()
 
+        # Include conversation history in context (BUG-01 fix)
+        if history_ctx:
+            complex_ctx = f"CONVERSATION HISTORY:\n{history_ctx}\n\n{complex_ctx}"
+
+        # Build system prompt with conversation history (BUG-01 fix)
+        personal_system = system_prompt
+        if history_ctx and not system_prompt:
+            personal_system = ""
+
         agent       = self._get_personal_agent()
         result_text = ""
 
         try:
             for event in agent.run(
                 query,
-                system_prompt=system_prompt,
+                system_prompt=personal_system,
                 context=complex_ctx,
                 mode="complex",
             ):

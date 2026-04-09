@@ -1,1 +1,2 @@
-"""Lirox v2.0 — Desktop package."""
+"""Lirox v1.0.0 — Desktop control package."""
+

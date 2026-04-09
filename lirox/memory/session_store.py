@@ -198,17 +198,23 @@ class SessionStore:
     # ── Context Export for Agents ────────────────────────────────────────────
 
     def get_context_for_agent(self, agent_name: str, limit: int = 10) -> str:
-        """Get recent exchanges from current session for a specific agent."""
+        """
+        Get the full conversation history from the current session.
+
+        Returns all recent messages (user + assistant) so agents have
+        complete context of the ongoing conversation.  The *agent_name*
+        parameter is kept for API compatibility but the method now returns
+        the full exchange rather than filtering by agent.
+        """
         session = self.current()
-        agent_entries = [
-            e for e in session.entries
-            if e.agent == agent_name or e.role == "user"
-        ]
-        recent = agent_entries[-(limit * 2):]
+        # Return full conversation history (not filtered by agent)
+        # so that each agent receives prior context regardless of which
+        # sub-agent generated each reply (BUG-01 fix).
+        recent = session.entries[-(limit * 2):]
         if not recent:
             return ""
         lines = []
         for e in recent:
-            label = "User" if e.role == "user" else f"[{e.agent or 'Assistant'}]"
-            lines.append(f"{label}: {e.content[:300]}")
+            label = "User" if e.role == "user" else f"Assistant"
+            lines.append(f"{label}: {e.content[:400]}")
         return "\n".join(lines)

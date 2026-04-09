@@ -106,7 +106,11 @@ class AgentCreationWizard:
             }
         )
 
-        console.print(f"\n[green]✓ Agent '{agent_name}' created successfully![/]\n")
+        console.print(f"\n[green]✅ Agent '{agent_name}' created![/]")
+        saved_path = agent.get("_saved_path", "")
+        if saved_path:
+            console.print(f"   Saved to: [cyan]{saved_path}[/]")
+        console.print(f"   Use it with: [bold]@{agent_name} <query>[/]\n")
         return agent
 
     def _get_api_keys(self, description: str) -> dict:
@@ -169,7 +173,7 @@ class AgentCreationWizard:
         console.print(table)
 
     def _create_agent(self, config: dict) -> dict:
-        """Create agent with configuration"""
+        """Create agent with configuration and return data including its saved path."""
 
         import datetime
 
@@ -193,4 +197,5 @@ class AgentCreationWizard:
         with open(agent_file, "w") as f:
             json.dump(agent_data, f, indent=2)
 
+        agent_data["_saved_path"] = str(agent_file)
         return agent_data

@@ -90,9 +90,10 @@ def main():
 
     commands = [
         "/help", "/history", "/session", "/models", "/memory", "/think",
-        "/profile", "/reset", "/desktop", "/test", "/pause", "/resume",
-        "/train", "/learnings", "/add-skill", "/skills", "/add-agent", "/agents",
-        "/improve", "/soul", "/mind", "/restart", "/screen", "/freeze",
+        "/profile", "/reset", "/desktop", "/test",
+        "/train", "/learnings", "/add-skill", "/skills", "/use-skill",
+        "/add-agent", "/agents",
+        "/improve", "/soul", "/mind", "/restart", "/screen",
         "/import-memory", "/export-profile", "/uninstall", "/update", "/exit",
     ]
 
@@ -127,6 +128,11 @@ def main():
                 break
             if line.startswith("/"):
                 handle_command(orchestrator, profile, line, verbose=args.verbose)
+                continue
+
+            # @agent_name <query> — dispatch to custom sub-agent (BUG-03 fix)
+            if line.startswith("@"):
+                handle_agent_query(line)
                 continue
 
             process_query(orchestrator, line, verbose=args.verbose)
@@ -186,7 +192,7 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                 if t == "agent_start":
                     last_agent = ev.agent or last_agent
                     show_agent_event(ev.agent, t, ev.message)
-                elif t in ("tool_call", "tool_result", "agent_progress", "paused"):
+                elif t in ("tool_call", "tool_result", "agent_progress"):
                     show_agent_event(ev.agent or last_agent, t, ev.message)
                 elif t == "error":
                     show_agent_event(ev.agent or last_agent, "error", ev.message)
@@ -197,66 +203,82 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
             status.stop()
 
 
+def handle_agent_query(line: str) -> None:
+    """
+    Dispatch a query to a custom sub-agent using ``@agent_name query`` syntax.
+
+    Parameters
+    ----------
+    line:
+        The raw input line starting with ``@``, e.g. ``@researcher Find papers on LLMs``.
+    """
+    from rich.panel import Panel as _Panel
+    from lirox.agents.executor import AgentExecutor
+
+    parts      = line.split(None, 1)
+    agent_name = parts[0]                      # "@researcher"
+    query      = parts[1].strip() if len(parts) > 1 else ""
+
+    if not query:
+        console.print(f"  [dim]Usage: {agent_name} <query>[/]")
+        return
+
+    executor = AgentExecutor()
+    with console.status(f"[bold cyan]🤖 {agent_name} thinking…[/]", spinner="dots"):
+        result = executor.run(agent_name, query)
+
+    console.print(
+        _Panel(
+            result,
+            title=f"[bold cyan]{agent_name}[/]",
+            border_style="cyan",
+            padding=(1, 2),
+        )
+    )
+
+
 def handle_command(
     orch: MasterOrchestrator, profile, cmd: str, verbose: bool = False
 ):
     parts = cmd.strip().split()
     base  = parts[0].lower()
 
-    # ── Pause / Resume ────────────────────────────────────────────────────────
-    if base == "/pause":
-        from lirox.tools.desktop import request_pause, is_agent_locked
-        if is_agent_locked():
-            request_pause()
-            console.print("  [yellow]⏸  Pause requested. Agent will stop after current step.[/]")
-        else:
-            console.print("  [dim]No agent running.[/]")
-
-    elif base == "/resume":
-        from lirox.tools.desktop import clear_pause, is_agent_locked
-        if is_agent_locked():
-            clear_pause()
-            console.print("  [green]▶  Resumed.[/]")
-        else:
-            console.print("  [dim]No agent paused.[/]")
-
     # ── Help ──────────────────────────────────────────────────────────────────
-    elif base == "/help":
+    if base == "/help":
         from rich.table import Table as _Table
         from rich.panel import Panel as _Panel
         t = _Table(show_header=True, header_style="bold #FFC107", border_style="dim")
         t.add_column("Command",     style="bold white")
         t.add_column("Description", style="dim white")
         for c, d in [
-            ("/help",            "Show this help"),
-            ("/history [n]",     "Show last N sessions (default 20)"),
-            ("/session",         "Current session info"),
-            ("/models",          "Available LLM providers"),
-            ("/memory",          "Memory stats"),
-            ("/think <q>",       "Run thinking engine on query"),
-            ("/profile",         "Show your profile"),
-            ("/reset",           "Reset session memory"),
-            ("/desktop",         "Desktop control status + setup guide"),
-            ("/pause",           "Pause agent while it controls the desktop"),
-            ("/resume",          "Resume a paused agent"),
-            ("/test",            "Run diagnostics"),
-            ("/train",           "Train Mind Agent on recent sessions"),
-            ("/learnings",       "View Mind Agent's user knowledge"),
-            ("/add-skill <desc>","Generate a new skill via LLM"),
-            ("/skills",          "List available skills"),
-            ("/add-agent <desc>","Generate a new sub-agent via LLM"),
-            ("/agents",          "List available sub-agents"),
-            ("/improve",         "Run AI code improver on Lirox"),
-            ("/soul",            "View Mind Agent's soul"),
-            ("/mind",            "View full Mind Agent state"),
-            ("/restart",         "Restart Lirox"),
-            ("/screen [task]",   "Start screen mirroring with agent desktop control"),
-            ("/freeze",          "Freeze desktop for agent control"),
-            ("/import-memory",   "Import memory from ChatGPT/Claude/Gemini"),
-            ("/export-profile",  "Export profile as JSON"),
-            ("/uninstall",       "Remove all Lirox data"),
-            ("/update",          "Update Lirox"),
-            ("/exit",            "Shutdown"),
+            ("/help",                    "Show this help"),
+            ("/history [n]",             "Show last N sessions (default 20)"),
+            ("/session",                 "Current session info"),
+            ("/models",                  "Available LLM providers"),
+            ("/memory",                  "Memory stats"),
+            ("/think <q>",               "Run thinking engine on query"),
+            ("/profile",                 "Show your profile"),
+            ("/reset",                   "Reset session memory"),
+            ("/desktop",                 "Desktop control status + setup guide"),
+            ("/test",                    "Run diagnostics"),
+            ("/train",                   "Train Mind Agent on recent sessions"),
+            ("/learnings",               "View Mind Agent's user knowledge"),
+            ("/add-skill <desc>",        "Generate a new skill via LLM"),
+            ("/skills",                  "List available skills"),
+            ("/use-skill <name> [args]", "Execute a saved skill"),
+            ("/add-agent <desc>",        "Generate a new sub-agent via LLM"),
+            ("/agents",                  "List available sub-agents"),
+            ("@name <query>",            "Query a custom sub-agent"),
+            ("/improve",                 "Run AI code improver on Lirox"),
+            ("/soul",                    "View Mind Agent's soul"),
+            ("/mind",                    "View full Mind Agent state"),
+            ("/restart",                 "Restart Lirox"),
+            ("/screen [task]",           "Start screen mirroring with agent desktop control"),
+            ("/import-memory",           "Import memory from ChatGPT/Claude/Gemini"),
+            ("/export-profile",          "Export profile as JSON"),
+            ("/uninstall",               "Remove all Lirox data"),
+            ("/update",                  "Update Lirox"),
+            ("/exit",                    "Shutdown"),
         ]:
             t.add_row(c, d)
         console.print(
@@ -445,23 +467,57 @@ def handle_command(
             from lirox.mind.agent import get_skills
             reg = get_skills()
             try:
-                res = reg.build_skill_from_description(desc)
+                res  = reg.build_skill_from_description(desc)
                 name = res.get("name", "Unknown")
-                success_message(f"Skill '{name}' created successfully!")
+                path = res.get("_saved_path", "")
+                if path:
+                    success_message(
+                        f"✅ Skill '{name}' created at {path}\n"
+                        f"Use it with: /use-skill {name}"
+                    )
+                else:
+                    success_message(f"Skill '{name}' created successfully!")
             except Exception as e:
                 error_panel("SKILL GENERATION ERROR", str(e))
 
     elif base == "/skills":
-        from lirox.mind.agent import get_skills
-        reg = get_skills()
-        skills = reg.list_skills()
+        from lirox.skills.manager import SkillManager
+        mgr    = SkillManager()
+        skills = mgr.list_skills()
         if not skills:
-            info_panel("No skills loaded. Use /add-skill to create one.")
+            info_panel("No skills found. Use /add-skill to create one.")
         else:
-            lines = ["LOADED SKILLS\n"]
+            lines = ["AVAILABLE SKILLS\n"]
             for s in skills:
                 lines.append(f"  • {s['name']}: {s['description']}")
+                lines.append(f"    Path: {s['path']}")
+                lines.append(f"    Use:  /use-skill {s['name']}")
             info_panel("\n".join(lines))
+
+    elif base == "/use-skill":
+        rest = cmd[len("/use-skill"):].strip()
+        if not rest:
+            info_panel(
+                "Usage: /use-skill <name> [param1=value1 param2=value2 ...]\n\n"
+                "Example: /use-skill summarise_text text='Hello world'"
+            )
+        else:
+            skill_parts = rest.split(None, 1)
+            skill_name  = skill_parts[0]
+            raw_params  = skill_parts[1] if len(skill_parts) > 1 else ""
+            params: dict = {}
+            if raw_params:
+                import shlex
+                for token in shlex.split(raw_params):
+                    if "=" in token:
+                        k, v = token.split("=", 1)
+                        params[k.strip()] = v.strip()
+                    else:
+                        params["input"] = token
+            from lirox.skills.executor import SkillExecutor
+            with console.status(f"[bold cyan]⚙️  Running skill '{skill_name}'…[/]", spinner="dots"):
+                result = SkillExecutor().run(skill_name, params)
+            show_answer(result, agent="skill")
 
     elif base == "/add-agent":
         desc = cmd[10:].strip()
@@ -472,22 +528,31 @@ def handle_command(
             from lirox.mind.agent import get_sub_agents
             reg = get_sub_agents()
             try:
-                res = reg.build_agent_from_description(desc, name="NewAgent")
+                res  = reg.build_agent_from_description(desc, name="NewAgent")
                 name = res.get("name", "NewAgent")
-                success_message(f"Agent '{name}' created successfully!")
+                path = res.get("_saved_path", "")
+                if path:
+                    success_message(
+                        f"✅ Agent '{name}' created at {path}\n"
+                        f"Use it with: @{name} <query>"
+                    )
+                else:
+                    success_message(f"Agent '{name}' created successfully!")
             except Exception as e:
                 error_panel("AGENT GENERATION ERROR", str(e))
 
     elif base == "/agents":
-        from lirox.mind.agent import get_sub_agents
-        reg = get_sub_agents()
-        agents = reg.list_agents()
+        from lirox.agents.manager import AgentManager
+        mgr    = AgentManager()
+        agents = mgr.list_agents()
         if not agents:
-            info_panel("No sub-agents loaded. Use /add-agent to create one.")
+            info_panel("No agents found. Use /add-agent to create one.")
         else:
-            lines = ["LOADED SUB-AGENTS\n"]
+            lines = ["AVAILABLE AGENTS\n"]
             for a in agents:
-                lines.append(f"  • {a['name']}: {a['description']} (Role: {a['role']})")
+                lines.append(f"  • @{a['name']}: {a['description']}")
+                lines.append(f"    Specialization: {a['specialization']}")
+                lines.append(f"    Use: @{a['name']} <query>")
             info_panel("\n".join(lines))
 
     # ── New v1.0.0 commands ───────────────────────────────────────────────────
@@ -503,10 +568,6 @@ def handle_command(
         result = mirror.start_mirroring(task)
         console.print("[cyan]📺 Screen mirroring active - User input frozen[/]")
         console.print("[dim]Agent has full desktop control[/]")
-
-    elif base == "/freeze":
-        console.print("[bold cyan]🔒 DESKTOP FROZEN[/]")
-        console.print("[dim]Agent controls desktop. Press ESC to stop.[/]")
 
     # ── Legacy commands ───────────────────────────────────────────────────────
     elif base in ("/uninstall", "/update", "/import-memory", "/export-profile"):

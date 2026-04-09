@@ -91,7 +91,11 @@ class SkillCreationWizard:
             }
         )
 
-        console.print(f"\n[green]✓ Skill '{skill_name}' created successfully![/]\n")
+        console.print(f"\n[green]✅ Skill '{skill_name}' created![/]")
+        saved_path = skill.get("_saved_path", "")
+        if saved_path:
+            console.print(f"   Saved to: [cyan]{saved_path}[/]")
+        console.print(f"   Use it with: [bold]/use-skill {skill_name}[/]\n")
         return skill
 
     def _get_input_parameters(self) -> list:
@@ -162,7 +166,7 @@ class SkillCreationWizard:
         console.print(table)
 
     def _create_skill(self, config: dict) -> dict:
-        """Create skill file"""
+        """Create skill file and return skill data with its saved path."""
 
         import datetime
 
@@ -185,4 +189,5 @@ class SkillCreationWizard:
         with open(skill_file, "w") as f:
             json.dump(skill_data, f, indent=2)
 
+        skill_data["_saved_path"] = str(skill_file)
         return skill_data
