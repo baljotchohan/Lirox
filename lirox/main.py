@@ -215,9 +215,9 @@ def handle_agent_query(line: str) -> None:
     from rich.panel import Panel as _Panel
     from lirox.agents.executor import AgentExecutor
 
-    parts      = line.split(None, 1)
-    agent_name = parts[0]                      # "@researcher"
-    query      = parts[1].strip() if len(parts) > 1 else ""
+    parts = line.split(None, 1)
+    agent_name = parts[0]  # "@researcher"
+    query = parts[1].strip() if len(parts) > 1 else ""
 
     if not query:
         console.print(f"  [dim]Usage: {agent_name} <query>[/]")

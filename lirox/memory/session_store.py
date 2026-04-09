@@ -13,6 +13,9 @@ from typing import Dict, List, Optional
 
 from lirox.config import SESSIONS_DIR
 
+# Maximum characters per message when building conversation context strings
+CONTEXT_CONTENT_LIMIT: int = 400
+
 
 def _generate_session_name(first_message: str) -> str:
     """Generate a short, readable session name from the first user message."""
@@ -216,5 +219,5 @@ class SessionStore:
         lines = []
         for e in recent:
             label = "User" if e.role == "user" else f"Assistant"
-            lines.append(f"{label}: {e.content[:400]}")
+            lines.append(f"{label}: {e.content[:CONTEXT_CONTENT_LIMIT]}")
         return "\n".join(lines)

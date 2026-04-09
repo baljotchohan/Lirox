@@ -28,6 +28,16 @@ class DesktopController:
     """
 
     def __init__(self, max_steps: int = 40, action_delay: float = 0.6) -> None:
+        """
+        Initialise the desktop controller.
+
+        Parameters
+        ----------
+        max_steps:
+            Maximum number of perception-action iterations before stopping.
+        action_delay:
+            Seconds to wait between actions so the UI has time to settle.
+        """
         self.max_steps    = max_steps
         self.action_delay = action_delay
 

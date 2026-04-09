@@ -96,4 +96,4 @@ class AgentExecutor:
         if caps:
             parts.append(f"Your capabilities include: {', '.join(caps)}.")
 
-        return "  ".join(parts)
+        return "\n".join(parts)

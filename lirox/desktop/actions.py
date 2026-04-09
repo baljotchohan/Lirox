@@ -25,6 +25,22 @@ class DesktopActions:
     def __init__(self, action_delay: float = 0.6) -> None:
         self.action_delay = action_delay
 
+    # ── Helpers ───────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _parse_coordinates(target: str) -> Optional[tuple]:
+        """
+        Parse ``"x,y"`` coordinate strings into ``(int, int)``.
+
+        Returns ``(x, y)`` if *target* looks like coordinates, else ``None``.
+        """
+        if "," not in target:
+            return None
+        parts = target.split(",", 1)
+        if all(p.strip().lstrip("-").isdigit() for p in parts):
+            return int(parts[0].strip()), int(parts[1].strip())
+        return None
+
     # ── Mouse ─────────────────────────────────────────────────────────────────
 
     def click(self, target: str, button: str = "left") -> str:
@@ -37,9 +53,9 @@ class DesktopActions:
         """
         try:
             import pyautogui as _pag    # type: ignore
-            if "," in target and all(p.strip().lstrip("-").isdigit() for p in target.split(",", 1)):
-                x, y = (int(v.strip()) for v in target.split(",", 1))
-                _pag.click(x, y, button=button)
+            coords = self._parse_coordinates(target)
+            if coords:
+                _pag.click(coords[0], coords[1], button=button)
             else:
                 loc = _pag.locateCenterOnScreen(target, confidence=0.8)
                 if loc:
@@ -55,9 +71,9 @@ class DesktopActions:
         """Double-click on *target*."""
         try:
             import pyautogui as _pag    # type: ignore
-            if "," in target:
-                x, y = (int(v.strip()) for v in target.split(",", 1))
-                _pag.doubleClick(x, y)
+            coords = self._parse_coordinates(target)
+            if coords:
+                _pag.doubleClick(coords[0], coords[1])
             else:
                 loc = _pag.locateCenterOnScreen(target, confidence=0.8)
                 if loc:
@@ -74,9 +90,9 @@ class DesktopActions:
         try:
             import pyautogui as _pag    # type: ignore
             amount = -clicks if direction == "down" else clicks
-            if "," in target:
-                x, y = (int(v.strip()) for v in target.split(",", 1))
-                _pag.scroll(amount, x=x, y=y)
+            coords = self._parse_coordinates(target)
+            if coords:
+                _pag.scroll(amount, x=coords[0], y=coords[1])
             else:
                 _pag.scroll(amount)
             time.sleep(self.action_delay)
