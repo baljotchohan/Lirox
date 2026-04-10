@@ -19,21 +19,42 @@ class StreamingResponse:
         delay: float = 0.01,
         chunk_size: int = 1,
     ) -> Generator[str, None, None]:
-        """Yield *text* character-by-character (or in *chunk_size* slices).
+        """Yield *text* character-by-character with proper Unicode support.
 
         Args:
             text:       The full text to stream.
             delay:      Pause between yields in seconds.
-            chunk_size: Number of characters to emit per yield.
+            chunk_size: Number of characters to emit per yield (default 1).
 
         Yields:
-            Successive slices of *text*.
+            Successive slices of *text*, respecting Unicode character boundaries.
         """
-        for i in range(0, len(text), chunk_size):
-            chunk = text[i : i + chunk_size]
-            yield chunk
-            if delay > 0:
-                time.sleep(delay)
+        # Live Typing Fix: handle multi-byte Unicode and special chars correctly
+        if chunk_size == 1:
+            i = 0
+            while i < len(text):
+                ch = text[i]
+                # Handle special whitespace characters individually
+                if ch in ('\n', '\t', '\r'):
+                    yield ch
+                    i += 1
+                elif ord(ch) > 127:
+                    # Multi-byte Unicode: find a natural boundary (emit contiguous non-ASCII run)
+                    j = i + 1
+                    while j < len(text) and ord(text[j]) > 127:
+                        j += 1
+                    yield text[i:j]
+                    i = j
+                else:
+                    yield ch
+                    i += 1
+                if delay > 0:
+                    time.sleep(delay)
+        else:
+            for i in range(0, len(text), chunk_size):
+                yield text[i: i + chunk_size]
+                if delay > 0:
+                    time.sleep(delay)
 
     def stream_in_paragraphs(
         self,
@@ -56,11 +77,11 @@ class StreamingResponse:
         paragraphs = text.split("\n\n")
         last_idx = len(paragraphs) - 1
         for idx, para in enumerate(paragraphs):
-            if not para.strip():
-                continue
+            # Bug #12: Yield empty paragraphs too, to preserve spacing between sections
             suffix = "\n\n" if idx < last_idx else ""
             yield para + suffix
-            if delay > 0:
+            # Only sleep when the paragraph has meaningful content
+            if delay > 0 and para.strip():
                 time.sleep(delay)
 
     def stream_code_block(

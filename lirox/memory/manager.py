@@ -99,14 +99,11 @@ class MemoryManager:
     def add_fact(self, fact: str):
         with self._lock:
             facts = self._lt.get("facts", [])
-            # Exact-match deduplication plus simple fuzzy check (normalized)
+            # Bug #17: Use set-based dedup for O(1) lookup instead of O(n) loop
             fact_norm = " ".join(sorted(fact.lower().split()))
-            for existing in facts:
-                if existing == fact:
-                    return  # exact duplicate — skip
-                existing_norm = " ".join(sorted(existing.lower().split()))
-                if fact_norm == existing_norm:
-                    return  # same words, different order — skip
+            existing_norms = {" ".join(sorted(f.lower().split())) for f in facts}
+            if fact in facts or fact_norm in existing_norms:
+                return
             facts.append(fact)
             self._lt["facts"] = facts[-200:]
             lt_snapshot = dict(self._lt)
@@ -123,17 +120,25 @@ class MemoryManager:
         }
 
     def _load(self, path: str) -> Optional[dict]:
-        if os.path.exists(path):
-            try:
-                with open(path) as f:
-                    return json.load(f)
-            except Exception:
-                pass
+        # Bug #6: Acquire lock before reading to prevent race with _save()
+        with self._lock:
+            if os.path.exists(path):
+                try:
+                    with open(path) as f:
+                        return json.load(f)
+                except Exception:
+                    pass
         return None
 
     def _save(self, path: str, data: dict):
+        # Bug #7: Log errors instead of silently ignoring them
         try:
+            os.makedirs(os.path.dirname(path), exist_ok=True)
             with open(path, "w") as f:
                 json.dump(data, f, indent=2)
-        except Exception:
-            pass
+        except IOError as e:
+            from lirox.utils.structured_logger import get_logger
+            get_logger("lirox.memory").error(f"Memory save failed: {path} — {e}")
+        except Exception as e:
+            from lirox.utils.structured_logger import get_logger
+            get_logger("lirox.memory").error(f"Unexpected memory save error: {e}")
