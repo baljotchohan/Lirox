@@ -12,8 +12,8 @@ import time
 from typing import Dict, Generator, List, Optional, Tuple
 
 
-def _safe_readlink(path: str) -> Optional[str]:
-    """Return the symlink target for *path*, or None if not a symlink or unreadable."""
+def _readlink_or_none(path: str) -> Optional[str]:
+    """Return the symlink target for *path*, or None if not a symlink or on read error."""
     if not os.path.islink(path):
         return None
     try:
@@ -34,8 +34,10 @@ def _is_safe_path(path: str) -> Tuple[bool, str]:
     try:
         # Bug #2: Resolve symlinks safely — check both link and target
         if os.path.islink(path):
+            target = _readlink_or_none(path)
+            if target is None:
+                return False, f"Symlink resolution error: unreadable link at {path}"
             try:
-                target = os.readlink(path)
                 resolved = os.path.realpath(os.path.abspath(target))
             except (OSError, ValueError) as e:
                 return False, f"Symlink resolution error: {e}"
@@ -113,10 +115,10 @@ def file_list(path: str = ".", pattern: str = "*", max_files: int = 100) -> str:
             # Bug #18: Catch stat errors on broken symlinks
             try:
                 stat = os.stat(m)
-                size = stat.st_size
+                size_str = f"{stat.st_size // 1024}KB" if stat.st_size > 1024 else f"{stat.st_size}B"
             except (OSError, FileNotFoundError):
-                size = 0
-            size_str = f"{size // 1024}KB" if size > 1024 else f"{size}B"
+                # Broken symlink or inaccessible file — use '?' to distinguish from truly empty files
+                size_str = "?"
             # Bug #11: Use a cleaner format that handles long paths without breaking
             is_dir = "[DIR]" if os.path.isdir(m) else "     "
             is_link = " →" if os.path.islink(m) else ""
@@ -276,7 +278,7 @@ def get_file_metadata(path: str) -> Dict:
             "permissions": oct(stat.st_mode)[-3:],
             "is_dir": os.path.isdir(info),
             "is_symlink": os.path.islink(info),
-            "symlink_target": _safe_readlink(info),
+            "symlink_target": _readlink_or_none(info),
             "mime_type": mime_type or "unknown",
         }
     except (OSError, FileNotFoundError) as e:

@@ -120,21 +120,23 @@ class MemoryManager:
         }
 
     def _load(self, path: str) -> Optional[dict]:
-        # Bug #6: Acquire lock before reading to prevent race with _save()
-        with self._lock:
-            try:
-                with open(path) as f:
-                    return json.load(f)
-            except FileNotFoundError:
-                pass
-            except Exception:
-                pass
+        # Called only from __init__ before any threads are started.
+        # Bug #6: No TOCTOU — open directly and handle FileNotFoundError.
+        try:
+            with open(path) as f:
+                return json.load(f)
+        except FileNotFoundError:
+            pass
+        except Exception:
+            pass
         return None
 
     def _save(self, path: str, data: dict):
         # Bug #7: Log errors instead of silently ignoring them
         try:
-            os.makedirs(os.path.dirname(path), exist_ok=True)
+            dirname = os.path.dirname(path)
+            if dirname:
+                os.makedirs(dirname, exist_ok=True)
             with open(path, "w") as f:
                 json.dump(data, f, indent=2)
         except IOError as e:

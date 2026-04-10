@@ -214,7 +214,7 @@ class PersonalAgent(BaseAgent):
             # Bug #14: Gracefully handle non-dict or empty results from _extract_json
             if not isinstance(op_dict, dict):
                 op_dict = {}
-            op      = op_dict.get("op", "").lower() if op_dict else ""
+            op      = op_dict.get("op", "").lower()
             if not op:
                 result = "❌ LLM failed to determine file operation. Try being more specific."
                 yield {"type": "tool_result", "message": result}

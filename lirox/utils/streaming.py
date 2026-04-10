@@ -27,22 +27,12 @@ class StreamingResponse:
             chunk_size: Number of characters to emit per yield (default 1).
 
         Yields:
-            Successive slices of *text*, respecting Unicode character boundaries.
+            Successive slices of *text*.
         """
-        # Live Typing Fix: handle multi-byte Unicode and special chars correctly
-        if chunk_size == 1:
-            i = 0
-            while i < len(text):
-                ch = text[i]
-                yield ch
-                i += 1
-                if delay > 0:
-                    time.sleep(delay)
-        else:
-            for i in range(0, len(text), chunk_size):
-                yield text[i: i + chunk_size]
-                if delay > 0:
-                    time.sleep(delay)
+        for i in range(0, len(text), chunk_size):
+            yield text[i: i + chunk_size]
+            if delay > 0:
+                time.sleep(delay)
 
     def stream_in_paragraphs(
         self,
