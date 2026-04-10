@@ -19,19 +19,18 @@ class StreamingResponse:
         delay: float = 0.01,
         chunk_size: int = 1,
     ) -> Generator[str, None, None]:
-        """Yield *text* character-by-character (or in *chunk_size* slices).
+        """Yield *text* character-by-character with proper Unicode support.
 
         Args:
             text:       The full text to stream.
             delay:      Pause between yields in seconds.
-            chunk_size: Number of characters to emit per yield.
+            chunk_size: Number of characters to emit per yield (default 1).
 
         Yields:
             Successive slices of *text*.
         """
         for i in range(0, len(text), chunk_size):
-            chunk = text[i : i + chunk_size]
-            yield chunk
+            yield text[i: i + chunk_size]
             if delay > 0:
                 time.sleep(delay)
 
@@ -56,11 +55,11 @@ class StreamingResponse:
         paragraphs = text.split("\n\n")
         last_idx = len(paragraphs) - 1
         for idx, para in enumerate(paragraphs):
-            if not para.strip():
-                continue
+            # Bug #12: Yield empty paragraphs too, to preserve spacing between sections
             suffix = "\n\n" if idx < last_idx else ""
             yield para + suffix
-            if delay > 0:
+            # Only sleep when the paragraph has meaningful content
+            if delay > 0 and para.strip():
                 time.sleep(delay)
 
     def stream_code_block(
