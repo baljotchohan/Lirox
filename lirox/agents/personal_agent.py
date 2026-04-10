@@ -241,6 +241,12 @@ class PersonalAgent(BaseAgent):
             system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
+
+        # Stream the summary paragraph-by-paragraph
+        from lirox.utils.streaming import StreamingResponse
+        for chunk in StreamingResponse().stream_in_paragraphs(final):
+            yield {"type": "streaming", "chunk": chunk, "message": chunk}
+
         yield {"type": "done", "answer": final}
 
     # ── Shell sub-handler ─────────────────────────────────────────────────────
@@ -289,6 +295,11 @@ class PersonalAgent(BaseAgent):
             system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
+
+        from lirox.utils.streaming import StreamingResponse
+        for chunk in StreamingResponse().stream_in_paragraphs(final):
+            yield {"type": "streaming", "chunk": chunk, "message": chunk}
+
         yield {"type": "done", "answer": final}
 
     # ── Web sub-handler ───────────────────────────────────────────────────────
@@ -316,6 +327,11 @@ class PersonalAgent(BaseAgent):
             system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
+
+        from lirox.utils.streaming import StreamingResponse
+        for chunk in StreamingResponse().stream_in_paragraphs(final):
+            yield {"type": "streaming", "chunk": chunk, "message": chunk}
+
         yield {"type": "done", "answer": final}
 
     # ── Chat sub-handler ──────────────────────────────────────────────────────
@@ -332,6 +348,13 @@ class PersonalAgent(BaseAgent):
         if context:
             prompt = f"Thinking:\n{context}\n\n{prompt}"
 
+        # Get the full response without truncation
         answer = generate_response(prompt, provider="auto", system_prompt=base_sys)
         self.memory.save_exchange(query, answer)
+
+        # Stream paragraph-by-paragraph for a live typing feel
+        from lirox.utils.streaming import StreamingResponse
+        for chunk in StreamingResponse().stream_in_paragraphs(answer):
+            yield {"type": "streaming", "chunk": chunk, "message": chunk}
+
         yield {"type": "done", "answer": answer}

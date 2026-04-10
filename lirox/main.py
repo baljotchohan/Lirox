@@ -33,8 +33,8 @@ def _try_import(m: str) -> bool:
 from lirox.orchestrator.master import MasterOrchestrator
 from lirox.ui.display import (
     show_welcome, show_status_card, show_thinking, show_agent_event,
-    show_answer, error_panel, info_panel, success_message,
-    confirm_prompt, console,
+    show_answer, render_streaming_chunk, error_panel, info_panel,
+    success_message, confirm_prompt, console,
 )
 from lirox.utils.llm import available_providers
 from lirox.config import APP_VERSION
@@ -145,8 +145,9 @@ def main():
 
 
 def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
-    last_agent = "personal"
-    status     = None
+    last_agent  = "personal"
+    status      = None
+    was_streamed = False   # track whether we received streaming chunks
     try:
         for ev in orch.run(query):
             t = ev.type
@@ -171,6 +172,18 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     status.stop()
                     status = None
                 console.print(ev.message)
+            elif t == "streaming":
+                # Live typing — stop spinner on first chunk, then stream
+                if status:
+                    status.stop()
+                    status = None
+                if not was_streamed:
+                    # Print the response header once before the first chunk
+                    icon  = "⚡" if last_agent == "personal" else "💬"
+                    color = "bold #FFD700" if last_agent == "personal" else "bold #FFD54F"
+                    console.print(f"\n{icon} [{color}]Response:[/]")
+                    was_streamed = True
+                render_streaming_chunk(ev.message)
             else:
                 if status:
                     status.stop()
@@ -183,7 +196,13 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                 elif t == "error":
                     show_agent_event(ev.agent or last_agent, "error", ev.message)
                 elif t == "done" and ev.message:
-                    show_answer(ev.message, agent=last_agent)
+                    if was_streamed:
+                        # Response was already streamed — just close the line and
+                        # show a completion tick; avoid printing the answer again.
+                        console.print()
+                        console.print(f"  [bold #10b981]✓ Done[/]")
+                    else:
+                        show_answer(ev.message, agent=last_agent)
     finally:
         if status:
             status.stop()
