@@ -14,17 +14,18 @@ from lirox.config import PROJECT_ROOT
 
 class UserProfile:
     DEFAULT = {
-        "agent_name":    "Lirox",
-        "user_name":     "Operator",
-        "niche":         "Generalist",
-        "profession":    "Developer",
-        "goals":         [],
-        "tone":          "direct",
-        "user_context":  "",
-        "preferences":   {},
-        "learned_facts": [],
-        "created_at":    None,
-        "last_updated":  None,
+        "agent_name":      "Lirox",
+        "user_name":       "Operator",
+        "niche":           "Generalist",
+        "profession":      "Developer",
+        "current_project": "",
+        "goals":           [],
+        "tone":            "direct",
+        "user_context":    "",
+        "preferences":     {},
+        "learned_facts":   [],
+        "created_at":      None,
+        "last_updated":    None,
     }
 
     def __init__(self, storage_file: str = None):
@@ -199,7 +200,10 @@ OUTPUT FORMAT & BEHAVIOR
 """
 
     def is_setup(self) -> bool:
-        return self.data.get("agent_name") is not None and self.data.get("user_name") != "Operator"
+        return bool(
+            self.data.get("user_name") and
+            self.data["user_name"] not in ("Operator", self.DEFAULT["user_name"])
+        )
 
     def to_system_prompt(self) -> str:
         """v2.0 Professional CLI-First Prompt Generation."""
@@ -279,11 +283,15 @@ OUTPUT FORMAT & BEHAVIOR (MANDATORY)
 """
 
     def summary(self) -> str:
-        p = self.data
+        d = self.data
         lines = [
-            f"  [Agent]   : {p.get('agent_name', 'Not set')}",
-            f"  [User]    : {p.get('user_name', 'Not set')}",
-            f"  [Profession] : {p.get('profession', 'Not set')}",
-            f"  [Facts]   : {len(p.get('learned_facts', []))} learned",
+            f"  Name           : {d.get('user_name', '-')}",
+            f"  Agent          : {d.get('agent_name', 'Lirox')}",
+            f"  Work           : {d.get('niche', '-')}",
+            f"  Current Project: {d.get('current_project', '-')}",
+            f"  Profession     : {d.get('profession', '-')}",
+            f"  Tone           : {d.get('tone', '-')}",
         ]
+        if d.get("goals"):
+            lines.append(f"  Goals          : {', '.join(d['goals'][:3])}")
         return "\n".join(lines)

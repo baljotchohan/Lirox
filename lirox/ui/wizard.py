@@ -70,6 +70,16 @@ def run_setup_wizard(profile):
     niche = niche_options[niche_choice]
     profile.update("niche", niche)
 
+    # ── Step: Current main project ─────────────────────────────────────────
+    console.print()
+    current_project = Prompt.ask(
+        "  [bold #FFC107]What's your current main project?[/] [dim](Enter to skip)[/]",
+        default=""
+    )
+    if current_project.strip():
+        profile.update("current_project", current_project.strip())
+        console.print(f"  [dim]Got it — I'll keep {current_project.strip()} in mind.[/]\n")
+
     # ── Step 4: What are your goals? ──────────────────────────────────────
     console.print(f"\n  [bold #FFC107]What are you working on right now, {user_name}?[/]")
     console.print("  [dim]Tell me your current focus — I'll remember and adapt. (or press Enter to skip)[/]")

@@ -1,17 +1,4 @@
-"""
-Lirox — LLM Utility Layer
-
-Provider support: Gemini, Groq, OpenAI, OpenRouter, DeepSeek, NVIDIA, Anthropic, Ollama (local)
-Features:
-  - Smart provider routing based on task type
-  - Automatic fallback chain: primary → secondary → tertiary
-  - is_task_request caching (per input hash) to avoid redundant LLM calls
-  - 60-second timeout for long research tasks
-  - generate_response_stream() generator for SSE/WebSocket streaming
-  - Anthropic Claude provider (claude-3-5-haiku for speed, claude-opus for heavy)
-  - Ollama local LLM support (gemma4, llama3, mistral, etc.) — zero API cost
-"""
-
+"""Lirox v1.0.0 — LLM Utility Layer"""
 import atexit
 import os
 import hashlib
@@ -19,66 +6,46 @@ import requests
 import concurrent.futures
 from typing import List, Dict, Optional, Generator
 
-# BUG-03 FIX: Create pool and register atexit shutdown to prevent OS thread leak
 _FALLBACK_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=5)
 atexit.register(_FALLBACK_POOL.shutdown, wait=False)
 
-
-# ─── Lirox Memory Compressor — Ollama Inference Options ──────────────────────
-# These options are permanently injected by scripts/compress_model.py
-# They reduce peak RAM usage by capping context, threads, and batch size.
 _OLLAMA_OPTIONS = {
-    "num_ctx": 8192,     # matches gemma-compact Modelfile — KV cache optimized
-    "num_thread": 4,    # cap CPU threads
-    "num_batch": 512,   # prompt batch size
-    "num_predict": 1024, # max response tokens
-    "num_keep": 64,
-    "repeat_last_n": 64
+    "num_ctx": 8192, "num_thread": 4, "num_batch": 512,
+    "num_predict": 2048, "num_keep": 64, "repeat_last_n": 64,
 }
-# ─────────────────────────────────────────────────────────────────────────────
 
 DEFAULT_SYSTEM = (
-    "You are Lirox, a premium autonomous AI agent designed for high-performance research and systems execution. "
-    "MANDATORY FORMATTING RULES:\n"
-    "1. CLEAN & STRUCTURED: Never output a wall of text. Use logical sections.\n"
-    "2. HIERARCHY: Use Markdown headers (#, ##) to label different parts of your response.\n"
-    "3. DATA POINTS: Use bullet points and numbered lists for all sequences and features.\n"
-    "4. EMPHASIS: Use bold (**text**) for critical terms, agent names, or results.\n"
-    "5. TECHNICAL: Use code blocks (`text`) for paths, commands, and file names.\n"
-    "6. TONE: Sophisticated, competent, and direct. Avoid conversational fluff."
+    "You are Lirox, a premium autonomous AI agent. Be direct, precise, and complete. "
+    "CRITICAL: When writing code — write the COMPLETE implementation. Never truncate. "
+    "Never use '...' or placeholders. Always include all imports and a usage example. "
+    "CRITICAL: You have full filesystem access. Never say you cannot access the filesystem. "
+    "CRITICAL: When asked to do something — DO IT. Do not describe how to do it."
 )
 
-# LLM call timeout — 60s to support long research tasks
-_LLM_TIMEOUT = 60
-
-# ─── is_task_request Cache ───────────────────────────────────────────────────
+_LLM_TIMEOUT  = 90
 _task_cache: Dict[str, bool] = {}
+
 
 def _hash_prompt(text: str) -> str:
     return hashlib.md5(text.strip().lower().encode()).hexdigest()[:16]
 
 
-# ─── Provider Implementations ─────────────────────────────────────────────────
-
 def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "gpt-4o") -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return "OpenAI API key missing."
-    url = "https://api.openai.com/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    data = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
-            {"role": "user", "content": prompt}
-        ]
-    }
     try:
-        res = requests.post(url, headers=headers, json=data, timeout=_LLM_TIMEOUT)
+        res = requests.post(
+            "https://api.openai.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": model, "messages": [
+                {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
+                {"role": "user",   "content": prompt}]},
+            timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"OpenAI Error: {str(e)}"
+        return f"OpenAI Error: {e}"
 
 
 def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
@@ -88,277 +55,218 @@ def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
     try:
         from google import genai
         from google.genai import types
-        client = genai.Client(api_key=api_key)
-        config = types.GenerateContentConfig(
-            system_instruction=system_prompt or DEFAULT_SYSTEM,
-            temperature=0.7,
-        )
-        # Try 2.0 first, fall back to 1.5
+        client   = genai.Client(api_key=api_key)
+        config   = types.GenerateContentConfig(
+            system_instruction=system_prompt or DEFAULT_SYSTEM, temperature=0.7)
         for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
-                response = client.models.generate_content(
-                    model=model_name, contents=prompt, config=config
-                )
-                return response.text
+                return client.models.generate_content(
+                    model=model_name, contents=prompt, config=config).text
             except Exception:
                 continue
         return "Gemini Error: All models failed"
     except ImportError:
         return "google-genai not installed. Run: pip install google-genai"
     except Exception as e:
-        return f"Gemini Error: {str(e)}"
+        return f"Gemini Error: {e}"
 
 
-def groq_call(prompt: str, system_prompt: Optional[str] = None, model: str = "llama-3.3-70b-versatile") -> str:
+def groq_call(prompt: str, system_prompt: Optional[str] = None,
+              model: str = "llama-3.3-70b-versatile") -> str:
     api_key = os.getenv("GROQ_API_KEY")
     if not api_key:
         return "Groq API key missing."
-    url = "https://api.groq.com/openai/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    data = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
-            {"role": "user", "content": prompt}
-        ]
-    }
     try:
-        res = requests.post(url, headers=headers, json=data, timeout=_LLM_TIMEOUT)
+        res = requests.post(
+            "https://api.groq.com/openai/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": model, "messages": [
+                {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
+                {"role": "user",   "content": prompt}]},
+            timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"Groq Error: {str(e)}"
+        return f"Groq Error: {e}"
 
 
-def openrouter_call(prompt: str, system_prompt: Optional[str] = None, model: str = "mistralai/mistral-7b-instruct:free") -> str:
+def openrouter_call(prompt: str, system_prompt: Optional[str] = None,
+                    model: str = "mistralai/mistral-7b-instruct:free") -> str:
     api_key = os.getenv("OPENROUTER_API_KEY")
     if not api_key:
         return "OpenRouter API key missing."
-    url = "https://openrouter.ai/api/v1/chat/completions"
-    headers = {
-        "Authorization": f"Bearer {api_key}",
-        "Content-Type": "application/json",
-        "HTTP-Referer": "https://lirox.ai",
-        "X-Title": "Lirox Agent OS"
-    }
-    data = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
-            {"role": "user", "content": prompt}
-        ]
-    }
     try:
-        res = requests.post(url, headers=headers, json=data, timeout=_LLM_TIMEOUT)
+        res = requests.post(
+            "https://openrouter.ai/api/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json",
+                     "HTTP-Referer": "https://lirox.ai", "X-Title": "Lirox Agent OS"},
+            json={"model": model, "messages": [
+                {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
+                {"role": "user",   "content": prompt}]},
+            timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"OpenRouter Error: {str(e)}"
+        return f"OpenRouter Error: {e}"
 
 
-def deepseek_call(prompt: str, system_prompt: Optional[str] = None, model: str = "deepseek-chat") -> str:
+def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
+                  model: str = "deepseek-chat") -> str:
     api_key = os.getenv("DEEPSEEK_API_KEY")
     if not api_key:
         return "DeepSeek API key missing."
-    url = "https://api.deepseek.com/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    data = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
-            {"role": "user", "content": prompt}
-        ]
-    }
     try:
-        res = requests.post(url, headers=headers, json=data, timeout=_LLM_TIMEOUT)
+        res = requests.post(
+            "https://api.deepseek.com/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": model, "messages": [
+                {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
+                {"role": "user",   "content": prompt}]},
+            timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"DeepSeek Error: {str(e)}"
+        return f"DeepSeek Error: {e}"
 
 
-def nvidia_call(prompt: str, system_prompt: Optional[str] = None, model: str = "meta/llama-3.1-405b-instruct") -> str:
+def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
+                model: str = "meta/llama-3.1-405b-instruct") -> str:
     api_key = os.getenv("NVIDIA_API_KEY")
     if not api_key:
         return "NVIDIA API key missing."
-    url = "https://integrate.api.nvidia.com/v1/chat/completions"
-    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
-    data = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
-            {"role": "user", "content": prompt}
-        ]
-    }
     try:
-        res = requests.post(url, headers=headers, json=data, timeout=_LLM_TIMEOUT)
+        res = requests.post(
+            "https://integrate.api.nvidia.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": model, "messages": [
+                {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
+                {"role": "user",   "content": prompt}]},
+            timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except Exception as e:
-        return f"NVIDIA Error: {str(e)}"
+        return f"NVIDIA Error: {e}"
 
 
 def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = None) -> str:
-    """
-    Local LLM provider via Ollama (https://ollama.ai).
-    Requires Ollama to be running: `ollama serve`
-    Auto-detects the model from OLLAMA_MODEL env var (default: llama3).
-
-    Memory note: gc.collect() is called after every inference to release
-    temporary Python objects and reduce peak RAM pressure.
-    """
     import gc
-    endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-    if model is None:
-        model = os.getenv("OLLAMA_MODEL", "llama3")
+    endpoint    = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+    model       = model or os.getenv("OLLAMA_MODEL", "llama3")
     full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
     try:
         res = requests.post(
             f"{endpoint}/api/generate",
-            json={"model": model, "prompt": full_prompt, "stream": False, "options": _OLLAMA_OPTIONS},
-            timeout=120,
-        )
+            json={"model": model, "prompt": full_prompt, "stream": False,
+                  "options": _OLLAMA_OPTIONS},
+            timeout=120)
         res.raise_for_status()
-        result = res.json().get("response", "Ollama Error: empty response")
-        return result
+        return res.json().get("response", "Ollama Error: empty response")
     except requests.exceptions.ConnectionError:
         return "Ollama Error: server not running. Start with: ollama serve"
     except Exception as e:
-        return f"Ollama Error: {str(e)}"
+        return f"Ollama Error: {e}"
     finally:
-        # Release Python-side objects immediately after inference
         gc.collect()
 
 
-def _is_ollama_available() -> bool:
-    """Return True if Ollama server is reachable on the configured endpoint."""
-    endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-    try:
-        res = requests.get(f"{endpoint}/api/tags", timeout=2)
-        return res.status_code == 200
-    except Exception:
-        return False
-
-
 def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = None) -> str:
-    """
-    Local LLM provider via Hugging Face BitsAndBytes API server.
-    Requires run_hf_bnb.py to be running: `python3 run_hf_bnb.py`
-    """
     import gc
-    endpoint = os.getenv("HF_BNB_ENDPOINT", "http://localhost:11435")
+    endpoint    = os.getenv("HF_BNB_ENDPOINT", "http://localhost:11435")
     full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
     try:
         res = requests.post(
             f"{endpoint}/api/generate",
             json={"prompt": full_prompt, "options": _OLLAMA_OPTIONS},
-            timeout=120,
-        )
+            timeout=120)
         res.raise_for_status()
-        result = res.json().get("response", "HF BNB Error: empty response")
-        return result
+        return res.json().get("response", "HF BNB Error: empty response")
     except requests.exceptions.ConnectionError:
-        return "HF BNB Error: server not running. Start it with: python3 run_hf_bnb.py"
+        return "HF BNB Error: server not running."
     except Exception as e:
-        return f"HF BNB Error: {str(e)}"
+        return f"HF BNB Error: {e}"
     finally:
         gc.collect()
 
 
+def anthropic_call(prompt: str, system_prompt: Optional[str] = None,
+                   model: str = "claude-3-5-haiku-20241022") -> str:
+    api_key = os.getenv("ANTHROPIC_API_KEY")
+    if not api_key:
+        return "Anthropic API key missing."
+    try:
+        import anthropic
+        client  = anthropic.Anthropic(api_key=api_key)
+        message = client.messages.create(
+            model=model, max_tokens=4096,
+            system=system_prompt or DEFAULT_SYSTEM,
+            messages=[{"role": "user", "content": prompt}])
+        return message.content[0].text
+    except ImportError:
+        pass
+    except Exception as e:
+        return f"Anthropic SDK Error: {e}"
+    try:
+        res = requests.post(
+            "https://api.anthropic.com/v1/messages",
+            headers={"x-api-key": api_key, "anthropic-version": "2023-06-01",
+                     "content-type": "application/json"},
+            json={"model": model, "max_tokens": 4096,
+                  "system": system_prompt or DEFAULT_SYSTEM,
+                  "messages": [{"role": "user", "content": prompt}]},
+            timeout=_LLM_TIMEOUT)
+        res.raise_for_status()
+        return res.json()["content"][0]["text"]
+    except Exception as e:
+        return f"Anthropic Error: {e}"
+
+
+_PROVIDER_ENV_MAP = {
+    "gemini": "GEMINI_API_KEY", "groq": "GROQ_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY", "openai": "OPENAI_API_KEY",
+    "deepseek": "DEEPSEEK_API_KEY", "nvidia": "NVIDIA_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+}
+_PROVIDER_PRIORITY = ["groq", "openrouter", "gemini", "anthropic", "nvidia", "openai", "deepseek"]
+
+TASK_KEYWORDS = [
+    "create", "build", "run", "install", "download", "execute", "pip", "npm",
+    "search", "lookup", "research", "set up", "write a script", "generate",
+    "make a folder", "mkdir", "open", "launch", "deploy", "find", "analyze",
+    "write code", "fix code", "debug",
+]
+RESEARCH_KEYWORDS = [
+    "who is", "what is", "explain", "how does", "why does",
+    "tell me about", "research", "find out", "what are", "compare",
+]
+
+
+def _is_ollama_available() -> bool:
+    try:
+        res = requests.get(
+            f"{os.getenv('OLLAMA_ENDPOINT', 'http://localhost:11434')}/api/tags", timeout=2)
+        return res.status_code == 200
+    except Exception:
+        return False
+
+
 def _is_hf_bnb_available() -> bool:
-    """Return True if HF BNB server is reachable on the configured endpoint."""
-    endpoint = os.getenv("HF_BNB_ENDPOINT", "http://127.0.0.1:11435")
     import socket
+    endpoint = os.getenv("HF_BNB_ENDPOINT", "http://127.0.0.1:11435")
     try:
         host, port = endpoint.replace("http://", "").split(":")
-        port = int(port.split("/")[0])
-        with socket.create_connection((host, port), timeout=2):
+        with socket.create_connection((host, int(port.split("/")[0])), timeout=2):
             return True
     except Exception:
         return False
 
 
-def anthropic_call(prompt: str, system_prompt: Optional[str] = None, model: str = "claude-3-5-haiku-20241022") -> str:
-    """
-    Anthropic Claude provider.
-    Uses the raw HTTP API so the `anthropic` SDK package is optional.
-    Falls back to SDK if available.
-    """
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        return "Anthropic API key missing."
-
-    # Try SDK first (cleaner)
-    try:
-        import anthropic
-        client = anthropic.Anthropic(api_key=api_key)
-        message = client.messages.create(
-            model=model,
-            max_tokens=4096,
-            system=system_prompt or DEFAULT_SYSTEM,
-            messages=[{"role": "user", "content": prompt}]
-        )
-        return message.content[0].text
-    except ImportError:
-        pass  # SDK not installed — fall through to raw HTTP
-    except Exception as e:
-        return f"Anthropic SDK Error: {str(e)}"
-
-    # Raw HTTP fallback
-    url = "https://api.anthropic.com/v1/messages"
-    headers = {
-        "x-api-key": api_key,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-    }
-    data = {
-        "model": model,
-        "max_tokens": 4096,
-        "system": system_prompt or DEFAULT_SYSTEM,
-        "messages": [{"role": "user", "content": prompt}]
-    }
-    try:
-        res = requests.post(url, headers=headers, json=data, timeout=_LLM_TIMEOUT)
-        res.raise_for_status()
-        return res.json()["content"][0]["text"]
-    except Exception as e:
-        return f"Anthropic Error: {str(e)}"
-
-
-# ─── Provider Registry & Routing ─────────────────────────────────────────────
-
-_PROVIDER_ENV_MAP = {
-    "gemini":    "GEMINI_API_KEY",
-    "groq":      "GROQ_API_KEY",
-    "openrouter":"OPENROUTER_API_KEY",
-    "openai":    "OPENAI_API_KEY",
-    "deepseek":  "DEEPSEEK_API_KEY",
-    "nvidia":    "NVIDIA_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-}
-
-_PROVIDER_PRIORITY = ["groq", "openrouter", "gemini", "anthropic", "nvidia", "openai", "deepseek"]
-
-TASK_KEYWORDS = [
-    "create", "build", "run", "install", "download", "execute", "pip", "npm",
-    "search", "lookup", "research", "set up", "write a script", "generate a file",
-    "make a folder", "mkdir", "open", "launch", "deploy", "find", "analyze"
-]
-
-RESEARCH_KEYWORDS = [
-    "who is", "what is", "explain", "how does", "why does",
-    "tell me about", "research", "find out", "what are", "compare"
-]
-
-
 def available_providers() -> List[str]:
-    providers = [name for name, env_var in _PROVIDER_ENV_MAP.items() if os.getenv(env_var)]
-    # Include Ollama or HF BNB if LOCAL_LLM_ENABLED and server is reachable
+    providers = [n for n, k in _PROVIDER_ENV_MAP.items() if os.getenv(k)]
     if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true":
-        local_provider = os.getenv("LOCAL_LLM_PROVIDER", "ollama").lower()
-        if local_provider == "ollama" and _is_ollama_available():
+        local = os.getenv("LOCAL_LLM_PROVIDER", "ollama").lower()
+        if local == "ollama" and _is_ollama_available():
             providers.insert(0, "ollama")
-        elif local_provider == "hf_bnb" and _is_hf_bnb_available():
+        elif local == "hf_bnb" and _is_hf_bnb_available():
             providers.insert(0, "hf_bnb")
     return providers
 
@@ -376,19 +284,14 @@ def pick_default_provider() -> Optional[str]:
 
 
 def smart_router(prompt: str) -> Optional[str]:
-    """Route a prompt to the best available provider based on content type."""
-    avail = available_providers()
+    avail   = available_providers()
     lowered = prompt.lower()
-
-    if any(k in lowered for k in ["complex", "reason", "heavy", "think deep", "analyze"]) and "anthropic" in avail:
+    if any(k in lowered for k in ["complex", "reason", "analyze"]) and "anthropic" in avail:
         return "anthropic"
-    if any(k in lowered for k in ["complex", "reason", "heavy", "think deep"]) and "nvidia" in avail:
-        return "nvidia"
-    if any(k in lowered for k in ["code", "script", "terminal", "run", "debug"]) and "groq" in avail:
+    if any(k in lowered for k in ["code", "script", "debug", "function"]) and "groq" in avail:
         return "groq"
     if any(k in lowered for k in RESEARCH_KEYWORDS) and "openrouter" in avail:
         return "openrouter"
-
     return pick_default_provider()
 
 
@@ -396,66 +299,47 @@ def is_error_response(text: str) -> bool:
     if not text or len(text.strip()) < 5:
         return True
     lowered = text.strip().lower()
-    # Patterns that can appear anywhere (substring match)
-    error_substrings = [
-        "api key missing",
-        "api key not set",
-    ]
-    if any(s in lowered for s in error_substrings):
+    if any(s in lowered for s in ["api key missing", "api key not set"]):
         return True
-    # Patterns that must appear at the START of the response
     error_prefixes = [
-        "openai error:", "gemini error:", "groq error:",
-        "anthropic error:", "deepseek error:", "nvidia error:",
-        "openrouter error:", "ollama error:", "hf bnb error:", "error:",
-        "unknown provider:", "rate limit exceeded",
+        "openai error:", "gemini error:", "groq error:", "anthropic error:",
+        "deepseek error:", "nvidia error:", "openrouter error:", "ollama error:",
+        "hf bnb error:", "error:", "unknown provider:", "rate limit exceeded",
     ]
     return any(lowered.startswith(p) for p in error_prefixes)
 
 
 def is_task_request(user_input: str, provider: str = "auto") -> bool:
-    """
-    Classify whether a user message requires agentic task execution.
-    Results are cached by input hash to avoid redundant LLM calls.
-    """
     lowered = user_input.lower()
-
-    # Fast keyword path — no LLM call needed
     if any(k in lowered for k in TASK_KEYWORDS):
         return True
-
-    # Pure question / chat heuristics — also fast path
-    question_starters = ["who ", "what ", "why ", "when ", "how ", "is ", "are ", "do ", "does "]
-    if any(lowered.startswith(s) for s in question_starters) and len(user_input.split()) < 15:
+    if any(lowered.startswith(s) for s in ["who ", "what ", "why ", "when ", "how ",
+                                             "is ", "are ", "do ", "does "]) \
+            and len(user_input.split()) < 15:
         return False
-
-    # LLM-based classification (with cache)
     cache_key = _hash_prompt(user_input)
     if cache_key in _task_cache:
         return _task_cache[cache_key]
-
-    if not available_providers():
-        return False
-
-    return any(k in lowered for k in ["build", "create", "fix", "write", "debug"])
+    result = any(k in lowered for k in ["build", "create", "fix", "write", "debug"])
+    _task_cache[cache_key] = result   # FIX: write result to cache
+    return result
 
 
-# ─── Core Response Generation ────────────────────────────────────────────────
-
-def generate_response(prompt: str, provider: str = "auto", system_prompt: str = None, timeout: Optional[int] = None) -> str:
+def generate_response(prompt: str, provider: str = "auto",
+                      system_prompt: str = None,
+                      timeout: Optional[int] = None) -> str:
     if timeout is None:
         from lirox.config import LLM_TIMEOUT
         timeout = LLM_TIMEOUT
 
     if provider == "auto":
-        # If Ollama or HF BNB is available and LOCAL_LLM_ENABLED, prefer it first
         if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true":
-            local_provider = os.getenv("LOCAL_LLM_PROVIDER", "ollama").lower()
-            avail_checker = _is_ollama_available if local_provider == "ollama" else _is_hf_bnb_available
-            if avail_checker():
+            local   = os.getenv("LOCAL_LLM_PROVIDER", "ollama").lower()
+            checker = _is_ollama_available if local == "ollama" else _is_hf_bnb_available
+            if checker():
                 try:
-                    future = _FALLBACK_POOL.submit(_call_provider, local_provider, prompt, system_prompt)
-                    resp = future.result(timeout=timeout)
+                    future = _FALLBACK_POOL.submit(_call_provider, local, prompt, system_prompt)
+                    resp   = future.result(timeout=timeout)
                     if not is_error_response(resp):
                         return resp
                 except Exception:
@@ -464,95 +348,61 @@ def generate_response(prompt: str, provider: str = "auto", system_prompt: str = 
 
     if provider is None:
         return (
-            "No API keys are configured. Please add at least one key:\n"
-            "  • Run /setup to configure\n"
-            "  • Or add keys to your .env file"
+            "No API keys configured. Run /setup to add one.\n"
+            "Free: Groq (groq.com) · Gemini (aistudio.google.com) · Ollama (local)"
         )
 
     provider = provider.lower().strip("[]'\" ")
 
-    # Local providers don't require an API key — just check availability
-    if provider == "ollama":
-        if not _is_ollama_available():
-            return "Ollama Error: server not running. Start with: ollama serve"
-    elif provider == "hf_bnb":
-        if not _is_hf_bnb_available():
-            return "HF BNB Error: server not running. Start it with: python3 run_hf_bnb.py"
-    elif not provider_has_key(provider):
-        fallback = pick_default_provider()
-        if fallback is None:
-            return "No API keys configured. Run /setup or add keys to .env."
-        if fallback == provider:
-            return f"No API key configured for: {provider}"
-        provider = fallback
+    if provider == "ollama" and not _is_ollama_available():
+        fb = pick_default_provider()
+        if not fb:
+            return "Ollama not running (ollama serve) and no cloud keys configured."
+        provider = fb
+    elif provider not in ("ollama", "hf_bnb") and not provider_has_key(provider):
+        fb = pick_default_provider()
+        if not fb:
+            return "No API keys configured. Run /setup."
+        provider = fb
 
-    # BUG-04 FIX: Initialize response=None before any attempt to prevent unbound variable
     response = None
-
-    # Primary attempt
     try:
-        future = _FALLBACK_POOL.submit(_call_provider, provider, prompt, system_prompt)
+        future   = _FALLBACK_POOL.submit(_call_provider, provider, prompt, system_prompt)
         response = future.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
         return f"Error: LLM API timed out after {timeout}s"
     except Exception as e:
         response = f"Error: {e}"
 
-    # Fallback chain
     if response is None or is_error_response(response):
         avail = available_providers()
-        fallbacks = [p for p in _PROVIDER_PRIORITY if p in avail and p != provider]
-        for fb in fallbacks:
+        for fb in [p for p in _PROVIDER_PRIORITY if p in avail and p != provider]:
             try:
                 future = _FALLBACK_POOL.submit(_call_provider, fb, prompt, system_prompt)
-                retry = future.result(timeout=timeout)
+                retry  = future.result(timeout=timeout)
                 if not is_error_response(retry):
                     return retry
-            except (concurrent.futures.TimeoutError, Exception):
+            except Exception:
                 continue
 
-    # BUG-04: Explicit None check before returning
-    if response is None:
-        return "Error: All providers failed to return a response."
-    return response
-
-
-def generate_response_stream(prompt: str, provider: str = "auto", system_prompt: str = None) -> Generator[str, None, None]:
-    """
-    Generator that yields response chunks for streaming (SSE/WebSocket).
-    Currently yields the full response as a single chunk.
-    Per-provider streaming can be added here incrementally.
-    """
-    response = generate_response(prompt, provider=provider, system_prompt=system_prompt)
-    # Yield in chunks of ~50 chars to simulate streaming
-    chunk_size = 50
-    for i in range(0, len(response), chunk_size):
-        yield response[i:i + chunk_size]
+    return response or "Error: All providers failed."
 
 
 def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> str:
     from lirox.utils.rate_limiter import api_limiter, sys_monitor
-
     if not api_limiter.is_allowed(provider):
-        return f"Rate limit exceeded for provider: {provider}"
-
-    # Check resources with max 3 retries (not infinite)
+        return f"Rate limit exceeded: {provider}"
     for _ in range(3):
         if sys_monitor.check_resources():
             break
         import time
         time.sleep(2)
-    # Proceed even if resources are high — don't block forever
-
     api_limiter.record_call(provider)
-
-    if provider == "openai":    return openai_call(prompt, system_prompt)
-    if provider == "gemini":    return gemini_call(prompt, system_prompt)
-    if provider == "groq":      return groq_call(prompt, system_prompt)
-    if provider == "openrouter": return openrouter_call(prompt, system_prompt)
-    if provider == "deepseek":  return deepseek_call(prompt, system_prompt)
-    if provider == "nvidia":    return nvidia_call(prompt, system_prompt)
-    if provider == "anthropic": return anthropic_call(prompt, system_prompt)
-    if provider == "ollama":    return ollama_call(prompt, system_prompt)
-    if provider == "hf_bnb":    return hf_bnb_call(prompt, system_prompt)
-    return f"Unknown provider: {provider}"
+    dispatch = {
+        "openai": openai_call, "gemini": gemini_call, "groq": groq_call,
+        "openrouter": openrouter_call, "deepseek": deepseek_call,
+        "nvidia": nvidia_call, "anthropic": anthropic_call,
+        "ollama": ollama_call, "hf_bnb": hf_bnb_call,
+    }
+    fn = dispatch.get(provider)
+    return fn(prompt, system_prompt) if fn else f"Unknown provider: {provider}"

@@ -1,256 +1,174 @@
 """
-Lirox v0.5 — Self-Improvement Engine
-
-When /improve is called or an error is detected:
-1. Audits its own code files for known issues
-2. Uses LLM to generate patches
-3. Writes the patches to disk
-4. Reports what was changed
-
-Also handles auto-fix on skill/agent errors.
+Lirox v1.0.0 — Self-Improvement Engine
+Patches staged to data/pending_patches/ — never auto-applied.
+User reviews with /pending then commits with /apply.
 """
 from __future__ import annotations
-
 import ast
-import os
+import json
 import re
+import shutil
 import time
 from pathlib import Path
 from typing import Dict, List, Any
 
 from lirox.utils.llm import generate_response
-from lirox.config import PROJECT_ROOT
+from lirox.config import PROJECT_ROOT, PATCHES_DIR
 
-
-_AUDIT_PROMPT = """
-Audit this Python code file for:
-1. Potential bugs or runtime errors
-2. Missing error handling (bare except, no try/catch)
-3. Performance issues (N+1 queries, blocking I/O in loops)
-4. Security issues (injection risks, hardcoded secrets, unsafe eval)
-5. Dead code or unused imports
-
+_AUDIT_PROMPT = """Audit this Python file for real bugs.
 FILE: {filename}
-
 CODE:
 {code}
+Output JSON array: [{{"line":42,"severity":"high|medium|low","issue":"problem","suggestion":"fix"}}]
+If no issues: []"""
 
-Output a JSON array of issues found:
-[
-  {{
-    "line": 42,
-    "severity": "high|medium|low",
-    "issue": "description of the problem",
-    "suggestion": "how to fix it"
-  }}
-]
-
-If no issues found, output: []
-"""
-
-_PATCH_PROMPT = """
-Apply this fix to the Python code:
-
+_PATCH_PROMPT = """Apply this fix:
 ISSUE: {issue}
 SUGGESTION: {suggestion}
-
-CURRENT CODE:
+CODE:
 {code}
+Output ONLY corrected Python code. Minimal change. No markdown."""
 
-Output ONLY the corrected Python code (no markdown, no explanation).
-The fix should be minimal — change only what's needed to address the issue.
-"""
-
-_SELF_IMPROVE_PROMPT = """
-You are analyzing a personal AI agent's codebase for self-improvement opportunities.
-
-Review these files and identify the 3 highest-impact improvements that would:
-1. Make the agent more helpful or capable
-2. Fix actual bugs or error conditions
-3. Improve learning / memory retention
-
-FILES REVIEWED:
+_SUGGEST_PROMPT = """Analyze AI agent codebase for improvements.
+FILES:
 {files_summary}
-
-RECENT ERRORS (if any):
+ERRORS:
 {errors}
-
-Output a JSON array of improvements:
-[
-  {{
-    "file": "relative/path/to/file.py",
-    "description": "what to improve",
-    "impact": "high|medium",
-    "effort": "low|medium|high"
-  }}
-]
-"""
+Output JSON: [{{"file":"path","description":"improvement","impact":"high|medium","effort":"low|medium|high","why":"reason"}}]"""
 
 
 class SelfImprover:
-    """
-    Analyzes and patches the agent's own code files.
-    """
-
-    # Files the improver is allowed to patch
-    PATCHABLE_FILES = [
-        "lirox/mind/agent.py",
-        "lirox/mind/trainer.py",
-        "lirox/mind/learnings.py",
-        "lirox/mind/skills/registry.py",
-        "lirox/mind/sub_agents/registry.py",
-        "lirox/agents/personal_agent.py",
-    ]
+    PATCHABLE   = ["lirox/mind/agent.py","lirox/mind/trainer.py","lirox/mind/learnings.py",
+                   "lirox/mind/skills/registry.py","lirox/mind/sub_agents/registry.py",
+                   "lirox/agents/personal_agent.py","lirox/memory/manager.py","lirox/utils/streaming.py"]
+    AUDIT_ONLY  = ["lirox/orchestrator/master.py","lirox/config.py","lirox/main.py"]
 
     def __init__(self):
-        self._root = Path(PROJECT_ROOT)
-        self._error_log: List[Dict] = []
+        self._root        = Path(PROJECT_ROOT)
+        self._patches_dir = Path(PATCHES_DIR)
+        self._patches_dir.mkdir(parents=True, exist_ok=True)
+        self._errors: List[Dict] = []
 
     def log_error(self, source: str, error: str) -> None:
-        """Log a runtime error for the next improvement cycle."""
-        self._error_log.append({
-            "source": source,
-            "error": error,
-            "at": time.time(),
-        })
-        # Keep last 20 errors
-        if len(self._error_log) > 20:
-            self._error_log = self._error_log[-20:]
+        self._errors.append({"source": source, "error": error, "at": time.time()})
+        if len(self._errors) > 30: self._errors = self._errors[-30:]
 
-    def audit_file(self, relative_path: str) -> List[Dict]:
-        """Audit a single file for issues."""
-        full_path = self._root / relative_path
-        if not full_path.exists():
-            return []
+    def read_own_code(self, filename: str) -> str:
+        p = self._root / filename
+        return p.read_text(errors="replace") if p.exists() else f"Not found: {filename}"
 
-        code = full_path.read_text()
+    def list_source_files(self) -> List[str]:
+        return [str(p.relative_to(self._root))
+                for p in sorted((self._root/"lirox").rglob("*.py"))
+                if "__pycache__" not in str(p)]
 
-        # Quick static checks first
+    def audit_file(self, rel: str) -> List[Dict]:
+        p = self._root / rel
+        if not p.exists(): return []
+        code = p.read_text(errors="replace")
+        try: ast.parse(code)
+        except SyntaxError as se:
+            return [{"line":se.lineno,"severity":"high","issue":f"Syntax: {se.msg}","suggestion":"Fix syntax"}]
         issues = []
         try:
-            ast.parse(code)
-        except SyntaxError as se:
-            issues.append({
-                "line": se.lineno,
-                "severity": "high",
-                "issue": f"Syntax error: {se.msg}",
-                "suggestion": "Fix the syntax error at the indicated line",
-            })
-            return issues  # Can't proceed if syntax is broken
-
-        # LLM audit
-        try:
-            raw = generate_response(
-                _AUDIT_PROMPT.format(filename=relative_path, code=code[:8000]),
-                provider="auto",
-                system_prompt="You are a Python code auditor. Output only JSON.",
-            )
-            import json
-            m = re.search(r"\[.*\]", raw, re.DOTALL)
+            raw = generate_response(_AUDIT_PROMPT.format(filename=rel, code=code[:8000]),
+                                    provider="auto", system_prompt="Code auditor. Output only JSON.")
+            raw = re.sub(r"```json?\s*|```\s*","",raw.strip())
+            m   = re.search(r"\[.*\]", raw, re.DOTALL)
             if m:
-                llm_issues = json.loads(m.group())
-                if isinstance(llm_issues, list):
-                    issues.extend(llm_issues)
-        except Exception:
-            pass
-
+                found = json.loads(m.group())
+                if isinstance(found, list): issues.extend(found)
+        except Exception: pass
         return issues
 
     def improve(self) -> Dict[str, Any]:
-        """
-        Run a full self-improvement cycle.
-        Returns summary of what was found and fixed.
-        """
-        results = {
-            "files_audited": 0,
-            "issues_found": 0,
-            "patches_applied": 0,
-            "improvements": [],
-        }
-
-        for rel_path in self.PATCHABLE_FILES:
-            full_path = self._root / rel_path
-            if not full_path.exists():
-                continue
-
+        results = {"files_audited":0,"issues_found":0,"patches_staged":0,
+                   "patches_applied":0,"improvements":[]}
+        for rel in self.PATCHABLE + self.AUDIT_ONLY:
+            p = self._root / rel
+            if not p.exists(): continue
             results["files_audited"] += 1
-            issues = self.audit_file(rel_path)
-
-            high_issues = [i for i in issues if i.get("severity") == "high"]
+            issues = self.audit_file(rel)
             results["issues_found"] += len(issues)
-
-            for issue in high_issues[:2]:  # Max 2 auto-patches per file
+            if rel in self.AUDIT_ONLY:
+                for iss in issues[:3]:
+                    results["improvements"].append({"file":rel,"issue":iss.get("issue",""),
+                                                    "status":"audit only — manual review"})
+                continue
+            for iss in [i for i in issues if i.get("severity")=="high"][:2]:
                 try:
-                    code = full_path.read_text()
+                    code    = p.read_text(errors="replace")
                     patched = generate_response(
-                        _PATCH_PROMPT.format(
-                            issue=issue["issue"],
-                            suggestion=issue["suggestion"],
-                            code=code[:8000],
-                        ),
-                        provider="auto",
-                        system_prompt="Apply the fix. Output ONLY corrected Python code.",
-                    )
-                    patched = patched.strip().lstrip("```python").lstrip("```").rstrip("```").strip()
-
-                    # Validate it compiles
-                    compile(patched, rel_path, "exec")
-
-                    # Backup + write
-                    backup = full_path.with_suffix(".py.bak")
-                    backup.write_text(code)
-                    full_path.write_text(patched)
-
-                    results["patches_applied"] += 1
-                    results["improvements"].append({
-                        "file": rel_path,
-                        "fix": issue["issue"],
-                    })
+                        _PATCH_PROMPT.format(issue=iss["issue"],
+                                             suggestion=iss.get("suggestion",""),code=code[:8000]),
+                        provider="auto", system_prompt="Apply fix. Output ONLY Python code.")
+                    patched = re.sub(r"^```python\s*|^```\s*","",patched.strip()).rstrip("```").strip()
+                    compile(patched, rel, "exec")
+                    ts   = int(time.time())
+                    safe = rel.replace("/","_").replace(".py","")
+                    pf   = self._patches_dir / f"{safe}_{ts}.py"
+                    mf   = self._patches_dir / f"{safe}_{ts}.json"
+                    pf.write_text(patched)
+                    mf.write_text(json.dumps({"original_file":rel,"patch_file":str(pf),
+                                              "issue":iss.get("issue",""),
+                                              "suggestion":iss.get("suggestion",""),
+                                              "staged_at":ts}, indent=2))
+                    results["patches_staged"] += 1
+                    results["improvements"].append({"file":rel,"issue":iss.get("issue","")[:80],
+                                                    "status":"staged — run /apply"})
                 except Exception as e:
-                    results["improvements"].append({
-                        "file": rel_path,
-                        "error": f"Could not auto-patch: {e}",
-                    })
-
+                    results["improvements"].append({"file":rel,"error":f"Could not patch: {e}"})
         return results
 
+    def apply_pending_patches(self) -> Dict[str, Any]:
+        results = {"applied":0,"failed":0,"details":[]}
+        for mf in sorted(self._patches_dir.glob("*.json")):
+            try:
+                meta = json.loads(mf.read_text())
+                pf   = Path(meta["patch_file"])
+                orig = self._root / meta["original_file"]
+                if not pf.exists(): continue
+                patched = pf.read_text()
+                compile(patched, meta["original_file"], "exec")
+                shutil.copy2(orig, orig.with_suffix(".py.bak"))
+                orig.write_text(patched)
+                pf.unlink(missing_ok=True); mf.unlink(missing_ok=True)
+                results["applied"] += 1
+                results["details"].append({"file":meta["original_file"],
+                                           "issue":meta.get("issue",""),"status":"applied"})
+            except Exception as e:
+                results["failed"] += 1
+                results["details"].append({"file":str(mf.name),"error":str(e)})
+        return results
+
+    def list_pending_patches(self) -> List[Dict]:
+        patches = []
+        for mf in sorted(self._patches_dir.glob("*.json")):
+            try:
+                meta = json.loads(mf.read_text())
+                patches.append({"file":meta.get("original_file","?"),
+                                 "issue":meta.get("issue","?")[:100],
+                                 "staged":meta.get("staged_at",0)})
+            except Exception: pass
+        return patches
+
     def suggest_improvements(self) -> str:
-        """
-        Ask LLM for high-level improvement suggestions.
-        Returns formatted text for display.
-        """
-        files_summary = []
-        for rel_path in self.PATCHABLE_FILES:
-            full_path = self._root / rel_path
-            if full_path.exists():
-                lines = len(full_path.read_text().split("\n"))
-                files_summary.append(f"  {rel_path} ({lines} lines)")
-
-        errors_text = "\n".join(
-            f"  [{e['source']}] {e['error'][:100]}"
-            for e in self._error_log[-5:]
-        ) or "  None logged"
-
+        fs = [f"  {p} ({len((self._root/p).read_text(errors='replace').splitlines())} lines)"
+              for p in self.PATCHABLE+self.AUDIT_ONLY if (self._root/p).exists()]
+        et = "\n".join(f"  [{e['source']}] {e['error'][:100]}"
+                        for e in self._errors[-5:]) or "  None"
         try:
             raw = generate_response(
-                _SELF_IMPROVE_PROMPT.format(
-                    files_summary="\n".join(files_summary),
-                    errors=errors_text,
-                ),
-                provider="auto",
-                system_prompt="You suggest code improvements. Output JSON.",
-            )
-            import json
-            m = re.search(r"\[.*\]", raw, re.DOTALL)
+                _SUGGEST_PROMPT.format(files_summary="\n".join(fs),errors=et),
+                provider="auto", system_prompt="Suggest improvements. Output JSON.")
+            raw = re.sub(r"```json?\s*|```\s*","",raw.strip())
+            m   = re.search(r"\[.*\]",raw,re.DOTALL)
             if m:
-                suggestions = json.loads(m.group())
+                sugs = json.loads(m.group())
                 lines = ["IMPROVEMENT SUGGESTIONS:\n"]
-                for i, s in enumerate(suggestions[:5], 1):
-                    lines.append(
-                        f"  [{s.get('impact','?').upper()}] {s.get('description','')}\n"
-                        f"    File: {s.get('file','?')} | Effort: {s.get('effort','?')}\n"
-                    )
+                for s in sugs[:5]:
+                    lines.append(f"  [{s.get('impact','?').upper()}] {s.get('description','')}\n"
+                                  f"    File: {s.get('file','?')} | {s.get('why','')}\n")
                 return "\n".join(lines)
-        except Exception as e:
-            pass
-        return "Could not generate suggestions. Check LLM connection."
+        except Exception: pass
+        return "Could not generate suggestions."

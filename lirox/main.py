@@ -1,4 +1,4 @@
-"""Lirox v1.0.0 — Mind Agent Entry Point"""
+"""Lirox v1.0.0 — Entry Point"""
 import os
 import sys
 import time
@@ -7,15 +7,12 @@ import argparse
 
 def check_dependencies():
     required = {
-        "rich":           "rich",
-        "prompt_toolkit": "prompt-toolkit",
-        "psutil":         "psutil",
-        "dotenv":         "python-dotenv",
-        "bs4":            "beautifulsoup4",
-        "lxml":           "lxml",
-        "requests":       "requests",
+        "rich": "rich", "prompt_toolkit": "prompt-toolkit",
+        "psutil": "psutil", "dotenv": "python-dotenv",
+        "bs4": "beautifulsoup4", "lxml": "lxml", "requests": "requests",
     }
-    missing = [pkg for mod, pkg in required.items() if not _try_import(mod.split(".")[0])]
+    missing = [pkg for mod, pkg in required.items()
+               if not _try_import(mod.split(".")[0])]
     if missing:
         print(f"\n[!] Missing packages: {', '.join(missing)}")
         print(f"    Run: pip install {' '.join(missing)}\n")
@@ -23,11 +20,8 @@ def check_dependencies():
 
 
 def _try_import(m: str) -> bool:
-    try:
-        __import__(m)
-        return True
-    except ImportError:
-        return False
+    try: __import__(m); return True
+    except ImportError: return False
 
 
 from lirox.orchestrator.master import MasterOrchestrator
@@ -41,24 +35,26 @@ from lirox.config import APP_VERSION
 
 
 def get_prompt_label(agent_name: str) -> list:
-    return [
-        ("class:prompt", f"[{agent_name}] "),
-        ("class:symbol", "✦ "),
-    ]
+    return [("class:prompt", f"[{agent_name}] "), ("class:symbol", "✦ ")]
 
 
 def main():
     check_dependencies()
 
-    parser = argparse.ArgumentParser(description="Lirox v1.0.0 — Personal AI Agent")
+    parser = argparse.ArgumentParser(description=f"Lirox v{APP_VERSION} — Personal AI Agent")
     parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
     parser.add_argument("--update",  action="store_true", help="Update Lirox")
+    parser.add_argument("--backup",  action="store_true", help="Backup agent data")
+    parser.add_argument("--version", action="store_true", help="Show version")
     parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
     args = parser.parse_args()
 
+    if args.version:
+        print(f"Lirox v{APP_VERSION}"); sys.exit(0)
     if args.update:
-        run_update()
-        sys.exit(0)
+        run_update(); sys.exit(0)
+    if args.backup:
+        run_backup(); sys.exit(0)
 
     from lirox.agent.profile import UserProfile
     profile      = UserProfile()
@@ -70,6 +66,7 @@ def main():
         from lirox.ui.wizard import run_setup_wizard
         try:
             run_setup_wizard(profile)
+            orchestrator.profile_data = profile.data
         except KeyboardInterrupt:
             console.print("\n  [dim]Setup skipped.[/]")
 
@@ -82,258 +79,207 @@ def main():
 
     agent_name = profile.data.get("agent_name", "Lirox")
     last_int   = 0.0
-
-    style = Style.from_dict({
-        "prompt": "ansiyellow bold",
-        "symbol": "ansiyellow",
-    })
+    style      = Style.from_dict({"prompt": "ansiyellow bold", "symbol": "ansiyellow"})
 
     commands = [
         "/help", "/history", "/session", "/models", "/memory", "/think",
         "/profile", "/reset", "/test",
         "/train", "/learnings", "/add-skill", "/skills", "/use-skill",
         "/add-agent", "/agents",
-        "/improve", "/soul", "/mind", "/restart",
-        "/import-memory", "/export-profile", "/uninstall", "/update", "/exit",
+        "/improve", "/apply", "/pending",
+        "/soul", "/mind", "/restart",
+        "/backup", "/import-memory", "/export-profile",
+        "/uninstall", "/update", "/exit",
     ]
 
-    class SlashCommandCompleter(Completer):
+    class SlashCompleter(Completer):
         def get_completions(self, document, complete_event):
             text = document.text_before_cursor.lstrip()
-            if not text.startswith("/"):
-                return
+            if not text.startswith("/"): return
             for cmd in commands:
                 if cmd.startswith(text.lower()):
                     yield Completion(cmd, start_position=-len(text))
 
-    session = PromptSession(
-        completer=SlashCommandCompleter(), complete_while_typing=True
-    )
+    session = PromptSession(completer=SlashCompleter(), complete_while_typing=True)
 
     while True:
         try:
-            prompt_label = get_prompt_label(agent_name)
-            line = session.prompt(prompt_label, style=style).strip()
-            if not line:
-                continue
+            line = session.prompt(get_prompt_label(agent_name), style=style).strip()
+            if not line: continue
             if line.lower() in ("exit", "quit", "/exit"):
-                info_panel("Shutting down. Goodbye.")
-                break
+                info_panel("Shutting down. Goodbye."); break
             if line.startswith("/"):
-                handle_command(orchestrator, profile, line, verbose=args.verbose)
-                continue
-
-            # @agent_name <query> — dispatch to custom sub-agent (BUG-03 fix)
+                handle_command(orchestrator, profile, line, verbose=args.verbose); continue
             if line.startswith("@"):
-                handle_agent_query(line)
-                continue
-
+                handle_agent_query(line); continue
             process_query(orchestrator, line, verbose=args.verbose)
 
         except KeyboardInterrupt:
             now = time.time()
             if now - last_int < 2.0:
-                print("\n[!] Force quit.")
-                sys.exit(0)
+                print("\n[!] Force quit."); sys.exit(0)
             print("\n[!] Ctrl+C again to quit, or type /exit.")
             last_int = now
         except EOFError:
-            info_panel("Shutting down. Goodbye.")
-            break
+            info_panel("Shutting down. Goodbye."); break
         except Exception as e:
             error_panel("KERNEL ERROR", str(e))
 
 
 def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
-    last_agent  = "personal"
-    status      = None
-    was_streamed = False   # track whether we received streaming chunks
+    last_agent   = "personal"
+    status       = None
+    was_streamed = False
+
     try:
         for ev in orch.run(query):
             t = ev.type
+
             if t == "thinking":
                 if ev.message == "Analyzing…" and not verbose:
                     if status is None:
-                        status = console.status(
-                            "[bold purple]🧠 Thinking…[/]", spinner="dots"
-                        )
+                        status = console.status("[bold purple]🧠 Thinking…[/]", spinner="dots")
                         status.start()
                 elif verbose:
-                    if status:
-                        status.stop()
-                        status = None
+                    if status: status.stop(); status = None
                     show_thinking(ev.message)
                 else:
                     if ev.message != "Analyzing…" and status:
-                        status.stop()
-                        status = None
+                        status.stop(); status = None
+
             elif t == "plan_display":
-                if status:
-                    status.stop()
-                    status = None
+                if status: status.stop(); status = None
                 console.print(ev.message)
+
             elif t == "streaming":
-                # Live typing — stop spinner on first chunk, then stream
-                if status:
-                    status.stop()
-                    status = None
+                if status: status.stop(); status = None
                 if not was_streamed:
-                    # Print the response header once before the first chunk
-                    icon  = "⚡" if last_agent == "personal" else "💬"
-                    color = "bold #FFD700" if last_agent == "personal" else "bold #FFD54F"
+                    agent_n = ev.agent or last_agent
+                    icon    = "⚡" if agent_n == "personal" else "🧠"
+                    color   = "bold #FFD700" if agent_n == "personal" else "bold #FFD54F"
                     console.print(f"\n{icon} [{color}]Response:[/]")
                     was_streamed = True
                 render_streaming_chunk(ev.message)
+
+            elif t == "done":
+                if status: status.stop(); status = None
+                if was_streamed:
+                    console.print()
+                    console.print("  [bold #10b981]✓ Done[/]")
+                elif ev.message:
+                    show_answer(ev.message, agent=last_agent)
+
             else:
-                if status:
-                    status.stop()
-                    status = None
+                if status and t in ("tool_call", "tool_result"):
+                    status.stop(); status = None
                 if t == "agent_start":
                     last_agent = ev.agent or last_agent
-                    show_agent_event(ev.agent, t, ev.message)
+                    show_agent_event(ev.agent, t, ev.message)  # silently suppressed in display.py
                 elif t in ("tool_call", "tool_result", "agent_progress"):
                     show_agent_event(ev.agent or last_agent, t, ev.message)
                 elif t == "error":
                     show_agent_event(ev.agent or last_agent, "error", ev.message)
-                elif t == "done" and ev.message:
-                    if was_streamed:
-                        # Response was already streamed — just close the line and
-                        # show a completion tick; avoid printing the answer again.
-                        console.print()
-                        console.print(f"  [bold #10b981]✓ Done[/]")
-                    else:
-                        show_answer(ev.message, agent=last_agent)
     finally:
-        if status:
-            status.stop()
+        if status: status.stop()
 
 
 def handle_agent_query(line: str) -> None:
-    """
-    Dispatch a query to a custom sub-agent using ``@agent_name query`` syntax.
-
-    Parameters
-    ----------
-    line:
-        The raw input line starting with ``@``, e.g. ``@researcher Find papers on LLMs``.
-    """
+    """Dispatch @agent_name query directly via SubAgentsRegistry (the real .py store)."""
     from rich.panel import Panel as _Panel
-    from lirox.agents.executor import AgentExecutor
-
-    parts = line.split(None, 1)
-    agent_name = parts[0]  # "@researcher"
-    query = parts[1].strip() if len(parts) > 1 else ""
+    parts      = line.split(None, 1)
+    agent_ref  = parts[0].lstrip("@").lower()
+    query      = parts[1].strip() if len(parts) > 1 else ""
 
     if not query:
-        console.print(f"  [dim]Usage: {agent_name} <query>[/]")
+        console.print(f"  [dim]Usage: @{agent_ref} <query>[/]")
         return
 
-    executor = AgentExecutor()
-    with console.status(f"[bold cyan]🤖 {agent_name} thinking…[/]", spinner="dots"):
-        result = executor.run(agent_name, query)
+    # FIX: use SubAgentsRegistry directly — this is where agents are actually saved as .py files
+    from lirox.mind.agent import get_sub_agents
+    registry = get_sub_agents()
 
-    console.print(
-        _Panel(
-            result,
-            title=f"[bold cyan]{agent_name}[/]",
-            border_style="cyan",
-            padding=(1, 2),
-        )
-    )
+    with console.status(f"[bold cyan]🤖 @{agent_ref} thinking…[/]", spinner="dots"):
+        result = registry.run_agent(agent_ref, query)
+
+    console.print(_Panel(result, title=f"[bold cyan]@{agent_ref}[/]",
+                          border_style="cyan", padding=(1,2)))
 
 
-def handle_command(
-    orch: MasterOrchestrator, profile, cmd: str, verbose: bool = False
-):
+def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = False):
     parts = cmd.strip().split()
     base  = parts[0].lower()
 
-    # ── Help ──────────────────────────────────────────────────────────────────
     if base == "/help":
-        from rich.table import Table as _Table
-        from rich.panel import Panel as _Panel
-        t = _Table(show_header=True, header_style="bold #FFC107", border_style="dim")
-        t.add_column("Command",     style="bold white")
+        from rich.table import Table as _T
+        from rich.panel import Panel as _P
+        t = _T(show_header=True, header_style="bold #FFC107", border_style="dim")
+        t.add_column("Command", style="bold white")
         t.add_column("Description", style="dim white")
-        for c, d in [
-            ("/help",                    "Show this help"),
-            ("/history [n]",             "Show last N sessions (default 20)"),
-            ("/session",                 "Current session info"),
-            ("/models",                  "Available LLM providers"),
-            ("/memory",                  "Memory stats"),
-            ("/think <q>",               "Run thinking engine on query"),
-            ("/profile",                 "Show your profile"),
-            ("/reset",                   "Reset session memory"),
-            ("/test",                    "Run diagnostics"),
-            ("/train",                   "Train Mind Agent on recent sessions"),
-            ("/learnings",               "View Mind Agent's user knowledge"),
-            ("/add-skill <desc>",        "Generate a new skill via LLM"),
-            ("/skills",                  "List available skills"),
-            ("/use-skill <name> [args]", "Execute a saved skill"),
-            ("/add-agent <desc>",        "Generate a new sub-agent via LLM"),
-            ("/agents",                  "List available sub-agents"),
-            ("@name <query>",            "Query a custom sub-agent"),
-            ("/improve",                 "Run AI code improver on Lirox"),
-            ("/soul",                    "View Mind Agent's soul"),
-            ("/mind",                    "View full Mind Agent state"),
-            ("/restart",                 "Restart Lirox"),
-            ("/import-memory",           "Import memory from ChatGPT/Claude/Gemini"),
-            ("/export-profile",          "Export profile as JSON"),
-            ("/uninstall",               "Remove all Lirox data"),
-            ("/update",                  "Update Lirox"),
-            ("/exit",                    "Shutdown"),
-        ]:
-            t.add_row(c, d)
-        console.print(
-            _Panel(
-                t,
-                title=f"[bold #FFC107]LIROX v{APP_VERSION} — COMMANDS[/]",
-                border_style="#FFC107",
-            )
-        )
+        rows = [
+            ("/help",               "Show this help"),
+            ("/history [n]",        "Show last N sessions"),
+            ("/session",            "Current session info"),
+            ("/models",             "Available LLM providers"),
+            ("/memory",             "Memory stats"),
+            ("/think <q>",          "Run thinking engine"),
+            ("/profile",            "Show your profile"),
+            ("/reset",              "Reset session memory"),
+            ("/test",               "Run diagnostics"),
+            ("/train",              "Extract permanent learnings from sessions"),
+            ("/learnings",          "View all learned knowledge"),
+            ("/add-skill <desc>",   "Generate a new skill via LLM"),
+            ("/skills",             "List all skills"),
+            ("/use-skill <n>",      "Execute a skill"),
+            ("/add-agent <desc>",   "Generate a new sub-agent via LLM"),
+            ("/agents",             "List all sub-agents"),
+            ("@name <query>",       "Talk to a custom sub-agent"),
+            ("/improve",            "Audit codebase and stage patches"),
+            ("/pending",            "List patches waiting for review"),
+            ("/apply",              "Apply all staged patches"),
+            ("/soul",               "View agent soul"),
+            ("/mind",               "Full Mind Agent state"),
+            ("/backup",             "Backup all data to ~/.lirox_backup/"),
+            ("/import-memory",      "Import from ChatGPT/Claude/Gemini export"),
+            ("/export-profile",     "Export profile as JSON"),
+            ("/restart",            "Restart Lirox"),
+            ("/update",             "Update to latest version"),
+            ("/uninstall",          "Remove all Lirox data"),
+            ("/exit",               "Shutdown"),
+        ]
+        for c, d in rows: t.add_row(c, d)
+        console.print(_P(t, title=f"[bold #FFC107]LIROX v{APP_VERSION} — COMMANDS[/]",
+                          border_style="#FFC107"))
 
-    # ── History ───────────────────────────────────────────────────────────────
     elif base == "/history":
         limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
         info_panel(orch.session_store.format_history(limit))
 
-    # ── Session ───────────────────────────────────────────────────────────────
     elif base == "/session":
-        s    = orch.session_store.current()
-        name = s.name or f"Session {s.session_id}"
-        info_panel(
-            f"CURRENT SESSION\n\n"
-            f"  Name    : {name}\n"
-            f"  ID      : {s.session_id}\n"
-            f"  Agent   : personal\n"
-            f"  Messages: {len(s.entries)}\n"
-            f"  Started : {s.created_at[:16].replace('T', ' ')}"
-        )
+        s = orch.session_store.current()
+        info_panel(f"CURRENT SESSION\n\n"
+                   f"  Name    : {s.name or f'Session {s.session_id}'}\n"
+                   f"  ID      : {s.session_id}\n"
+                   f"  Messages: {len(s.entries)}\n"
+                   f"  Started : {s.created_at[:16].replace('T',' ')}")
 
-    # ── Models ────────────────────────────────────────────────────────────────
     elif base == "/models":
-        providers = available_providers()
-        info_panel(
-            "AVAILABLE LLM PROVIDERS\n\n"
-            + ("\n".join(f"  ✓ {p}" for p in providers) if providers else "  None configured")
-        )
+        p = available_providers()
+        info_panel("AVAILABLE LLM PROVIDERS\n\n" +
+                   ("\n".join(f"  ✓ {x}" for x in p) if p else
+                    "  None configured — run /setup"))
 
-    # ── Memory ────────────────────────────────────────────────────────────────
     elif base == "/memory":
         lines = ["MEMORY STATS\n"]
         for at, mem in orch._agent_memory.items():
             s = mem.get_stats()
-            lines.append(
-                f"  {at.value:12}: {s['buffer_size']} msgs, "
-                f"{s.get('long_term_facts', 0)} facts"
-            )
+            lines.append(f"  {at.value:12}: {s['buffer_size']} msgs, "
+                          f"{s.get('long_term_facts',0)} facts")
         if not orch._agent_memory:
-            lines.append("  Agent not yet activated.")
+            lines.append("  Not yet activated.")
         gs = orch.global_memory.get_stats()
         lines.append(f"\n  Global memory: {gs['buffer_size']} msgs")
         info_panel("\n".join(lines))
 
-    # ── Think ─────────────────────────────────────────────────────────────────
     elif base == "/think":
         q = cmd[7:].strip()
         if q:
@@ -342,11 +288,9 @@ def handle_command(
         else:
             info_panel("Usage: /think <question>")
 
-    # ── Profile ───────────────────────────────────────────────────────────────
     elif base == "/profile":
         info_panel(f"PROFILE\n\n{profile.summary()}")
 
-    # ── Reset ─────────────────────────────────────────────────────────────────
     elif base == "/reset":
         if confirm_prompt("Reset all session memory?"):
             for mem in orch._agent_memory.values():
@@ -355,131 +299,144 @@ def handle_command(
             orch.session_store.new_session()
             success_message("Memory reset. New session started.")
 
-    # ── Test / Diagnostics ────────────────────────────────────────────────────
     elif base == "/test":
         info_panel("Running diagnostics…")
         tests = [
-            ("Providers",    lambda: ", ".join(available_providers()) or "None"),
-            ("Global Memory",lambda: f"{orch.global_memory.get_stats()['buffer_size']} buffered"),
-            ("Sessions",     lambda: f"{len(orch.session_store.list_sessions())} sessions"),
-            ("Thinking",     lambda: "Always-on complex mode"),
-            ("Version",      lambda: f"v{APP_VERSION}"),
-            ("Architecture", lambda: "Mind Agent + Personal Agent OS"),
+            ("Providers",     lambda: ", ".join(available_providers()) or "None"),
+            ("Global Memory", lambda: f"{orch.global_memory.get_stats()['buffer_size']} buffered"),
+            ("Sessions",      lambda: f"{len(orch.session_store.list_sessions())} sessions"),
+            ("Thinking",      lambda: "Always-on"),
+            ("Version",       lambda: f"v{APP_VERSION}"),
+            ("Architecture",  lambda: "MindAgent + PersonalAgent"),
         ]
         for name, fn in tests:
-            try:
-                console.print(f"  [green]✓[/] {name:22}: {fn()}")
-            except Exception as e:
-                console.print(f"  [red]✖[/] {name:22}: {e}")
+            try: console.print(f"  [green]✓[/] {name:22}: {fn()}")
+            except Exception as e: console.print(f"  [red]✖[/] {name:22}: {e}")
         success_message("Diagnostics complete.")
 
-    # ── LIROX V4.0 MIND COMMANDS ──────────────────────────────────────────────
     elif base == "/train":
-        info_panel("Training Engine activated...")
+        info_panel("Analyzing sessions and extracting learnings…")
         from lirox.mind.agent import get_trainer
-        t = get_trainer(orch.global_memory)
-        stats = t.train(orch.global_memory, orch.session_store)
+        stats = get_trainer(orch.global_memory).train(orch.global_memory, orch.session_store)
         success_message(
             f"Training complete!\n"
-            f"  Sessions analyzed: {stats['sessions_analyzed']}\n"
-            f"  New facts: {stats['facts_added']}\n"
-            f"  Topics updated: {stats['topics_updated']}\n"
-            f"  Projects tracked: {stats['projects_added']}"
-        )
+            f"  Facts learned     : {stats.get('facts_added',0)}\n"
+            f"  Topics updated    : {stats.get('topics_bumped',0)}\n"
+            f"  Preferences found : {stats.get('preferences_added',0)}\n"
+            f"  Projects found    : {stats.get('projects_found',0)}")
 
     elif base == "/learnings":
         from lirox.mind.agent import get_learnings
         learn = get_learnings()
-        info_panel(f"🧠 LEARNINGS STORE\n\n{learn.to_context_string()}")
+        info_panel(f"🧠 LEARNINGS\n\n{learn.to_context_string() or 'Nothing learned yet — chat and /train'}\n\nSTATS: {learn.stats_summary()}")
 
     elif base == "/soul":
         from lirox.mind.agent import get_soul
-        soul = get_soul()
-        info_panel(f"👻 LIVING SOUL\n\n{soul.display_summary()}")
+        info_panel(f"👻 LIVING SOUL\n\n{get_soul().display_summary()}")
 
     elif base == "/mind":
         from lirox.mind.agent import get_soul, get_learnings, get_skills, get_sub_agents
         soul = get_soul()
-        learnings_stats = get_learnings().stats_summary()
-        sk = len(get_skills().list_skills())
-        sa = len(get_sub_agents().list_agents())
+        ls   = get_learnings().stats_summary()
+        sk   = len(get_skills().list_skills())
+        sa   = len(get_sub_agents().list_agents())
         info_panel(
             f"🧠 MIND AGENT STATE\n\n"
             f"  Identity : {soul.get_name()}\n"
-            f"  Nature   : {soul.state['personality'].get('core', '')[:60]}...\n\n"
-            f"  Knowledge: {learnings_stats}\n"
+            f"  Nature   : {soul.state['personality'].get('core','')[:60]}\n\n"
+            f"  Knowledge: {ls}\n"
             f"  Skills   : {sk} loaded\n"
             f"  Agents   : {sa} loaded\n"
-            f"  Age      : {soul.state.get('interaction_count', 0)} interactions"
-        )
+            f"  Age      : {soul.state.get('interaction_count',0)} interactions")
 
     elif base == "/improve":
-        info_panel("Self-Improver running... (this takes a minute)")
+        info_panel("Auditing codebase… (may take a minute)")
         from lirox.mind.agent import get_improver
         imp = get_improver()
         res = imp.improve()
-        if res["improvements"]:
-            fixes = "\n".join(f"  • {i['file']}: {i.get('fix', i.get('error', ''))}" for i in res["improvements"])
-        else:
-            fixes = "  None needed right now."
+        details = "\n".join(
+            f"  • {i.get('file','?')}: {i.get('issue',i.get('error',i.get('status','')))[:80]}"
+            for i in res.get("improvements",[])
+        ) or "  Nothing found."
         success_message(
-            f"Improvement cycle complete.\n"
-            f"  Files audited: {res['files_audited']}\n"
-            f"  Issues found: {res['issues_found']}\n"
-            f"  Patches applied: {res['patches_applied']}\n\n"
-            f"Patches:\n{fixes}"
-        )
+            f"Audit complete.\n"
+            f"  Files audited  : {res['files_audited']}\n"
+            f"  Issues found   : {res['issues_found']}\n"
+            f"  Patches staged : {res.get('patches_staged',0)}\n\n"
+            f"Staged patches (review with /pending, commit with /apply):\n{details}")
         from rich.markdown import Markdown
-        sugg = imp.suggest_improvements()
-        console.print(Markdown("### Improvement Suggestions\n" + sugg))
+        console.print(Markdown("### Suggestions\n" + imp.suggest_improvements()))
+
+    elif base == "/pending":
+        from lirox.mind.agent import get_improver
+        patches = get_improver().list_pending_patches()
+        if not patches:
+            info_panel("No pending patches. Run /improve to generate some.")
+        else:
+            lines = [f"PENDING PATCHES ({len(patches)})\n"]
+            for p in patches:
+                lines.append(f"  • {p['file']}: {p['issue'][:80]}")
+            lines.append("\nRun /apply to commit all patches.")
+            info_panel("\n".join(lines))
+
+    elif base == "/apply":
+        from lirox.mind.agent import get_improver
+        imp     = get_improver()
+        patches = imp.list_pending_patches()
+        if not patches:
+            info_panel("No pending patches."); return
+        console.print(f"\n  [bold #FFC107]{len(patches)} patch(es) ready:[/]")
+        for p in patches:
+            console.print(f"  • {p['file']}: {p['issue'][:80]}")
+        if confirm_prompt("Apply all patches? (backups created automatically)"):
+            res = imp.apply_pending_patches()
+            success_message(f"Applied: {res['applied']}  Failed: {res['failed']}")
+            for d in res.get("details",[]):
+                console.print(f"  • {d.get('file','?')}: {d.get('status',d.get('error','?'))}")
+        else:
+            info_panel("Cancelled. Patches remain in data/pending_patches/")
 
     elif base == "/add-skill":
         desc = cmd[10:].strip()
         if not desc:
             info_panel("Usage: /add-skill <description of what the skill should do>")
         else:
-            info_panel("Building new skill via LLM...")
+            info_panel(f"Building skill: {desc[:60]}…")
             from lirox.mind.agent import get_skills
-            reg = get_skills()
             try:
-                res  = reg.build_skill_from_description(desc)
-                name = res.get("name", "Unknown")
-                path = res.get("_saved_path", "")
-                if path:
-                    success_message(
-                        f"✅ Skill '{name}' created at {path}\n"
-                        f"Use it with: /use-skill {name}"
-                    )
+                res  = get_skills().build_skill_from_description(desc)
+                if res.get("success"):
+                    name = res.get("name","?")
+                    path = res.get("path","")    # FIX: key is "path" not "_saved_path"
+                    success_message(f"✅ Skill '{name}' created!\n"
+                                    f"   Saved: {path}\n"
+                                    f"   Use:   /use-skill {name}")
                 else:
-                    success_message(f"Skill '{name}' created successfully!")
+                    error_panel("SKILL FAILED", res.get("error","Unknown error"))
             except Exception as e:
-                error_panel("SKILL GENERATION ERROR", str(e))
+                error_panel("SKILL ERROR", str(e))
 
     elif base == "/skills":
-        from lirox.skills.manager import SkillManager
-        mgr    = SkillManager()
-        skills = mgr.list_skills()
+        # FIX: use SkillsRegistry (.py files) not SkillManager (.json files)
+        from lirox.mind.agent import get_skills
+        skills = get_skills().list_skills()
         if not skills:
             info_panel("No skills found. Use /add-skill to create one.")
         else:
-            lines = ["AVAILABLE SKILLS\n"]
+            lines = [f"AVAILABLE SKILLS ({len(skills)})\n"]
             for s in skills:
-                lines.append(f"  • {s['name']}: {s['description']}")
-                lines.append(f"    Path: {s['path']}")
-                lines.append(f"    Use:  /use-skill {s['name']}")
+                lines.append(f"  • {s['name']}: {s.get('description','-')[:80]}")
+                lines.append(f"    Use: /use-skill {s['name']}")
             info_panel("\n".join(lines))
 
     elif base == "/use-skill":
         rest = cmd[len("/use-skill"):].strip()
         if not rest:
-            info_panel(
-                "Usage: /use-skill <name> [param1=value1 param2=value2 ...]\n\n"
-                "Example: /use-skill summarise_text text='Hello world'"
-            )
+            info_panel("Usage: /use-skill <name> [key=value ...]")
         else:
-            skill_parts = rest.split(None, 1)
-            skill_name  = skill_parts[0]
-            raw_params  = skill_parts[1] if len(skill_parts) > 1 else ""
+            sp          = rest.split(None, 1)
+            skill_name  = sp[0]
+            raw_params  = sp[1] if len(sp) > 1 else ""
             params: dict = {}
             if raw_params:
                 import shlex
@@ -489,59 +446,77 @@ def handle_command(
                         params[k.strip()] = v.strip()
                     else:
                         params["input"] = token
-            from lirox.skills.executor import SkillExecutor
-            with console.status(f"[bold cyan]⚙️  Running skill '{skill_name}'…[/]", spinner="dots"):
-                result = SkillExecutor().run(skill_name, params)
-            show_answer(result, agent="skill")
+
+            # Try SkillsRegistry first (.py skills), then SkillExecutor (.json skills)
+            result = None
+            try:
+                from lirox.mind.agent import get_skills
+                reg = get_skills()
+                if skill_name.lower() in [s["name"].lower() for s in reg.list_skills()]:
+                    with console.status(f"[bold cyan]⚙️ Running '{skill_name}'…[/]", spinner="dots"):
+                        result = reg.run_skill(skill_name, str(params), {})
+            except Exception:
+                pass
+
+            if result is None:
+                from lirox.skills.executor import SkillExecutor
+                with console.status(f"[bold cyan]⚙️ Running '{skill_name}'…[/]", spinner="dots"):
+                    result = SkillExecutor().run(skill_name, params)
+
+            show_answer(result or "Skill returned no output.", agent="skill")
 
     elif base == "/add-agent":
         desc = cmd[10:].strip()
         if not desc:
-            info_panel("Usage: /add-agent <description of the agent and what it does>")
+            info_panel("Usage: /add-agent <description — include the name you want>")
         else:
-            info_panel("Building new sub-agent via LLM...")
+            # FIX: extract agent name from description before calling builder
+            import re
+            nm = (re.search(r'(?:name[d]?|called|as)\s+["\']?([A-Za-z][A-Za-z0-9_]+)["\']?', desc, re.IGNORECASE)
+                  or re.search(r'@([A-Za-z][A-Za-z0-9_]+)', desc)
+                  or re.search(r'\b([A-Z][a-z][a-zA-Z0-9_]+)\b', desc))
+            agent_name = nm.group(1) if nm else "CustomAgent"
+            info_panel(f"Building agent '{agent_name}'…")
             from lirox.mind.agent import get_sub_agents
-            reg = get_sub_agents()
             try:
-                res  = reg.build_agent_from_description(desc, name="NewAgent")
-                name = res.get("name", "NewAgent")
-                path = res.get("_saved_path", "")
-                if path:
-                    success_message(
-                        f"✅ Agent '{name}' created at {path}\n"
-                        f"Use it with: @{name} <query>"
-                    )
+                res = get_sub_agents().build_agent_from_description(desc, name=agent_name)
+                if res.get("success"):
+                    name = res.get("name", agent_name)
+                    path = res.get("path","")
+                    success_message(f"✅ Agent '{name}' created!\n"
+                                    f"   Saved: {path}\n"
+                                    f"   Use:   @{name} <query>")
                 else:
-                    success_message(f"Agent '{name}' created successfully!")
+                    error_panel("AGENT FAILED", res.get("error","Unknown error"))
             except Exception as e:
-                error_panel("AGENT GENERATION ERROR", str(e))
+                error_panel("AGENT ERROR", str(e))
 
     elif base == "/agents":
-        from lirox.agents.manager import AgentManager
-        mgr    = AgentManager()
-        agents = mgr.list_agents()
+        # FIX: use SubAgentsRegistry (.py files) not AgentManager (.json files)
+        from lirox.mind.agent import get_sub_agents
+        agents = get_sub_agents().list_agents()
         if not agents:
             info_panel("No agents found. Use /add-agent to create one.")
         else:
-            lines = ["AVAILABLE AGENTS\n"]
+            lines = [f"AVAILABLE AGENTS ({len(agents)})\n"]
             for a in agents:
-                lines.append(f"  • @{a['name']}: {a['description']}")
-                lines.append(f"    Specialization: {a['specialization']}")
+                lines.append(f"  • @{a['name']}: {a.get('description','-')[:80]}")
                 lines.append(f"    Use: @{a['name']} <query>")
             info_panel("\n".join(lines))
 
-    # ── New v1.0.0 commands ───────────────────────────────────────────────────
     elif base == "/restart":
-        info_panel("🔄 Restarting Lirox...")
+        info_panel("🔄 Restarting…")
         time.sleep(1)
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
-    # ── Legacy commands ───────────────────────────────────────────────────────
+    elif base == "/backup":
+        run_backup()
+
     elif base in ("/uninstall", "/update", "/import-memory", "/export-profile"):
         _legacy_commands(orch, profile, cmd, base)
 
     else:
-        console.print(f"  [dim]Unknown command: {base}. Type /help for options.[/]")
+        console.print(f"  [dim]Unknown command: {base}. Type /help.[/]")
 
 
 def run_update():
@@ -550,77 +525,70 @@ def run_update():
     info_panel("Checking for updates…")
     try:
         if os.path.exists(os.path.join(PROJECT_ROOT, ".git")):
-            result = subprocess.run(
-                ["git", "-C", PROJECT_ROOT, "pull"],
-                capture_output=True, text=True, check=True
-            )
+            result = subprocess.run(["git","-C",PROJECT_ROOT,"pull"],
+                                    capture_output=True, text=True, check=True)
             if "Already up to date." in result.stdout:
-                success_message("Lirox is already up to date.")
+                success_message("Already up to date.")
             else:
                 console.print(f"[dim]{result.stdout.strip()}[/]")
-                subprocess.run(
-                    [sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT],
-                    capture_output=True
-                )
-                success_message("Lirox updated. Please restart.")
+                subprocess.run([sys.executable,"-m","pip","install","-e",PROJECT_ROOT],
+                               capture_output=True)
+                success_message("Updated. Please restart.")
         else:
-            info_panel("Not a Git repo.\nRun: pip install --upgrade lirox")
+            info_panel("Not a git repo.\nRun: pip install --upgrade lirox")
     except Exception as e:
         error_panel("UPDATE FAILED", str(e))
+
+
+def run_backup():
+    import shutil
+    from lirox.config import DATA_DIR, PROJECT_ROOT
+    from pathlib import Path
+    from datetime import datetime
+    backup_dir = Path.home() / ".lirox_backup"
+    backup_dir.mkdir(exist_ok=True)
+    dest = backup_dir / f"lirox_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    try:
+        shutil.copytree(DATA_DIR, str(dest))
+        pf = Path(PROJECT_ROOT) / "profile.json"
+        if pf.exists(): shutil.copy2(pf, dest / "profile.json")
+        success_message(f"Backup saved to: {dest}")
+    except Exception as e:
+        error_panel("BACKUP FAILED", str(e))
 
 
 def _legacy_commands(orch, profile, cmd, base):
     import shutil
     from lirox.config import PROJECT_ROOT, DATA_DIR, OUTPUTS_DIR
-    from rich.panel import Panel as _Panel
-    from lirox.ui.display import info_panel, success_message, error_panel
+    from rich.panel import Panel as _P
 
     if base == "/uninstall":
-        console.print()
-        console.print(_Panel(
-            "[bold red]⚠️  UNINSTALL LIROX[/]\n\n"
-            "This removes ALL Lirox data:\n"
-            "  • Profile and settings\n"
-            "  • Memory and learning data\n"
-            "  • Configuration (.env)\n\n"
-            "Package: run 'pip uninstall lirox' separately.",
-            border_style="red"
-        ))
-        if confirm_prompt("Delete ALL Lirox data? Cannot be undone."):
-            for path in [
-                os.path.join(PROJECT_ROOT, "profile.json"),
-                os.path.join(PROJECT_ROOT, ".env"),
-            ]:
-                if os.path.exists(path):
-                    os.remove(path)
+        console.print(_P(
+            "[bold red]⚠️  UNINSTALL[/]\n\nDeletes ALL data. Package removal: pip uninstall lirox",
+            border_style="red"))
+        if confirm_prompt("Delete ALL Lirox data?"):
+            for path in [os.path.join(PROJECT_ROOT, "profile.json"),
+                          os.path.join(PROJECT_ROOT, ".env")]:
+                if os.path.exists(path): os.remove(path)
             for dp in [DATA_DIR, OUTPUTS_DIR]:
-                if os.path.exists(dp):
-                    shutil.rmtree(dp, ignore_errors=True)
-            success_message("All data deleted.")
-            sys.exit(0)
+                if os.path.exists(dp): shutil.rmtree(dp, ignore_errors=True)
+            success_message("All data deleted."); sys.exit(0)
 
     elif base == "/update":
         run_update()
 
     elif base == "/import-memory":
-        console.print("\n  [bold #FFC107]To import memory from a file (Conversations JSON, txt, md):[/]")
-        filepath = console.input("  [dim]Path to export file: [/]").strip()
+        console.print("\n  [bold #FFC107]Import memory from ChatGPT/Claude/Gemini export file:[/]")
+        filepath = console.input("  [dim]Path to file: [/]").strip()
         if filepath:
             from lirox.memory.import_handler import MemoryImporter
             from lirox.mind.agent import get_learnings
-            info_panel("Importing memory...")
+            info_panel("Importing…")
             res = MemoryImporter(get_learnings()).import_file(filepath)
             if "error" in res:
                 error_panel("IMPORT ERROR", res["error"])
             else:
-                success_message(
-                    f"Import successful!\n"
-                    f"  Source: {res['source']}\n"
-                    f"  Imported: {res['imported']} messages\n"
-                    f"  Facts added: {res['facts_added']}\n"
-                    f"  Topics updated: {res['topics_added']}\n"
-                    f"  Projects found: {res.get('projects_added', 0)}"
-                )
+                success_message(f"Imported: {res['imported']} messages · {res['facts_added']} facts")
 
     elif base == "/export-profile":
         import json as _json
