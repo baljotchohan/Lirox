@@ -20,6 +20,11 @@ from lirox.agents.base_agent import BaseAgent, AgentEvent
 from lirox.memory.manager import MemoryManager
 from lirox.thinking.scratchpad import Scratchpad
 from lirox.utils.llm import generate_response
+from lirox.utils.streaming import StreamingResponse
+
+# Module-level singleton — avoids repeated object creation across all sub-handlers
+_STREAMER = StreamingResponse()
+
 def _get_agent_system_prompt() -> str:
     from lirox.mind.agent import get_soul, get_learnings
     return get_soul().to_system_prompt(get_learnings().to_context_string())
@@ -241,6 +246,11 @@ class PersonalAgent(BaseAgent):
             system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
+
+        # Stream the summary paragraph-by-paragraph
+        for chunk in _STREAMER.stream_in_paragraphs(final):
+            yield {"type": "streaming", "message": chunk}
+
         yield {"type": "done", "answer": final}
 
     # ── Shell sub-handler ─────────────────────────────────────────────────────
@@ -289,6 +299,10 @@ class PersonalAgent(BaseAgent):
             system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
+
+        for chunk in _STREAMER.stream_in_paragraphs(final):
+            yield {"type": "streaming", "message": chunk}
+
         yield {"type": "done", "answer": final}
 
     # ── Web sub-handler ───────────────────────────────────────────────────────
@@ -316,6 +330,10 @@ class PersonalAgent(BaseAgent):
             system_prompt=_get_agent_system_prompt(),
         )
         self.memory.save_exchange(query, final)
+
+        for chunk in _STREAMER.stream_in_paragraphs(final):
+            yield {"type": "streaming", "message": chunk}
+
         yield {"type": "done", "answer": final}
 
     # ── Chat sub-handler ──────────────────────────────────────────────────────
@@ -334,4 +352,9 @@ class PersonalAgent(BaseAgent):
 
         answer = generate_response(prompt, provider="auto", system_prompt=base_sys)
         self.memory.save_exchange(query, answer)
+
+        # Stream paragraph-by-paragraph for a live typing feel
+        for chunk in _STREAMER.stream_in_paragraphs(answer):
+            yield {"type": "streaming", "message": chunk}
+
         yield {"type": "done", "answer": answer}

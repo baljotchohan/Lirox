@@ -91,6 +91,18 @@ def show_answer(answer: str, agent: str = "personal"):
     console.print()
 
 
+def render_streaming_chunk(chunk: str) -> None:
+    """Print a streaming response chunk in real-time without a trailing newline.
+
+    Used by the main loop to render live typing output as events arrive.
+    The caller is responsible for printing a final newline when streaming ends.
+
+    Args:
+        chunk: A text fragment emitted by a ``streaming`` agent event.
+    """
+    console.print(escape(chunk), end="", soft_wrap=True)
+
+
 def show_status_card(profile_data: dict, providers: list):
     t = Table(box=None, padding=(0, 2), show_header=False)
     t.add_column("Key",   style=CLR_DIM)
