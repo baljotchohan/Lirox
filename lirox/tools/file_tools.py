@@ -5,10 +5,21 @@ Safe, sandboxed file operations and shell execution.
 """
 from __future__ import annotations
 
+import glob
 import os
 import subprocess
 import time
 from typing import Dict, Generator, List, Optional, Tuple
+
+
+def _safe_readlink(path: str) -> Optional[str]:
+    """Return the symlink target for *path*, or None if not a symlink or unreadable."""
+    if not os.path.islink(path):
+        return None
+    try:
+        return os.readlink(path)
+    except OSError:
+        return None
 
 
 # ── File Safety ───────────────────────────────────────────────────────────────
@@ -93,8 +104,7 @@ def file_list(path: str = ".", pattern: str = "*", max_files: int = 100) -> str:
     if not ok:
         return info
     try:
-        import glob as _glob
-        matches = _glob.glob(os.path.join(info, pattern), recursive=True)
+        matches = glob.glob(os.path.join(info, pattern), recursive=True)
         if not matches:
             return f"No files matching '{pattern}' in {path}"
         lines = []
@@ -266,7 +276,7 @@ def get_file_metadata(path: str) -> Dict:
             "permissions": oct(stat.st_mode)[-3:],
             "is_dir": os.path.isdir(info),
             "is_symlink": os.path.islink(info),
-            "symlink_target": os.readlink(info) if os.path.islink(info) else None,
+            "symlink_target": _safe_readlink(info),
             "mime_type": mime_type or "unknown",
         }
     except (OSError, FileNotFoundError) as e:

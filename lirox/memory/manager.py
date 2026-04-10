@@ -122,12 +122,13 @@ class MemoryManager:
     def _load(self, path: str) -> Optional[dict]:
         # Bug #6: Acquire lock before reading to prevent race with _save()
         with self._lock:
-            if os.path.exists(path):
-                try:
-                    with open(path) as f:
-                        return json.load(f)
-                except Exception:
-                    pass
+            try:
+                with open(path) as f:
+                    return json.load(f)
+            except FileNotFoundError:
+                pass
+            except Exception:
+                pass
         return None
 
     def _save(self, path: str, data: dict):

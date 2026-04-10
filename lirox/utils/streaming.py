@@ -34,20 +34,8 @@ class StreamingResponse:
             i = 0
             while i < len(text):
                 ch = text[i]
-                # Handle special whitespace characters individually
-                if ch in ('\n', '\t', '\r'):
-                    yield ch
-                    i += 1
-                elif ord(ch) > 127:
-                    # Multi-byte Unicode: find a natural boundary (emit contiguous non-ASCII run)
-                    j = i + 1
-                    while j < len(text) and ord(text[j]) > 127:
-                        j += 1
-                    yield text[i:j]
-                    i = j
-                else:
-                    yield ch
-                    i += 1
+                yield ch
+                i += 1
                 if delay > 0:
                     time.sleep(delay)
         else:
