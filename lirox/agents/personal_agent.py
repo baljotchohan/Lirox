@@ -20,6 +20,7 @@ from lirox.agents.base_agent import BaseAgent, AgentEvent
 from lirox.memory.manager import MemoryManager
 from lirox.thinking.scratchpad import Scratchpad
 from lirox.utils.llm import generate_response
+from lirox.utils.streaming import StreamingResponse
 def _get_agent_system_prompt() -> str:
     from lirox.mind.agent import get_soul, get_learnings
     return get_soul().to_system_prompt(get_learnings().to_context_string())
@@ -243,9 +244,8 @@ class PersonalAgent(BaseAgent):
         self.memory.save_exchange(query, final)
 
         # Stream the summary paragraph-by-paragraph
-        from lirox.utils.streaming import StreamingResponse
         for chunk in StreamingResponse().stream_in_paragraphs(final):
-            yield {"type": "streaming", "chunk": chunk, "message": chunk}
+            yield {"type": "streaming", "message": chunk}
 
         yield {"type": "done", "answer": final}
 
@@ -296,9 +296,8 @@ class PersonalAgent(BaseAgent):
         )
         self.memory.save_exchange(query, final)
 
-        from lirox.utils.streaming import StreamingResponse
         for chunk in StreamingResponse().stream_in_paragraphs(final):
-            yield {"type": "streaming", "chunk": chunk, "message": chunk}
+            yield {"type": "streaming", "message": chunk}
 
         yield {"type": "done", "answer": final}
 
@@ -328,9 +327,8 @@ class PersonalAgent(BaseAgent):
         )
         self.memory.save_exchange(query, final)
 
-        from lirox.utils.streaming import StreamingResponse
         for chunk in StreamingResponse().stream_in_paragraphs(final):
-            yield {"type": "streaming", "chunk": chunk, "message": chunk}
+            yield {"type": "streaming", "message": chunk}
 
         yield {"type": "done", "answer": final}
 
@@ -353,8 +351,7 @@ class PersonalAgent(BaseAgent):
         self.memory.save_exchange(query, answer)
 
         # Stream paragraph-by-paragraph for a live typing feel
-        from lirox.utils.streaming import StreamingResponse
         for chunk in StreamingResponse().stream_in_paragraphs(answer):
-            yield {"type": "streaming", "chunk": chunk, "message": chunk}
+            yield {"type": "streaming", "message": chunk}
 
         yield {"type": "done", "answer": answer}
