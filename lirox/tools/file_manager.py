@@ -98,11 +98,11 @@ class FileManager:
 
         Returns:
             A list of match strings formatted as ``path:line: text``,
-            or a single-element list with an error / no-match message.
+            or a single-element list with a no-match / error message.
         """
         from lirox.tools.file_tools import file_search
         result = file_search(root, query)
-        return result.splitlines() if result else [f"No matches for '{query}' in {root}"]
+        return result.splitlines()
 
     # ── Convenience dispatcher ────────────────────────────────────────────────
 
