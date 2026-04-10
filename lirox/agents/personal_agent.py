@@ -66,7 +66,8 @@ FILE_SIGNALS  = ["read file","write file","create file","edit file","delete file
                  "show me","what's in","look at","create a","make a","build a",
                  "generate a","write to","save as","in my ","in the ","folder",
                  "directory","pdf","csv","txt","json","markdown",".py",".js",
-                 "file in","add to","put in","store","add details"]
+                 ".md","readme","file in","add to","put in","store","add details",
+                 "read my","read the"]
 SHELL_SIGNALS = ["run command","execute","terminal","bash","shell","git",
                  "python script","run python","npm","node","docker","pip install",
                  "run tests","git status","git commit","git push","git pull",
@@ -87,6 +88,13 @@ SELF_SIGNALS  = ["your code","your source","how do you work","your architecture"
 def classify_task(query: str) -> str:
     q = query.lower()
     if any(s in q for s in SELF_SIGNALS):  return "self"
+    # Explicit file-path indicators take priority over generic "create a" phrases
+    _file_path_signals = ["in my ", "in the ", "file", "folder", "directory",
+                          ".py", ".js", ".txt", ".json", ".csv", ".pdf", ".md",
+                          "save to", "write to", "add to", "store", "add details",
+                          "file in", "put in"]
+    if any(s in q for s in _file_path_signals) and any(s in q for s in FILE_SIGNALS):
+        return "file"
     if any(s in q for s in CODE_SIGNALS):  return "code"
     if any(s in q for s in FILE_SIGNALS):  return "file"
     if any(s in q for s in SHELL_SIGNALS): return "shell"

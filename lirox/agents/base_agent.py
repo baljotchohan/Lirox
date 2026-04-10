@@ -112,5 +112,4 @@ class BaseAgent(ABC, PlanningMixin):
         except Exception as e:
             return f"Fetch error: {e}"
 
-    def get_free_data(self, query: str) -> dict:
-        return {"status": "error", "answer": "free_data deprecated"}
+

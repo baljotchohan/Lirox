@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "lirox"
 version = "1.0.0"
-description = "Intelligence as an Operating System. Autonomous AI agent."
+description = "Intelligence as an Operating System. Autonomous personal AI agent. Terminal-first. Local-first."
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
-authors = [{name = "Baljot Singh"}]
+authors = [{name = "Lirox Contributors"}]
 keywords = ["ai", "agent", "cli", "autonomous", "llm", "skills"]
 
 dependencies = [
