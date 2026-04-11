@@ -93,7 +93,7 @@ def main():
     style      = Style.from_dict({"prompt": "ansiyellow bold", "symbol": "ansiyellow"})
 
     commands = [
-        "/help", "/history", "/session", "/models", "/memory", "/think",
+        "/help", "/setup", "/history", "/session", "/models", "/use-model", "/memory", "/think",
         "/profile", "/reset", "/test",
         "/train", "/learnings", "/add-skill", "/skills", "/use-skill",
         "/add-agent", "/agents",
@@ -227,9 +227,11 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         t.add_column("Description", style="dim white")
         rows = [
             ("/help",               "Show this help"),
+            ("/setup",              "Re-run setup wizard (API keys, profile, name…)"),
             ("/history [n]",        "Show last N sessions"),
             ("/session",            "Current session info"),
             ("/models",             "Available LLM providers"),
+            ("/use-model <name>",   "Pin a provider for this session (groq, gemini, openai…)"),
             ("/memory",             "Memory stats"),
             ("/think <q>",          "Run thinking engine"),
             ("/profile",            "Show your profile"),
@@ -260,6 +262,17 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         console.print(_P(t, title=f"[bold #FFC107]LIROX v{APP_VERSION} — COMMANDS[/]",
                           border_style="#FFC107"))
 
+    elif base == "/setup":
+        from lirox.ui.wizard import run_setup_wizard
+        try:
+            run_setup_wizard(profile)
+            orch.profile_data = profile.data
+            # Refresh agent name in the outer scope isn't possible here directly,
+            # so we tell the user a restart will pick up name changes.
+            success_message("Setup complete! Restart Lirox to apply any name changes.")
+        except KeyboardInterrupt:
+            console.print("\n  [dim]Setup cancelled.[/]")
+
     elif base == "/history":
         limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 20
         info_panel(orch.session_store.format_history(limit))
@@ -274,9 +287,47 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
 
     elif base == "/models":
         p = available_providers()
+        pinned = os.getenv("_LIROX_PINNED_MODEL", "")
+        pin_note = f"\n\n  📌 Pinned: {pinned}" if pinned else ""
         info_panel("AVAILABLE LLM PROVIDERS\n\n" +
                    ("\n".join(f"  ✓ {x}" for x in p) if p else
-                    "  None configured — run /setup"))
+                    "  None configured — run /setup") + pin_note)
+
+    elif base == "/use-model":
+        from lirox.utils.llm import available_providers as _avp, _PROVIDER_ENV_MAP
+        target = parts[1].lower().strip() if len(parts) > 1 else ""
+        valid  = list(_PROVIDER_ENV_MAP.keys()) + ["ollama", "hf_bnb", "auto"]
+        if not target:
+            avail  = _avp()
+            pinned = os.getenv("_LIROX_PINNED_MODEL", "none")
+            lines  = ["MODEL SWITCHER\n",
+                      f"  Currently pinned : {pinned}",
+                      f"  Available        : {', '.join(avail) or 'none'}",
+                      "",
+                      "  Usage: /use-model <provider>",
+                      "  e.g.   /use-model groq",
+                      "         /use-model gemini",
+                      "         /use-model openai",
+                      "         /use-model anthropic",
+                      "         /use-model ollama",
+                      "         /use-model auto    ← let Lirox choose"]
+            info_panel("\n".join(lines))
+        elif target not in valid:
+            error_panel("UNKNOWN PROVIDER",
+                        f"'{target}' is not recognised.\n"
+                        f"Valid options: {', '.join(valid)}")
+        else:
+            os.environ["_LIROX_PINNED_MODEL"] = target
+            # Patch the orchestrator's default provider so it takes effect immediately
+            try:
+                orch.default_provider = None if target == "auto" else target
+            except AttributeError:
+                pass  # orchestrator may not expose this attr; env var is still picked up
+            if target == "auto":
+                success_message("Model set to [auto] — Lirox will choose the best provider.")
+            else:
+                success_message(f"Model pinned to [{target}]. All queries will use this provider.\n"
+                                f"  Switch back: /use-model auto")
 
     elif base == "/memory":
         lines = ["MEMORY STATS\n"]

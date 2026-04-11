@@ -332,6 +332,11 @@ def generate_response(prompt: str, provider: str = "auto",
         from lirox.config import LLM_TIMEOUT
         timeout = LLM_TIMEOUT
 
+    # Honour /use-model pin — overrides caller's provider unless caller was explicit
+    _pinned = os.getenv("_LIROX_PINNED_MODEL", "")
+    if _pinned and _pinned != "auto" and provider == "auto":
+        provider = _pinned
+
     if provider == "auto":
         if os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true":
             local   = os.getenv("LOCAL_LLM_PROVIDER", "ollama").lower()
