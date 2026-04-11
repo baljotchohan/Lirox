@@ -42,6 +42,7 @@ class LearningsStore:
         self._path = Path(MIND_LEARN_FILE)
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self.data = self._load()
+        self._dirty = False   # BUG-4 FIX: track unsaved topic changes
 
     def _load(self) -> Dict:
         if self._path.exists():
@@ -55,6 +56,7 @@ class LearningsStore:
 
     def save(self) -> None:
         self._path.write_text(json.dumps(self.data, indent=2, default=str))
+        self._dirty = False
 
     # ── Add learnings ─────────────────────────────────────────────────────────
 
@@ -92,12 +94,18 @@ class LearningsStore:
         self.save()
 
     def bump_topic(self, topic: str) -> None:
-        """Increment topic frequency counter."""
+        """Increment topic frequency counter. Deferred save (BUG-4 FIX)."""
         if topic not in self.data["topics"]:
             self.data["topics"][topic] = {"count": 0, "last_seen": None}
         self.data["topics"][topic]["count"] += 1
         self.data["topics"][topic]["last_seen"] = datetime.now().isoformat()
-        self.save()
+        # Mark dirty but DON'T save immediately — flush() or add_fact() will save
+        self._dirty = True
+
+    def flush(self) -> None:
+        """Save if there are unsaved topic bumps."""
+        if self._dirty:
+            self.save()
 
     def add_project(self, name: str, description: str = "") -> None:
         """Track a project the user is working on."""

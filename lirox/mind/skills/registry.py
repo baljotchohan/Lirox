@@ -132,15 +132,42 @@ class SkillsRegistry:
             return f"Skill '{name}' error: {e}"
 
     def find_relevant_skill(self, query: str) -> Optional[str]:
-        """Find the most relevant skill for a query."""
+        """
+        Find the most relevant skill for a query.
+        BUG-6 FIX: requires 2+ matching meaningful words to avoid false positives.
+        """
         if not self._skills:
             return None
+
+        # Common words that should not trigger a skill match alone
+        _STOP = {
+            'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+            'have', 'has', 'do', 'does', 'did', 'will', 'would', 'could',
+            'should', 'may', 'might', 'can', 'this', 'that', 'with', 'from',
+            'for', 'and', 'but', 'or', 'not', 'all', 'any', 'some', 'more',
+            'what', 'when', 'where', 'who', 'how', 'why', 'your', 'my', 'our',
+            'text', 'file', 'data', 'help', 'make', 'use', 'get', 'run', 'show',
+            'list', 'find', 'give', 'tell', 'want', 'need', 'like', 'just',
+        }
+
         query_lower = query.lower()
+        query_words = {w for w in query_lower.split() if len(w) > 3 and w not in _STOP}
+
+        best_name  = None
+        best_score = 0
+
         for name, meta in self._meta.items():
-            desc_words = meta["description"].lower().split()
-            if any(w in query_lower for w in desc_words if len(w) > 3):
-                return name
-        return None
+            desc_words = {w for w in meta["description"].lower().split()
+                          if len(w) > 3 and w not in _STOP}
+            matches    = query_words & desc_words
+            score      = len(matches)
+
+            # Require at least 2 meaningful word matches to activate a skill
+            if score >= 2 and score > best_score:
+                best_score = score
+                best_name  = name
+
+        return best_name
 
     # ── Build new skill ───────────────────────────────────────────────────────
 

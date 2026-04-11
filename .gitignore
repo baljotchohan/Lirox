@@ -5,6 +5,12 @@ memory.json
 profile.json
 .lirox_history
 
+# Personal agent data (soul, learnings — user-specific)
+data/mind/soul.json
+data/mind/learnings.json
+data/mind/skills/
+data/mind/agents/
+
 # Testing / Debug Scripts
 test_*.py
 debug_*.py

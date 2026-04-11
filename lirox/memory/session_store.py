@@ -157,8 +157,14 @@ class SessionStore:
                 json.dump(self._current.to_dict(), f, indent=2)
             self._index[self._current.session_id] = fpath
             self._save_index()
-        except Exception:
-            pass
+        except Exception as e:
+            # BUG-8 FIX: log instead of silently swallowing
+            try:
+                from lirox.utils.structured_logger import get_logger
+                get_logger("lirox.sessions").error(
+                    f"Session save failed [{self._current.session_id}]: {e}")
+            except Exception:
+                pass  # if logger itself fails, don't crash the agent
 
     def load_session(self, session_id: str) -> Optional[Session]:
         fpath = self._index.get(session_id)

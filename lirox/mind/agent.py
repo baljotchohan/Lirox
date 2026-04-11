@@ -112,6 +112,7 @@ class MindAgent(BaseAgent):
             answer = generate_response(prompt, provider="auto", system_prompt=sys_prompt)
             self.memory.save_exchange(query, answer)
             self._auto_topics(query, learnings)
+            learnings.flush()   # persist deferred topic bumps (BUG-4 FIX)
             yield {"type": "done", "answer": answer}
         except Exception as e:
             improver.log_error("mind_agent:run", str(e))

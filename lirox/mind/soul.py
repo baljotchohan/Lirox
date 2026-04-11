@@ -77,7 +77,14 @@ class LivingSoul:
         self.save()
 
     def increment_interactions(self) -> None:
+        """Increment interaction counter. Saves lazily every 10 interactions."""
         self.state["interaction_count"] = self.state.get("interaction_count", 0) + 1
+        # BUG-3 FIX: only write to disk every 10 interactions, not every message
+        if self.state["interaction_count"] % 10 == 0:
+            self.save()
+
+    def flush(self) -> None:
+        """Force-save immediately (called on /train, /soul, shutdown)."""
         self.save()
 
     def add_quirk(self, quirk: str) -> None:

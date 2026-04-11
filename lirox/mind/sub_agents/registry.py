@@ -55,13 +55,15 @@ class SubAgentsRegistry:
         self._load_all()
 
     def _load_all(self):
+        from lirox.utils.structured_logger import get_logger
+        _log = get_logger("lirox.sub_agents")
         for path in self._dir.glob("*.py"):
             if path.name.startswith("_"):
                 continue
             try:
                 self._load_agent_file(path)
             except Exception as e:
-                print(f"  [sub-agent] Failed to load {path.name}: {e}")
+                _log.warning(f"Failed to load sub-agent {path.name}: {e}")
 
     def _load_agent_file(self, path: Path) -> Optional[str]:
         spec = importlib.util.spec_from_file_location(
