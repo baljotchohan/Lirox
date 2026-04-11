@@ -5,6 +5,76 @@ import time
 import argparse
 
 
+def fix_windows_path():
+    """Auto-fix: add Python's Scripts dir to Windows PATH and re-exec so lirox starts."""
+    if sys.platform != "win32":
+        return
+
+    import sysconfig
+    scripts_dir = sysconfig.get_path("scripts")
+    if not scripts_dir:
+        return
+
+    path_env = os.environ.get("PATH", "")
+    if scripts_dir.lower() in path_env.lower():
+        return  # already present in the current session — nothing to do
+
+    # ── 1. Persist to the Windows registry (user-level) ──────────────────────
+    try:
+        import winreg
+        key_path = r"Environment"
+        with winreg.OpenKey(
+            winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ | winreg.KEY_WRITE
+        ) as key:
+            try:
+                current_reg, _ = winreg.QueryValueEx(key, "PATH")
+            except FileNotFoundError:
+                current_reg = ""
+            # Only append if not already there
+            if scripts_dir.lower() not in current_reg.lower():
+                new_val = (current_reg.rstrip(";") + ";" + scripts_dir).lstrip(";")
+                winreg.SetValueEx(key, "PATH", 0, winreg.REG_EXPAND_SZ, new_val)
+        # Broadcast WM_SETTINGCHANGE so Explorer / new shells pick it up
+        try:
+            import ctypes
+            HWND_BROADCAST = 0xFFFF
+            WM_SETTINGCHANGE = 0x001A
+            ctypes.windll.user32.SendMessageTimeoutW(
+                HWND_BROADCAST, WM_SETTINGCHANGE, 0, "Environment", 2, 5000, None
+            )
+        except Exception:
+            pass
+        _patched = True
+    except Exception:
+        _patched = False
+
+    # ── 2. Fix the current process env so lirox.exe is findable right now ────
+    os.environ["PATH"] = path_env.rstrip(";") + ";" + scripts_dir
+
+    if _patched:
+        print(
+            f"\n[Lirox] \u2705  PATH fixed: added Python Scripts to your user PATH.\n"
+            f"         ({scripts_dir})\n"
+            f"         New terminals will work automatically.\n",
+            flush=True,
+        )
+    else:
+        print(
+            f"\n[Lirox] \u26a0\ufe0f  Could not write to registry. Please add manually:\n"
+            f"         {scripts_dir}\n",
+            flush=True,
+        )
+
+    # ── 3. Re-exec the current command so lirox itself starts cleanly ─────────
+    # Use the lirox.exe that is now on PATH, or fall back to python -m lirox
+    import shutil
+    lirox_exe = shutil.which("lirox") or os.path.join(scripts_dir, "lirox.exe")
+    if lirox_exe and os.path.isfile(lirox_exe):
+        os.execv(lirox_exe, [lirox_exe] + sys.argv[1:])
+    else:
+        os.execv(sys.executable, [sys.executable, "-m", "lirox"] + sys.argv[1:])
+
+
 def check_dependencies():
     required = {
         "rich": "rich", "prompt_toolkit": "prompt-toolkit",
@@ -50,6 +120,7 @@ def get_prompt_label(agent_name: str) -> list:
 
 
 def main():
+    fix_windows_path()   # no-op on macOS/Linux; auto-fixes PATH on Windows
     check_dependencies()
 
     parser = argparse.ArgumentParser(description=f"Lirox v{APP_VERSION} — Personal AI Agent")

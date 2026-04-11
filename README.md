@@ -107,6 +107,23 @@ git clone https://github.com/baljotchohan/lirox.git
 cd lirox && pip install -e . && lirox
 ```
 
+> **⚠️ Windows: "lirox is not recognized" fix**
+>
+> If you see `lirox : The term 'lirox' is not recognized...`, pip installed the script to a directory not on your PATH.
+> Run this in PowerShell **once** to fix it permanently:
+>
+> ```powershell
+> # Find your Python Scripts path, then add it to your user PATH:
+> $scriptsPath = python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+> [System.Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";$scriptsPath", [System.EnvironmentVariableTarget]::User)
+> # Restart PowerShell, then run:
+> lirox
+> ```
+>
+> Alternatively, open **Start → Edit the system environment variables → Environment Variables**,
+> find `Path` under *User variables*, click **Edit → New**, and paste the path shown in the pip warning
+> (e.g. `C:\Users\YourName\AppData\Roaming\Python\Python314\Scripts`). Restart PowerShell.
+
 ---
 
 ### 🐳 Docker
@@ -161,6 +178,14 @@ pip install --user -e .
 # Upgrade pip first if install fails:
 pip install --upgrade pip setuptools wheel
 pip install -e .
+```
+
+**Windows only — `lirox` not recognized after install:**
+```powershell
+# Add Python's Scripts folder to your PATH (one-time fix):
+$scriptsPath = python -c "import sysconfig; print(sysconfig.get_path('scripts'))"
+[System.Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";$scriptsPath", [System.EnvironmentVariableTarget]::User)
+# Restart PowerShell, then `lirox` will work.
 ```
 
 ---
