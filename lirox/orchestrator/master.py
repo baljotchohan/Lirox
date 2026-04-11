@@ -35,6 +35,7 @@ class MasterOrchestrator:
         self._mind_agent:    Optional[Any] = None   # FIX: declared in __init__
         self._agent_memory:  Dict[AgentType, MemoryManager] = {}
         self._agent_scratch: Dict[AgentType, Scratchpad]    = {}
+        self._interaction_count: int = 0  # BUG-C3 FIX: track interactions for auto-training
 
     def _get_personal_agent(self):
         if self._agent is None:
@@ -94,6 +95,8 @@ class MasterOrchestrator:
             mode: str = None, agent_override: str = None
             ) -> Generator[OrchestratorEvent, None, None]:
         start   = time.time()
+        # BUG-C3 FIX: increment interaction counter for auto-training trigger
+        self._interaction_count += 1
         session = self.session_store.current()
         session.add("user", query, agent="personal", mode="complex")
         history_ctx = self.session_store.get_context_for_agent("personal", limit=10)
@@ -132,6 +135,9 @@ class MasterOrchestrator:
             self.session_store.save_current()
             yield OrchestratorEvent(type="done", agent=agent_name, message=result_text,
                                      data={"total_time": time.time() - start})
+            # BUG-C3 FIX: auto-train every 20 interactions (non-blocking)
+            if self._interaction_count % 20 == 0:
+                yield from self._auto_train()
             return
 
         complex_ctx = thinking_trace or ""
@@ -157,3 +163,23 @@ class MasterOrchestrator:
         self.session_store.save_current()
         yield OrchestratorEvent(type="done", agent="personal", message=result_text,
                                  data={"total_time": time.time() - start})
+        # BUG-C3 FIX: auto-train every 20 interactions (non-blocking)
+        if self._interaction_count % 20 == 0:
+            yield from self._auto_train()
+
+    def _auto_train(self) -> Generator[OrchestratorEvent, None, None]:
+        """BUG-C3 FIX: Automatically extract learnings every 20 interactions."""
+        try:
+            from lirox.mind.agent import get_trainer
+            stats = get_trainer(self.global_memory).train(
+                self.global_memory, self.session_store
+            )
+            facts_added = stats.get("facts_added", 0)
+            if facts_added > 0:
+                yield OrchestratorEvent(
+                    type="auto_train",
+                    message=f"✓ Learned {facts_added} new fact{'s' if facts_added != 1 else ''}",
+                    data=stats,
+                )
+        except Exception:
+            pass  # auto-training is best-effort; never block the user

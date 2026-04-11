@@ -9,6 +9,7 @@ import glob
 import os
 import subprocess
 import time
+from pathlib import Path
 from typing import Dict, Generator, List, Optional, Tuple
 
 
@@ -32,17 +33,19 @@ def _is_safe_path(path: str) -> Tuple[bool, str]:
     """
     from lirox.config import SAFE_DIRS_RESOLVED, PROTECTED_PATHS
     try:
-        # Bug #2: Resolve symlinks safely — check both link and target
+        # BUG-C1 FIX: Use pathlib.Path.resolve() which correctly handles paths
+        # with special characters like () and + on Windows (os.path.realpath()
+        # can mangle such characters on Windows, causing [Errno 22] errors).
         if os.path.islink(path):
             target = _readlink_or_none(path)
             if target is None:
                 return False, f"Symlink resolution error: unreadable link at {path}"
             try:
-                resolved = os.path.realpath(os.path.abspath(target))
+                resolved = str(Path(target).resolve())
             except (OSError, ValueError) as e:
                 return False, f"Symlink resolution error: {e}"
         else:
-            resolved = os.path.realpath(os.path.abspath(path))
+            resolved = str(Path(path).resolve())
     except (OSError, ValueError) as e:
         return False, f"Path resolution error: {e}"
 
