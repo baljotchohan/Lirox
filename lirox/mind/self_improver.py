@@ -143,7 +143,7 @@ class SelfImprover:
                     timestamp  = time.strftime("%Y-%m-%d %H:%M", time.localtime())
                     get_learnings().add_fact(
                         f"Fixed: {issue_desc[:120]} in {meta['original_file']} ({timestamp})",
-                        confidence=0.95,
+                        confidence=1.0,
                         source="self_improve",
                     )
                 except Exception:
