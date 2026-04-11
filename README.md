@@ -36,17 +36,132 @@ The longer you use it, the more it feels like your own agent. Not a generic AI. 
 
 ## Install
 
+> **Requirements:** Python 3.9+ · macOS · Linux · Windows · Docker
+
+---
+
+### 🍎 macOS
+
 ```bash
-pip install lirox
+# Option 1 — From source (recommended)
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox
+pip install -e .
+lirox
+
+# Option 2 — Using pipx (isolated environment, no conflicts)
+pipx install git+https://github.com/baljotchohan/lirox.git
+lirox
+
+# Option 3 — With Homebrew Python
+brew install python
+pip3 install git+https://github.com/baljotchohan/lirox.git
 lirox
 ```
 
-**Requirements:** Python 3.9+ · macOS · Linux · Windows
+---
 
-**Zero cost to start.** Works out of the box with:
-- **Ollama** (fully local, free, private) — `ollama pull llama3`
-- **Groq** (free tier, fastest cloud) — [groq.com](https://groq.com)
-- **Gemini** (free tier) — [aistudio.google.com](https://aistudio.google.com)
+### 🐧 Linux (Ubuntu / Debian / Fedora / Arch)
+
+```bash
+# Option 1 — From source
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox
+pip install -e .
+lirox
+
+# Option 2 — Using pipx
+sudo apt install pipx        # Ubuntu/Debian
+# sudo dnf install pipx      # Fedora
+# sudo pacman -S python-pipx # Arch
+pipx install git+https://github.com/baljotchohan/lirox.git
+lirox
+
+# Option 3 — Virtual environment (cleanest)
+python3 -m venv ~/.lirox-env
+source ~/.lirox-env/bin/activate
+pip install -e /path/to/lirox
+lirox
+```
+
+---
+
+### 🪟 Windows (PowerShell / CMD / WSL)
+
+```powershell
+# Option 1 — From source (PowerShell)
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox
+pip install -e .
+lirox
+
+# Option 2 — Virtual environment (recommended on Windows)
+python -m venv %USERPROFILE%\lirox-env
+%USERPROFILE%\lirox-env\Scripts\activate
+pip install -e .
+lirox
+
+# Option 3 — WSL2 (Ubuntu on Windows) — treat like Linux above
+wsl
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox && pip install -e . && lirox
+```
+
+---
+
+### 🐳 Docker
+
+```bash
+# Build and run in an isolated container
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox
+docker build -t lirox .
+docker run -it --rm \
+  -v "$HOME/.lirox:/root/.lirox" \
+  -e GEMINI_API_KEY=your_key \
+  lirox
+```
+
+---
+
+### 🔁 Full install (all optional providers)
+
+```bash
+pip install -e ".[full]"
+# Includes: openai, anthropic, groq, websockets
+```
+
+---
+
+### ⚡ Zero cost to start — works out of the box with:
+
+| Provider | Cost | Setup |
+|---|---|---|
+| **Ollama** (fully local) | Free & private | `ollama pull llama3` |
+| **Groq** (fastest cloud) | Free tier | [groq.com](https://groq.com) |
+| **Gemini** | Free tier | [aistudio.google.com](https://aistudio.google.com) |
+| **OpenAI** | Paid | [platform.openai.com](https://platform.openai.com) |
+| **Anthropic** | Paid | [console.anthropic.com](https://console.anthropic.com) |
+| **DeepSeek** | Low cost | [platform.deepseek.com](https://platform.deepseek.com) |
+
+---
+
+### 🛠 Troubleshooting install
+
+```bash
+# Python version check
+python --version    # Must be 3.9+
+
+# If `lirox` command not found after pip install:
+python -m lirox     # Run as module
+
+# Permission errors on macOS/Linux:
+pip install --user -e .
+
+# Upgrade pip first if install fails:
+pip install --upgrade pip setuptools wheel
+pip install -e .
+```
 
 ---
 
