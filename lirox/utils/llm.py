@@ -394,9 +394,9 @@ def generate_response(prompt: str, provider: str = "auto",
                     continue  # skip rate-limited provider
                 future = _FALLBACK_POOL.submit(_call_provider, fb, prompt, system_prompt)
                 retry  = future.result(timeout=timeout)
+                attempt += 1
                 if not is_error_response(retry):
                     return retry
-                attempt += 1
             except Exception:
                 attempt += 1
                 continue

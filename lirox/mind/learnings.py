@@ -6,6 +6,7 @@ Every /train call crystallizes session patterns into permanent learnings.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import time
 import os
@@ -45,7 +46,6 @@ class LearningsStore:
         self._dirty = False   # BUG-4 FIX: track unsaved topic changes
         self._bump_count = 0  # BUG-H2 FIX: track bumps for periodic auto-save
         # BUG-H2 FIX: register atexit flush so dirty data is never lost on exit
-        import atexit
         atexit.register(self.flush)
 
     def _load(self) -> Dict:

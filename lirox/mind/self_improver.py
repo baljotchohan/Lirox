@@ -36,6 +36,8 @@ ERRORS:
 {errors}
 Output JSON: [{{"file":"path","description":"improvement","impact":"high|medium","effort":"low|medium|high","why":"reason"}}]"""
 
+_AUDIT_CHUNK_SIZE = 8000  # BUG-H4 FIX: max chars per audit chunk for large-file support
+
 
 class SelfImprover:
     PATCHABLE   = ["lirox/mind/agent.py","lirox/mind/trainer.py","lirox/mind/learnings.py",
@@ -70,7 +72,7 @@ class SelfImprover:
         except SyntaxError as se:
             return [{"line":se.lineno,"severity":"high","issue":f"Syntax: {se.msg}","suggestion":"Fix syntax"}]
         # BUG-H4 FIX: audit large files in 8KB chunks to avoid silent truncation
-        chunk_size = 8000
+        chunk_size = _AUDIT_CHUNK_SIZE
         if len(code) <= chunk_size:
             return self._audit_chunk(code, rel)
         all_issues = []
