@@ -69,9 +69,26 @@ class SelfImprover:
         try: ast.parse(code)
         except SyntaxError as se:
             return [{"line":se.lineno,"severity":"high","issue":f"Syntax: {se.msg}","suggestion":"Fix syntax"}]
+        # BUG-H4 FIX: audit large files in 8KB chunks to avoid silent truncation
+        chunk_size = 8000
+        if len(code) <= chunk_size:
+            return self._audit_chunk(code, rel)
+        all_issues = []
+        seen_issues: set = set()
+        for i in range(0, len(code), chunk_size):
+            chunk = code[i:i + chunk_size]
+            for iss in self._audit_chunk(chunk, rel):
+                key = (iss.get("issue", ""), iss.get("line", 0))
+                if key not in seen_issues:
+                    seen_issues.add(key)
+                    all_issues.append(iss)
+        return all_issues
+
+    def _audit_chunk(self, chunk: str, rel: str) -> List[Dict]:
+        """Audit a single code chunk and return issues."""
         issues = []
         try:
-            raw = generate_response(_AUDIT_PROMPT.format(filename=rel, code=code[:8000]),
+            raw = generate_response(_AUDIT_PROMPT.format(filename=rel, code=chunk),
                                     provider="auto", system_prompt="Code auditor. Output only JSON.")
             raw = re.sub(r"```json?\s*|```\s*","",raw.strip())
             m   = re.search(r"\[.*\]", raw, re.DOTALL)

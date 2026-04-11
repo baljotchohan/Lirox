@@ -19,6 +19,25 @@ def fix_windows_path():
     if scripts_dir.lower() in path_env.lower():
         return  # already present in the current session — nothing to do
 
+    # BUG-H6 FIX: check the registry BEFORE deciding to re-exec.
+    # If scripts_dir is already in the registry but not in the current shell
+    # (e.g. freshly opened terminal), just update the env and return — no re-exec
+    # needed, which would otherwise cause an infinite re-exec loop.
+    try:
+        import winreg
+        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Environment", 0,
+                            winreg.KEY_READ) as key:
+            try:
+                reg_path, _ = winreg.QueryValueEx(key, "PATH")
+                if scripts_dir.lower() in reg_path.lower():
+                    # Already persistent in registry — just update current env and return
+                    os.environ["PATH"] = path_env.rstrip(";") + ";" + scripts_dir
+                    return
+            except FileNotFoundError:
+                pass
+    except Exception:
+        pass
+
     # ── 1. Persist to the Windows registry (user-level) ──────────────────────
     try:
         import winreg
@@ -186,7 +205,8 @@ def main():
 
     while True:
         try:
-            line = session.prompt(get_prompt_label(agent_name), style=style).strip()
+            # BUG-H3 FIX: read agent name fresh each iteration so /setup changes take effect
+            line = session.prompt(get_prompt_label(profile.data.get("agent_name", "Lirox")), style=style).strip()
             if not line: continue
             if line.lower() in ("exit", "quit", "/exit"):
                 info_panel("Shutting down. Goodbye."); break
@@ -385,9 +405,9 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         try:
             run_setup_wizard(profile)
             orch.profile_data = profile.data
-            # Refresh agent name in the outer scope isn't possible here directly,
-            # so we tell the user a restart will pick up name changes.
-            success_message("Setup complete! Restart Lirox to apply any name changes.")
+            # BUG-H3 FIX: agent name is now read dynamically each prompt iteration,
+            # so the updated name takes effect immediately without a restart.
+            success_message("Setup complete!")
         except KeyboardInterrupt:
             console.print("\n  [dim]Setup cancelled.[/]")
 
