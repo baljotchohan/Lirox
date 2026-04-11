@@ -251,6 +251,10 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                 elif ev.message:
                     show_answer(ev.message, agent=last_agent)
 
+            elif t == "auto_train":
+                # BUG-C3 FIX: subtle indicator when auto-training extracts facts
+                console.print(f"  [dim #10b981]{ev.message}[/]")
+
             else:
                 if status and t in ("tool_call", "tool_result"):
                     status.stop(); status = None
@@ -284,6 +288,49 @@ def handle_agent_query(line: str) -> None:
 
     console.print(_Panel(result, title=f"[bold cyan]@{agent_ref}[/]",
                           border_style="cyan", padding=(1, 2)))
+
+
+def _show_pending_diffs(imp) -> None:
+    """BUG-C4 FIX: Display a unified diff for each pending patch so the user
+    can review changes before approving /apply."""
+    import difflib
+    import json
+    from pathlib import Path as _Path
+    from rich.panel import Panel as _Panel
+    from rich.syntax import Syntax
+    from lirox.config import PROJECT_ROOT
+
+    root = _Path(PROJECT_ROOT)
+    patches_dir = imp._patches_dir
+
+    for mf in sorted(patches_dir.glob("*.json")):
+        try:
+            meta = json.loads(mf.read_text())
+            pf   = _Path(meta["patch_file"])
+            orig = root / meta["original_file"]
+            if not pf.exists() or not orig.exists():
+                continue
+            original_lines = orig.read_text(errors="replace").splitlines(keepends=True)
+            patched_lines  = pf.read_text(errors="replace").splitlines(keepends=True)
+            diff_lines = list(difflib.unified_diff(
+                original_lines,
+                patched_lines,
+                fromfile=f"a/{meta['original_file']}",
+                tofile=f"b/{meta['original_file']}",
+                lineterm="",
+            ))
+            if diff_lines:
+                diff_text = "\n".join(diff_lines)
+                syntax = Syntax(diff_text, "diff", theme="monokai", line_numbers=False)
+                console.print(_Panel(
+                    syntax,
+                    title=f"[bold yellow]Diff — {meta['original_file']}[/]",
+                    subtitle=f"[dim]{meta.get('issue', '')[:100]}[/]",
+                    border_style="yellow",
+                    padding=(0, 1),
+                ))
+        except Exception:
+            pass  # If diff fails, user still sees the filename list above
 
 
 def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = False):
@@ -523,12 +570,22 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         console.print(f"\n  [bold #FFC107]{len(patches)} patch(es) ready:[/]")
         for p in patches:
             console.print(f"  • {p['file']}: {p['issue'][:80]}")
+
+        # BUG-C4 FIX: Show unified diff of what will change before asking to apply
+        _show_pending_diffs(imp)
+
         if confirm_prompt("Apply all patches? (backups created automatically)"):
             res = imp.apply_pending_patches()
             success_message(f"Applied: {res['applied']}  Failed: {res['failed']}")
             for d in res.get("details", []):
                 console.print(f"  • {d.get('file', '?')}: "
                                f"{d.get('status', d.get('error', '?'))}")
+            # BUG-C2 FIX: Restart Lirox after successful patch application so
+            # the patched code is loaded immediately (mirrors /restart behavior).
+            if res["applied"] > 0:
+                info_panel("🔄 Restarting Lirox with patched code…")
+                time.sleep(1)
+                os.execv(sys.executable, [sys.executable] + sys.argv)
         else:
             info_panel("Cancelled. Patches remain in data/pending_patches/")
 

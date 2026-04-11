@@ -136,6 +136,18 @@ class SelfImprover:
                 results["applied"] += 1
                 results["details"].append({"file":meta["original_file"],
                                            "issue":meta.get("issue",""),"status":"applied"})
+                # BUG-C5 FIX: record each applied patch in the permanent learnings store
+                try:
+                    from lirox.mind.agent import get_learnings
+                    issue_desc = meta.get("issue", "improvement") or "improvement"
+                    timestamp  = time.strftime("%Y-%m-%d %H:%M", time.localtime())
+                    get_learnings().add_fact(
+                        f"Fixed: {issue_desc[:120]} in {meta['original_file']} ({timestamp})",
+                        confidence=0.95,
+                        source="self_improve",
+                    )
+                except Exception:
+                    pass  # learnings recording is best-effort
             except Exception as e:
                 results["failed"] += 1
                 results["details"].append({"file":str(mf.name),"error":str(e)})
