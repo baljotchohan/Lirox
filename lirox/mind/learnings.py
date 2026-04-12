@@ -6,6 +6,7 @@ Every /train call crystallizes session patterns into permanent learnings.
 """
 from __future__ import annotations
 
+import atexit
 import json
 import time
 import os
@@ -43,6 +44,9 @@ class LearningsStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self.data = self._load()
         self._dirty = False   # BUG-4 FIX: track unsaved topic changes
+        self._bump_count = 0  # BUG-H2 FIX: track bumps for periodic auto-save
+        # BUG-H2 FIX: register atexit flush so dirty data is never lost on exit
+        atexit.register(self.flush)
 
     def _load(self) -> Dict:
         if self._path.exists():
@@ -94,13 +98,17 @@ class LearningsStore:
         self.save()
 
     def bump_topic(self, topic: str) -> None:
-        """Increment topic frequency counter. Deferred save (BUG-4 FIX)."""
+        """Increment topic frequency counter. Auto-saves every 10 bumps (BUG-H2 FIX)."""
         if topic not in self.data["topics"]:
             self.data["topics"][topic] = {"count": 0, "last_seen": None}
         self.data["topics"][topic]["count"] += 1
         self.data["topics"][topic]["last_seen"] = datetime.now().isoformat()
-        # Mark dirty but DON'T save immediately — flush() or add_fact() will save
         self._dirty = True
+        # BUG-H2 FIX: auto-save every 10 bumps to prevent data loss on crash
+        self._bump_count += 1
+        if self._bump_count >= 10:
+            self.save()
+            self._bump_count = 0
 
     def flush(self) -> None:
         """Save if there are unsaved topic bumps."""

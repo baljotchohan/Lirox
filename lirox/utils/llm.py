@@ -2,6 +2,7 @@
 import atexit
 import os
 import hashlib
+import time
 import requests
 import concurrent.futures
 from typing import List, Dict, Optional, Generator
@@ -381,13 +382,23 @@ def generate_response(prompt: str, provider: str = "auto",
 
     if response is None or is_error_response(response):
         avail = available_providers()
+        # BUG-H5 FIX: respect rate limits and apply exponential backoff between fallbacks
+        attempt = 0
         for fb in [p for p in _PROVIDER_PRIORITY if p in avail and p != provider]:
             try:
+                if attempt > 0:
+                    time.sleep(2 ** (attempt - 1))  # exponential backoff: 1s, 2s, 4s…
+                from lirox.utils.rate_limiter import api_limiter
+                if not api_limiter.is_allowed(fb):
+                    attempt += 1
+                    continue  # skip rate-limited provider
                 future = _FALLBACK_POOL.submit(_call_provider, fb, prompt, system_prompt)
                 retry  = future.result(timeout=timeout)
+                attempt += 1
                 if not is_error_response(retry):
                     return retry
             except Exception:
+                attempt += 1
                 continue
 
     return response or "Error: All providers failed."

@@ -36,6 +36,28 @@ class MasterOrchestrator:
         self._agent_memory:  Dict[AgentType, MemoryManager] = {}
         self._agent_scratch: Dict[AgentType, Scratchpad]    = {}
         self._interaction_count: int = 0  # BUG-C3 FIX: track interactions for auto-training
+        # BUG-H1 FIX: restore last session into memory buffer on startup
+        self._restore_last_session()
+
+    def _restore_last_session(self) -> None:
+        """BUG-H1 FIX: Load the most recent session into the conversation buffer so
+        previous conversation context is available after a restart."""
+        try:
+            sessions = self.session_store.list_sessions(limit=1)
+            if not sessions:
+                return
+            last = sessions[0]
+            # Make the last session the current session so conversation continues
+            self.session_store.set_current(last)
+            # Restore the last 20 entries into global_memory conversation_buffer
+            for entry in last.entries[-20:]:
+                self.global_memory.conversation_buffer.append({
+                    "role":    entry.role,
+                    "content": entry.content,
+                    "ts":      entry.ts,
+                })
+        except Exception:
+            pass  # memory restoration is best-effort; never block startup
 
     def _get_personal_agent(self):
         if self._agent is None:

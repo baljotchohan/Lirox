@@ -15,25 +15,48 @@ def fix_windows_path():
     if not scripts_dir:
         return
 
+    # winreg is Windows-only; import once here after the platform guard above
+    try:
+        import winreg as _winreg
+    except ImportError:
+        return  # should never happen on win32, but be safe
+
     path_env = os.environ.get("PATH", "")
     if scripts_dir.lower() in path_env.lower():
         return  # already present in the current session — nothing to do
 
+    # BUG-H6 FIX: check the registry BEFORE deciding to re-exec.
+    # If scripts_dir is already in the registry but not in the current shell
+    # (e.g. freshly opened terminal), just update the env and return — no re-exec
+    # needed, which would otherwise cause an infinite re-exec loop.
+    try:
+        with _winreg.OpenKey(_winreg.HKEY_CURRENT_USER, r"Environment", 0,
+                             _winreg.KEY_READ) as key:
+            try:
+                reg_path, _ = _winreg.QueryValueEx(key, "PATH")
+                if scripts_dir.lower() in reg_path.lower():
+                    # Already persistent in registry — just update current env and return
+                    os.environ["PATH"] = path_env.rstrip(";") + ";" + scripts_dir
+                    return
+            except FileNotFoundError:
+                pass
+    except Exception:
+        pass
+
     # ── 1. Persist to the Windows registry (user-level) ──────────────────────
     try:
-        import winreg
         key_path = r"Environment"
-        with winreg.OpenKey(
-            winreg.HKEY_CURRENT_USER, key_path, 0, winreg.KEY_READ | winreg.KEY_WRITE
+        with _winreg.OpenKey(
+            _winreg.HKEY_CURRENT_USER, key_path, 0, _winreg.KEY_READ | _winreg.KEY_WRITE
         ) as key:
             try:
-                current_reg, _ = winreg.QueryValueEx(key, "PATH")
+                current_reg, _ = _winreg.QueryValueEx(key, "PATH")
             except FileNotFoundError:
                 current_reg = ""
             # Only append if not already there
             if scripts_dir.lower() not in current_reg.lower():
                 new_val = (current_reg.rstrip(";") + ";" + scripts_dir).lstrip(";")
-                winreg.SetValueEx(key, "PATH", 0, winreg.REG_EXPAND_SZ, new_val)
+                _winreg.SetValueEx(key, "PATH", 0, _winreg.REG_EXPAND_SZ, new_val)
         # Broadcast WM_SETTINGCHANGE so Explorer / new shells pick it up
         try:
             import ctypes
@@ -186,7 +209,8 @@ def main():
 
     while True:
         try:
-            line = session.prompt(get_prompt_label(agent_name), style=style).strip()
+            # BUG-H3 FIX: read agent name fresh each iteration so /setup changes take effect
+            line = session.prompt(get_prompt_label(profile.data.get("agent_name", "Lirox")), style=style).strip()
             if not line: continue
             if line.lower() in ("exit", "quit", "/exit"):
                 info_panel("Shutting down. Goodbye."); break
@@ -385,9 +409,9 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         try:
             run_setup_wizard(profile)
             orch.profile_data = profile.data
-            # Refresh agent name in the outer scope isn't possible here directly,
-            # so we tell the user a restart will pick up name changes.
-            success_message("Setup complete! Restart Lirox to apply any name changes.")
+            # BUG-H3 FIX: agent name is now read dynamically each prompt iteration,
+            # so the updated name takes effect immediately without a restart.
+            success_message("Setup complete!")
         except KeyboardInterrupt:
             console.print("\n  [dim]Setup cancelled.[/]")
 
