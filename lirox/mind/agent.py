@@ -126,17 +126,18 @@ class MindAgent(BaseAgent):
         # 3. Extract learnings
         self._learn(query, learnings)
 
-        # 4. Advisor response
-        mem_ctx    = self.memory.get_relevant_context(query)
-        sys_prompt = system_prompt or self._sys(soul, learnings)
-        prompt     = (f"Context:\n{mem_ctx}\n\nUser: {query}" if mem_ctx else query)
-        if context: prompt = f"Reasoning:\n{context[:2000]}\n\n{prompt}"
+        # ── Step 4: Advisor response ──────────────────────────────────────────
+        from lirox.utils.streaming import StreamingResponse
+        _streamer = StreamingResponse()
 
         try:
             answer = generate_response(prompt, provider="auto", system_prompt=sys_prompt)
             self.memory.save_exchange(query, answer)
             self._auto_topics(query, learnings)
-            learnings.flush()   # persist deferred topic bumps (BUG-4 FIX)
+            learnings.flush()   # persist deferred topic bumps
+            # Stream the response in paragraphs for consistent UX
+            for chunk in _streamer.stream_in_paragraphs(answer):
+                yield {"type": "streaming", "message": chunk}
             yield {"type": "done", "answer": answer}
         except Exception as e:
             improver.log_error("mind_agent:run", str(e))
