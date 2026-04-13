@@ -27,6 +27,24 @@ _LLM_TIMEOUT  = 90
 _task_cache: Dict[str, bool] = {}
 
 
+def strip_code_fences(text: str, lang: str = "") -> str:
+    """
+    Safely strip markdown code fences from LLM output.
+    Unlike lstrip/rstrip, this removes the literal fence strings,
+    not individual characters.
+    """
+    text = text.strip()
+    # Remove opening fence (```python, ```json, or plain ```)
+    for fence in (f"```{lang}", "```"):
+        if text.startswith(fence):
+            text = text[len(fence):]
+            break
+    # Remove closing fence
+    if text.endswith("```"):
+        text = text[:-3]
+    return text.strip()
+
+
 def _hash_prompt(text: str) -> str:
     return hashlib.md5(text.strip().lower().encode()).hexdigest()[:16]
 
@@ -252,10 +270,13 @@ def _is_ollama_available() -> bool:
 
 def _is_hf_bnb_available() -> bool:
     import socket
+    from urllib.parse import urlparse
     endpoint = os.getenv("HF_BNB_ENDPOINT", "http://127.0.0.1:11435")
     try:
-        host, port = endpoint.replace("http://", "").split(":")
-        with socket.create_connection((host, int(port.split("/")[0])), timeout=2):
+        parsed = urlparse(endpoint)
+        host = parsed.hostname or "127.0.0.1"
+        port = parsed.port or 11435
+        with socket.create_connection((host, port), timeout=2):
             return True
     except Exception:
         return False

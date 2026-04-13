@@ -1,6 +1,7 @@
 """Lirox v1.0.0 — MindAgent — personal advisor with deep user knowledge"""
 from __future__ import annotations
 import re
+import threading
 import time
 from collections import Counter
 from typing import Generator, Dict, Any
@@ -16,41 +17,64 @@ from lirox.mind.trainer import TrainingEngine
 from lirox.mind.self_improver import SelfImprover
 from lirox.utils.llm import generate_response
 
-_soul: LivingSoul = None; _learnings: LearningsStore = None
-_skills: SkillsRegistry = None; _sub_agents: SubAgentsRegistry = None
-_trainer: TrainingEngine = None; _improver: SelfImprover = None
+# ── Thread-safe singleton store ───────────────────────────────────────────────
+_singleton_lock = threading.Lock()
+
+_soul:       LivingSoul        = None
+_learnings:  LearningsStore    = None
+_skills:     SkillsRegistry    = None
+_sub_agents: SubAgentsRegistry = None
+_trainer:    TrainingEngine    = None
+_improver:   SelfImprover      = None
 
 
 def get_soul() -> LivingSoul:
     global _soul
-    if _soul is None: _soul = LivingSoul()
+    with _singleton_lock:
+        if _soul is None:
+            _soul = LivingSoul()
     return _soul
+
 
 def get_learnings() -> LearningsStore:
     global _learnings
-    if _learnings is None: _learnings = LearningsStore()
+    with _singleton_lock:
+        if _learnings is None:
+            _learnings = LearningsStore()
     return _learnings
+
 
 def get_skills() -> SkillsRegistry:
     global _skills
-    if _skills is None: _skills = SkillsRegistry()
+    with _singleton_lock:
+        if _skills is None:
+            _skills = SkillsRegistry()
     return _skills
+
 
 def get_sub_agents() -> SubAgentsRegistry:
     global _sub_agents
-    if _sub_agents is None: _sub_agents = SubAgentsRegistry()
+    with _singleton_lock:
+        if _sub_agents is None:
+            _sub_agents = SubAgentsRegistry()
     return _sub_agents
+
 
 def get_trainer(memory: MemoryManager = None) -> TrainingEngine:
     global _trainer
-    if _trainer is None or memory is not None:
-        _trainer = TrainingEngine(get_learnings())
+    with _singleton_lock:
+        if _trainer is None or memory is not None:
+            _trainer = TrainingEngine(get_learnings())
     return _trainer
+
 
 def get_improver() -> SelfImprover:
     global _improver
-    if _improver is None: _improver = SelfImprover()
+    with _singleton_lock:
+        if _improver is None:
+            _improver = SelfImprover()
     return _improver
+
 
 
 class MindAgent(BaseAgent):
