@@ -1,14 +1,14 @@
-"""Lirox Autonomy — Self-Improver
+"""Lirox Autonomy — Self Improver (AI Refactor Engine)"""
 
-Scans the Lirox codebase for potential issues, generates improvement
-suggestions, and applies patches after user confirmation.
-"""
 from __future__ import annotations
 
 import ast
+import difflib
 import re
+import shutil
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, Generator, List
+from typing import Any, Dict, Generator, List, Optional
 
 from lirox.autonomy.code_executor import CodeExecutor
 from lirox.autonomy.filesystem_manager import FilesystemManager
@@ -18,128 +18,194 @@ _executor = CodeExecutor()
 _fs = FilesystemManager()
 
 
+# ─────────────────────────────────────────────────────────────
+# Data Models
+# ─────────────────────────────────────────────────────────────
+
+@dataclass
+class Issue:
+    file: str
+    line: Optional[int]
+    kind: str
+    message: str
+    severity: str = "medium"
+
+
+@dataclass
+class Patch:
+    issue: Issue
+    original: str
+    patched: str
+    diff: str
+    applied: bool = False
+
+
+def make_diff(original: str, patched: str, filename: str) -> str:
+    return "".join(
+        difflib.unified_diff(
+            original.splitlines(keepends=True),
+            patched.splitlines(keepends=True),
+            fromfile=f"a/{filename}",
+            tofile=f"b/{filename}",
+        )
+    )
+
+
+# ─────────────────────────────────────────────────────────────
+# Self Improver
+# ─────────────────────────────────────────────────────────────
+
 class SelfImprover:
-    """Analyse the Lirox source tree and propose targeted improvements."""
+    """Analyse, fix, and improve the codebase autonomously."""
 
-    # ------------------------------------------------------------------
-    # Codebase scanning
-    # ------------------------------------------------------------------
+    def __init__(self, root: str):
+        self.root = Path(root)
+        self.issues: List[Issue] = []
+        self.patches: List[Patch] = []
 
-    def scan_codebase(self, root: str) -> List[Dict[str, Any]]:
-        """Return a list of issue dicts found across all Python files under *root*.
+    # ─────────────────────────────────────────────────────────
+    # 🔍 Scan System
+    # ─────────────────────────────────────────────────────────
 
-        Each issue has keys: ``file``, ``line``, ``kind``, ``message``.
-        """
-        issues: List[Dict[str, Any]] = []
-        for py_path in _fs.get_python_files(root):
-            ok, source = _fs.read_file(py_path)
+    def scan(self) -> List[Issue]:
+        self.issues = []
+
+        for py_file in _fs.get_python_files(str(self.root)):
+            ok, source = _fs.read_file(py_file)
             if not ok:
                 continue
-            issues.extend(self._lint_source(py_path, source))
-        return issues
 
-    def _lint_source(self, path: str, source: str) -> List[Dict[str, Any]]:
-        issues: List[Dict[str, Any]] = []
+            # Syntax errors
+            for err in _executor.check_syntax(source):
+                self.issues.append(Issue(py_file, 0, "syntax", err, "high"))
+                continue
 
-        # Syntax check
-        for err in _executor.check_syntax(source):
-            issues.append({"file": path, "line": 0, "kind": "syntax", "message": err})
-            return issues  # syntax errors make AST analysis meaningless
+            self.issues.extend(self._ast_checks(py_file, source))
+            self.issues.extend(self._line_checks(py_file, source))
+
+        return self.issues
+
+    def _ast_checks(self, path: str, source: str) -> List[Issue]:
+        issues = []
 
         try:
             tree = ast.parse(source)
-        except SyntaxError:
+        except:
             return issues
 
-        lines = source.splitlines()
-
         for node in ast.walk(tree):
-            # Bare except clauses
+            # Bare except
             if isinstance(node, ast.ExceptHandler) and node.type is None:
-                issues.append({
-                    "file": path,
-                    "line": node.lineno,
-                    "kind": "bare_except",
-                    "message": "Bare 'except:' clause — catch specific exceptions instead.",
-                })
+                issues.append(Issue(path, node.lineno, "bare_except",
+                    "Use specific exceptions instead of bare except", "medium"))
 
-        # Line-level checks
-        for i, line in enumerate(lines, start=1):
-            stripped = line.strip()
-            if re.match(r"^\s*#\s*(TODO|FIXME|HACK|XXX)", line, re.IGNORECASE):
-                issues.append({
-                    "file": path,
-                    "line": i,
-                    "kind": "todo_comment",
-                    "message": f"Unresolved comment: {stripped[:80]}",
-                })
-            if len(line) > 120:
-                issues.append({
-                    "file": path,
-                    "line": i,
-                    "kind": "long_line",
-                    "message": f"Line length {len(line)} > 120 chars.",
-                })
+            # Missing return type
+            if isinstance(node, ast.FunctionDef):
+                if node.returns is None and not node.name.startswith("_"):
+                    issues.append(Issue(path, node.lineno, "type_safety",
+                        f"{node.name} missing return type", "low"))
 
         return issues
 
-    # ------------------------------------------------------------------
-    # Streaming interface for the agent bus
-    # ------------------------------------------------------------------
+    def _line_checks(self, path: str, source: str) -> List[Issue]:
+        issues = []
+        for i, line in enumerate(source.splitlines(), 1):
+            if re.match(r"^\s*#\s*(TODO|FIXME)", line):
+                issues.append(Issue(path, i, "todo", line.strip(), "low"))
+            if len(line) > 120:
+                issues.append(Issue(path, i, "long_line", "Line too long", "low"))
+        return issues
 
-    def analyse_and_stream(
-        self, root: str
-    ) -> Generator[Dict[str, Any], None, None]:
-        """Scan *root* and stream progress events for each file and finding."""
-        yield {"type": "agent_progress", "message": "🔍 Scanning codebase for issues…"}
+    # ─────────────────────────────────────────────────────────
+    # 🤖 Patch Generation (LLM)
+    # ─────────────────────────────────────────────────────────
 
-        py_files = _fs.get_python_files(root)
-        yield {
-            "type": "agent_progress",
-            "message": f"  Found {len(py_files)} Python files to analyse.",
-        }
+    def generate_patches(self, max_patches: int = 10) -> List[Patch]:
+        from lirox.utils.llm import generate_response
 
-        all_issues: List[Dict[str, Any]] = []
-        for py_path in py_files:
-            ok, source = _fs.read_file(py_path)
-            if not ok:
+        self.patches = []
+
+        for issue in self.issues[:max_patches]:
+            path = Path(issue.file)
+            if not path.exists():
                 continue
-            file_issues = self._lint_source(py_path, source)
-            if file_issues:
-                all_issues.extend(file_issues)
 
-        if not all_issues:
-            yield {"type": "tool_result", "message": "✓ No issues found — codebase looks clean!"}
+            original = path.read_text(errors="replace")
+
+            prompt = f"""
+Fix this issue in Python code:
+
+File: {issue.file}
+Issue: {issue.message}
+
+Code:
+{original[:3000]}
+
+Return only fixed code.
+"""
+
+            try:
+                patched = generate_response(prompt)
+                diff = make_diff(original, patched, issue.file)
+
+                if diff:
+                    self.patches.append(
+                        Patch(issue, original, patched, diff)
+                    )
+            except:
+                pass
+
+        return self.patches
+
+    # ─────────────────────────────────────────────────────────
+    # ⚙️ Apply + Rollback
+    # ─────────────────────────────────────────────────────────
+
+    def apply_patch(self, patch: Patch) -> bool:
+        path = Path(patch.issue.file)
+
+        try:
+            shutil.copy2(path, path.with_suffix(".bak"))
+            path.write_text(patch.patched)
+            patch.applied = True
+            return True
+        except:
+            return False
+
+    def rollback(self) -> int:
+        restored = 0
+        for bak in self.root.rglob("*.bak"):
+            original = bak.with_suffix("")
+            shutil.copy2(bak, original)
+            bak.unlink()
+            restored += 1
+        return restored
+
+    # ─────────────────────────────────────────────────────────
+    # 📡 Streaming (Agent Mode)
+    # ─────────────────────────────────────────────────────────
+
+    def improve_and_stream(self) -> Generator[Dict[str, Any], None, None]:
+        yield {"type": "progress", "message": "🔍 Scanning code..."}
+
+        issues = self.scan()
+
+        if not issues:
+            yield {"type": "success", "message": "No issues found"}
             return
 
-        yield {
-            "type": "tool_result",
-            "message": f"Found {len(all_issues)} potential issue(s):",
-        }
-        for issue in all_issues[:20]:  # cap output
-            rel = Path(issue["file"]).name
-            yield {
-                "type": "tool_result",
-                "message": f"  [{issue['kind']}] {rel}:{issue['line']} — {issue['message']}",
-            }
-        if len(all_issues) > 20:
-            yield {
-                "type": "tool_result",
-                "message": f"  … and {len(all_issues) - 20} more issue(s).",
-            }
+        yield {"type": "progress", "message": f"Found {len(issues)} issues"}
 
-    def get_improvement_summary(self, root: str) -> str:
-        """Return a human-readable markdown summary of codebase issues."""
-        issues = self.scan_codebase(root)
-        if not issues:
-            return "✅ Codebase scan complete — no issues found."
+        patches = self.generate_patches()
 
-        lines = [f"## Codebase Analysis — {len(issues)} issue(s) found\n"]
-        for issue in issues[:30]:
-            rel = Path(issue["file"]).name
-            lines.append(
-                f"- **{issue['kind']}** `{rel}:{issue['line']}` — {issue['message']}"
-            )
-        if len(issues) > 30:
-            lines.append(f"\n_…and {len(issues) - 30} more._")
-        return "\n".join(lines)
+        yield {"type": "progress", "message": f"Generated {len(patches)} fixes"}
+
+        for p in patches:
+            yield {
+                "type": "patch",
+                "message": f"{p.issue.file}: {p.issue.message}"
+            }
+            yield {
+                "type": "diff",
+                "message": p.diff[:500]
+            }
