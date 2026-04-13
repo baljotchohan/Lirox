@@ -9,7 +9,6 @@ from lirox.config import THINKING_ENABLED
 from lirox.memory.manager import MemoryManager
 from lirox.memory.session_store import SessionStore
 from lirox.thinking.scratchpad import Scratchpad
-from lirox.autonomy.permission_system import PermissionSystem, PermissionTier
 
 
 class AgentType(Enum):
@@ -37,8 +36,8 @@ class MasterOrchestrator:
         self._agent_memory:  Dict[AgentType, MemoryManager] = {}
         self._agent_scratch: Dict[AgentType, Scratchpad]    = {}
         self._interaction_count: int = 0  # BUG-C3 FIX: track interactions for auto-training
-        # Permission system — session-scoped, starts at TIER 0
-        self.permissions: PermissionSystem = PermissionSystem()
+        # Permission system — optional; initialised lazily on first use
+        self._permission_system: Optional[Any] = None
         # BUG-H1 FIX: restore last session into memory buffer on startup
         self._restore_last_session()
 
@@ -61,6 +60,17 @@ class MasterOrchestrator:
                 })
         except Exception:
             pass  # memory restoration is best-effort; never block startup
+
+    @property
+    def permission_system(self):
+        """Return (and lazily initialise) the shared PermissionSystem."""
+        if self._permission_system is None:
+            try:
+                from lirox.autonomy.permission_system import PermissionSystem
+                self._permission_system = PermissionSystem()
+            except Exception:
+                pass
+        return self._permission_system
 
     def _get_personal_agent(self):
         if self._agent is None:

@@ -1,40 +1,66 @@
-"""Lirox UI — Progress Indicators."""
+"""Lirox UI — Progress Indicators.
+
+Rich progress bars and step indicators for long-running autonomous operations.
+"""
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Generator
+from typing import Generator, Iterable, Optional
 
 from rich.console import Console
-from rich.markup import escape
+from rich.progress import (
+    BarColumn,
+    Progress,
+    SpinnerColumn,
+    TaskProgressColumn,
+    TextColumn,
+    TimeElapsedColumn,
+)
 
-console = Console()
-
-_CLR_DIM  = "dim #94a3b8"
-_CLR_INFO = "bold #60a5fa"
-
-
-def render_progress_step(step: str, total: int, current: int, label: str = "") -> None:
-    """Print a compact progress line: [2/5] Generating code…"""
-    if total <= 0:
-        console.print(f"  [{_CLR_DIM}]{escape(label or step)}[/]")
-        return
-    pct  = int(current / total * 100)
-    bar  = "█" * (pct // 10) + "░" * (10 - pct // 10)
-    msg  = f"  [{_CLR_DIM}][{current}/{total}] {bar} {escape(label or step)}[/]"
-    console.print(msg)
+_console = Console()
 
 
 @contextmanager
-def progress_status(label: str) -> Generator[None, None, None]:
-    """Context manager that shows a Rich spinner while work is being done."""
-    with console.status(f"[{_CLR_INFO}]{escape(label)}[/]", spinner="dots") as s:
-        yield s
+def step_progress(
+    description: str = "Working…",
+    total: Optional[int] = None,
+) -> Generator["Progress", None, None]:
+    """Context manager that displays a Rich progress bar.
+
+    Usage::
+
+        with step_progress("Scanning files…", total=100) as prog:
+            task = prog.add_task("scan", total=100)
+            for i in range(100):
+                prog.advance(task)
+    """
+    with Progress(
+        SpinnerColumn(),
+        TextColumn("[bold white]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeElapsedColumn(),
+        console=_console,
+        transient=True,
+    ) as progress:
+        yield progress
 
 
-def render_step_execution(message: str) -> None:
-    console.print(f"  [{_CLR_DIM}]  ├─ ▶ {escape(message)}[/]")
+def show_step(step: int, total: int, description: str) -> None:
+    """Print a single-line step indicator."""
+    _console.print(f"  [bold #FFC107][{step}/{total}][/] {description}")
 
 
-def render_deep_thinking(message: str) -> None:
-    """Display an advanced/deep-thinking progress message."""
-    console.print(f"  [bold #a78bfa]  🧠 {escape(message)}[/]")
+def show_deep_thinking(message: str) -> None:
+    """Render a deep-thinking trace in a dim italic style."""
+    _console.print(f"  [dim italic #a78bfa]🧠 {message[:300]}[/]")
+
+
+def show_code_analysis(message: str) -> None:
+    """Render a code-analysis progress message."""
+    _console.print(f"  [bold cyan]🔍 {message[:200]}[/]")
+
+
+def show_self_improvement(message: str) -> None:
+    """Render a self-improvement progress message."""
+    _console.print(f"  [bold #10b981]🔬 {message[:200]}[/]")
