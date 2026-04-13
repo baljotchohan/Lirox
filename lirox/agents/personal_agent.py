@@ -84,6 +84,32 @@ SELF_SIGNALS  = ["your code","your source","how do you work","your architecture"
                  "your files","read your","understand yourself","lirox code",
                  "improve yourself","fix yourself"]
 
+# Signals indicating the query requires the autonomy subsystem
+AUTONOMY_SIGNALS = [
+    "analyze my code", "analyse my code", "fix bugs", "scan codebase",
+    "improve your code", "audit code", "self-improve",
+    "generate code for", "create a caching", "build a", "implement a",
+    "decompose", "break down", "step by step plan",
+    "need permission", "ask permission",
+]
+
+# Signals that benefit from advanced deep thinking
+DEEP_THINK_SIGNALS = [
+    "complex", "architecture", "design", "refactor", "best approach",
+    "trade-off", "trade off", "pros and cons", "compare options",
+    "which is better", "strategy",
+]
+
+
+def requires_autonomy(query: str) -> bool:
+    q = query.lower()
+    return any(s in q for s in AUTONOMY_SIGNALS)
+
+
+def requires_deep_thinking(query: str) -> bool:
+    q = query.lower()
+    return any(s in q for s in DEEP_THINK_SIGNALS)
+
 
 def classify_task(query: str) -> str:
     q = query.lower()
@@ -115,12 +141,154 @@ class PersonalAgent(BaseAgent):
         logger    = get_logger("lirox.agents.personal")
         start     = time.time()
         mem_ctx   = self.memory.get_relevant_context(query)
+
+        # ── Autonomy subsystem intercept ──────────────────────────────────
+        if requires_autonomy(query):
+            yield from self._autonomy(query, mem_ctx, context, system_prompt)
+            logger.info(f"PersonalAgent autonomy {(time.time()-start)*1000:.0f}ms")
+            return
+
         task_type = classify_task(query)
         dispatch  = {"self": self._self, "code": self._code,
                      "file": self._file, "shell": self._shell,
                      "web": self._web, "chat": self._chat}
+
+        # ── Deep thinking for complex queries ─────────────────────────────
+        if requires_deep_thinking(query) and not context:
+            try:
+                from lirox.thinking.chain_of_thought import ThinkingEngine
+                deep_trace = ThinkingEngine().reason_deep(query)
+                if deep_trace:
+                    yield {"type": "deep_thinking", "message": deep_trace[:600]}
+                    context = deep_trace
+            except Exception:
+                pass
+
         yield from dispatch.get(task_type, self._chat)(query, mem_ctx, context, system_prompt)
         logger.info(f"PersonalAgent {task_type} {(time.time()-start)*1000:.0f}ms")
+
+    # ── Autonomy ───────────────────────────────────────────────────────────
+    def _autonomy(self, query, mem_ctx, context, sp=""):
+        """Route the query through the autonomy subsystem."""
+        from lirox.autonomy.autonomous_resolver import AutonomousResolver
+        from lirox.autonomy.permission_system import PermissionTier, PermissionRequest
+
+        yield {"type": "agent_progress", "message": "🤖 Activating autonomy subsystem…"}
+
+        # Try to get the shared permission system from the orchestrator
+        permissions = getattr(self, "_permissions", None)
+        resolver    = AutonomousResolver(permission_system=permissions)
+
+        q = query.lower()
+
+        # Self-improvement path
+        if any(s in q for s in ["improve your code", "improve yourself", "self-improve",
+                                 "fix yourself", "audit code", "scan codebase"]):
+            if not resolver.permissions.has_permission(PermissionTier.SELF_MODIFY):
+                req = PermissionRequest(
+                    tier=PermissionTier.SELF_MODIFY,
+                    reason="Scan and improve the Lirox codebase",
+                    action="Read all .py files, detect issues, generate patches",
+                    alternatives=["Use /improve command for the standard audit flow"],
+                )
+                yield {
+                    "type":    "permission_request",
+                    "message": (
+                        "🔬 Self-modification requires TIER 5 permission.\n"
+                        "  Reason : To scan and improve the Lirox codebase\n"
+                        "  Action : Read all .py files, detect issues, generate patches"
+                    ),
+                    "data": {"request": req},
+                }
+                answer = (
+                    "Self-modification requires TIER 5 permission.\n"
+                    "Use `/ask-permission 5` to grant it, then try again.\n"
+                    "Alternatively, use `/improve` for the standard audit workflow."
+                )
+                self.memory.save_exchange(query, answer)
+                for chunk in _STREAMER.stream_in_paragraphs(answer):
+                    yield {"type": "streaming", "message": chunk}
+                yield {"type": "done", "answer": answer}
+                return
+
+            yield from resolver.resolve_self_improvement()
+            return
+
+        # Code analysis path
+        if any(s in q for s in ["analyze my code", "analyse my code", "fix bugs",
+                                 "scan", "find issues"]):
+            if not resolver.permissions.has_permission(PermissionTier.FILE_READ):
+                req = PermissionRequest(
+                    tier=PermissionTier.FILE_READ,
+                    reason="Read project files to analyse them",
+                    action="Scan all Python files for issues",
+                    alternatives=["Describe the issue and I'll advise without file access"],
+                )
+                yield {
+                    "type":    "permission_request",
+                    "message": (
+                        "📖 Code analysis requires TIER 1 (File Read) permission.\n"
+                        "  Reason : I need to read your project files to analyse them.\n"
+                        "  Action : Scan all Python files for issues"
+                    ),
+                    "data": {"request": req},
+                }
+                answer = (
+                    "Code analysis requires TIER 1 (File Read) permission.\n"
+                    "Use `/ask-permission 1` to grant it, then try again."
+                )
+                self.memory.save_exchange(query, answer)
+                for chunk in _STREAMER.stream_in_paragraphs(answer):
+                    yield {"type": "streaming", "message": chunk}
+                yield {"type": "done", "answer": answer}
+                return
+
+            # Permission available — run analysis
+            from lirox.autonomy.code_intelligence import CodeIntelligence
+            yield {"type": "code_analysis", "message": "📖 Scanning project…"}
+            ci      = CodeIntelligence()
+            summary = ci.summary()
+            yield {"type": "code_analysis", "message": summary}
+            answer  = generate_response(
+                f"Query: {query}\n\nProject analysis:\n{summary}\n\n"
+                "Provide actionable insights and suggestions.",
+                provider="auto",
+                system_prompt=_get_sys(self.profile_data),
+            )
+            self.memory.save_exchange(query, answer)
+            for chunk in _STREAMER.stream_in_paragraphs(answer):
+                yield {"type": "streaming", "message": chunk}
+            yield {"type": "done", "answer": answer}
+            return
+
+        # Advanced code generation path
+        if any(s in q for s in ["generate code for", "create a caching",
+                                 "build a", "implement a"]):
+            yield {"type": "deep_thinking", "message": "Breaking down the problem…"}
+            try:
+                from lirox.thinking.problem_decomposer import ProblemDecomposer
+                steps = ProblemDecomposer().decompose(query)
+                if steps:
+                    step_text = "\n".join(f"  {i}. {s}" for i, s in enumerate(steps, 1))
+                    yield {"type": "deep_thinking", "message": f"Steps:\n{step_text}"}
+            except Exception:
+                pass
+
+            yield from resolver.resolve_code_generation(query)
+            return
+
+        # General fallback — use the standard code path with deep thinking context
+        yield {"type": "deep_thinking", "message": "Applying deep reasoning…"}
+        try:
+            from lirox.thinking.chain_of_thought import ThinkingEngine
+            trace = ThinkingEngine().reason_deep(query)
+            if trace:
+                yield {"type": "deep_thinking", "message": trace[:400]}
+                context = trace
+        except Exception:
+            pass
+
+        yield from self._code(query, mem_ctx, context, sp)
 
     # ── Self ──────────────────────────────────────────────────────────────
     def _self(self, query, mem_ctx, context, sp=""):

@@ -33,3 +33,18 @@ Be concise."""
             )
             self.last_trace = f"UNDERSTAND: {query}"
             return self.last_trace
+
+    def reason_deep(self, query: str, context: str = "") -> str:
+        """Multi-path deep reasoning with approach comparison.
+
+        Falls back to :meth:`reason` if the advanced reasoning module is
+        unavailable or the LLM call fails.
+        """
+        try:
+            from lirox.thinking.advanced_reasoning import AdvancedReasoning
+            trace = AdvancedReasoning().reason_deep(query)
+            self.last_trace = trace
+            return trace
+        except Exception:
+            return self.reason(query, context)
+

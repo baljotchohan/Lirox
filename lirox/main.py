@@ -273,6 +273,32 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     was_streamed = True
                 render_streaming_chunk(ev.message)
 
+            elif t == "deep_thinking":
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_deep_thinking
+                render_deep_thinking(ev.message)
+
+            elif t == "permission_request":
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_permission_request
+                render_permission_request(ev.data if ev.data else {"message": ev.message})
+
+            elif t == "permission_grant":
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_permission_grant
+                render_permission_grant(ev.data if ev.data else {"message": ev.message})
+
+            elif t == "permission_deny":
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_permission_deny
+                render_permission_deny(ev.data if ev.data else {"message": ev.message})
+
+            elif t in ("code_analysis", "code_generation", "code_validation",
+                       "code_testing", "self_improvement", "step_execution", "fallback"):
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_progress_indicator
+                render_progress_indicator(t, ev.message)
+
             elif t == "done":
                 if status: status.stop(); status = None
                 if was_streamed:
@@ -395,6 +421,8 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             ("@name <query>",       "Talk to a custom sub-agent"),
             ("/improve",            "Audit codebase and stage patches"),
             ("/self-execute [desc]", "Autonomous code scan or generate+validate code"),
+            ("/permissions",        "Show current permission tiers"),
+            ("/ask-permission <0-5>", "Request a specific permission tier"),
             ("/pending",            "List patches waiting for review"),
             ("/apply",              "Apply all staged patches"),
             ("/soul",               "View agent soul"),
@@ -764,6 +792,34 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
                 lines.append(f"  • @{a['name']}: {a.get('description', '-')[:80]}")
                 lines.append(f"    Use: @{a['name']} <query>")
             info_panel("\n".join(lines))
+
+    elif base == "/permissions":
+        try:
+            from lirox.ui.permission_ui import show_permissions_table
+            show_permissions_table(orch.permission_system)
+        except Exception as exc:
+            info_panel(f"Permission system unavailable: {exc}")
+
+    elif base == "/ask-permission":
+        tier_str = parts[1] if len(parts) > 1 else ""
+        if not tier_str.isdigit() or int(tier_str) not in range(6):
+            info_panel(
+                "Usage: /ask-permission <0-5>\n\n"
+                "  0 = Basic (default)\n"
+                "  1 = File Read\n"
+                "  2 = File Write\n"
+                "  3 = Code Execution\n"
+                "  4 = Full System (shell/git)\n"
+                "  5 = Self-Modification"
+            )
+        else:
+            try:
+                from lirox.autonomy.permission_system import PermissionTier
+                from lirox.ui.permission_ui import ask_permission
+                tier = PermissionTier(int(tier_str))
+                ask_permission(orch.permission_system, tier)
+            except Exception as exc:
+                error_panel("PERMISSION ERROR", str(exc))
 
     elif base == "/restart":
         info_panel("🔄 Restarting…")

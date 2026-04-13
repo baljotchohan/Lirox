@@ -87,6 +87,55 @@ def show_answer(answer: str, agent: str = "personal"):
     console.print()
 
 
+def render_deep_thinking(message: str) -> None:
+    """Render a deep-thinking event in a dim italic purple style."""
+    if message:
+        console.print(f"  [dim italic #a78bfa]🧠 {escape(message[:300])}[/]")
+
+
+def render_permission_request(event_data: dict) -> None:
+    """Render a `permission_request` event as a compact panel."""
+    try:
+        from lirox.ui.permission_ui import render_permission_request as _render
+        _render(event_data)
+    except Exception:
+        console.print(f"  [{CLR_WARN}]🔐 {escape(event_data.get('message', '')[:200])}[/]")
+
+
+def render_permission_grant(event_data: dict) -> None:
+    """Render a `permission_grant` event."""
+    try:
+        from lirox.ui.permission_ui import render_permission_grant as _render
+        _render(event_data)
+    except Exception:
+        console.print(f"  [{CLR_SUCCESS}]✓ {escape(event_data.get('message', '')[:200])}[/]")
+
+
+def render_permission_deny(event_data: dict) -> None:
+    """Render a `permission_deny` event."""
+    try:
+        from lirox.ui.permission_ui import render_permission_deny as _render
+        _render(event_data)
+    except Exception:
+        console.print(f"  [{CLR_ERROR}]✖ {escape(event_data.get('message', '')[:200])}[/]")
+
+
+def render_progress_indicator(event_type: str, message: str) -> None:
+    """Render code_analysis, code_generation, self_improvement, etc. events."""
+    _ICONS = {
+        "code_analysis":    "🔍",
+        "code_generation":  "✍️ ",
+        "code_validation":  "🔎",
+        "code_testing":     "🧪",
+        "self_improvement": "🔬",
+        "step_execution":   "▶️ ",
+        "fallback":         "⚡",
+    }
+    icon = _ICONS.get(event_type, "•")
+    if message and message.strip():
+        console.print(f"  [{CLR_DIM}]  ├─ {icon} {escape(message[:180])}[/]")
+
+
 def render_streaming_chunk(chunk: str) -> None:
     """Print a streaming chunk with live character-by-character animation."""
     if not chunk:
