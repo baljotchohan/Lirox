@@ -164,16 +164,25 @@ class SubAgentsRegistry:
             return {"success": False, "error": str(e)}
 
     def build_agent_from_description(self, description: str, name: str) -> Dict[str, Any]:
-        """Build a sub-agent from a plain English description using LLM."""
-        try:
-            code = generate_response(
-                _BUILD_AGENT_PROMPT.format(description=description, name=name),
-                provider="auto",
-                system_prompt="Write Python agent module. Output ONLY code.",
-            )
-            return self.add_agent_from_code(code, name)
-        except Exception as e:
-            return {"success": False, "error": str(e)}
+        """Build a sub-agent via AgentBuilder (5-phase: think → gen → validate → test → register)."""
+        from lirox.agents.agent_builder import AgentBuilder
+        result: Dict[str, Any] = {"success": False}
+        for event in AgentBuilder().build_agent_stream(description, name=name, registry=self):
+            if event.get("type") == "done":
+                return event.get("result", result)
+        return result
+
+    def build_agent_from_description_stream(
+        self, description: str, name: str = "CustomAgent"
+    ):
+        """Stream AgentBuilder events while building a sub-agent.
+
+        Yields progress events; final result is in the ``"done"`` event's
+        ``"result"`` key.
+        """
+        from lirox.agents.agent_builder import AgentBuilder
+        yield from AgentBuilder().build_agent_stream(description, name=name, registry=self)
+
 
     def remove_agent(self, name: str) -> bool:
         name = name.lower()

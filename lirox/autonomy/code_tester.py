@@ -104,12 +104,12 @@ class CodeTester:
           ``passed``, ``failed``, ``errors``, ``output``, ``success``.
         """
         test_source = self.generate_tests(source)
-        run_result  = _executor.run_code(test_source, timeout=timeout)
+        run_result  = _executor.execute(test_source)
 
         passed = failed = 0
-        if run_result["success"]:
+        if run_result.success:
             import re
-            m = re.search(r"Ran (\d+) tests?", run_result.get("stderr", ""))
+            m = re.search(r"Ran (\d+) tests?", run_result.stderr or "")
             if m:
                 passed = int(m.group(1))
         else:
@@ -118,9 +118,9 @@ class CodeTester:
         return {
             "passed":  passed,
             "failed":  failed,
-            "errors":  run_result.get("error", ""),
-            "output":  (run_result.get("stdout", "") or run_result.get("stderr", ""))[:500],
-            "success": run_result["success"],
+            "errors":  run_result.error or run_result.stderr[:200] if not run_result.success else "",
+            "output":  (run_result.stdout or run_result.stderr or "")[:500],
+            "success": run_result.success,
         }
 
     # ── Streaming ──────────────────────────────────────────────────────────

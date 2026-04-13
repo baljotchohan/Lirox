@@ -9,6 +9,7 @@ No external APIs beyond the standard LLM utility already used by Lirox.
 """
 from __future__ import annotations
 
+import re
 import textwrap
 from typing import Any, Dict, Generator, List
 
@@ -38,14 +39,27 @@ class AdvancedReasoning:
     def reason_deep(self, query: str) -> str:
         """Generate a multi-path reasoning trace for *query*.
 
-        Returns a formatted string with approaches and recommendation.
+        Returns a formatted string with approaches, scores, and recommendation.
         Falls back to a simple think-aloud if the LLM call fails.
         """
         try:
             prompt = _DECOMPOSE_PROMPT.format(query=query)
             result = generate_response(prompt, provider="auto",
                                        system_prompt="Be concise and analytical.")
-            return result[:1500]
+
+            # Score each numbered approach and annotate the trace
+            lines = result.splitlines()
+            scored_lines: List[str] = []
+            for line in lines:
+                m = re.match(r"^(\d+)\.\s+\[([^\]]+)\]:(.*)", line)
+                if m:
+                    approach_text = m.group(2) + ": " + m.group(3)
+                    score = self.score_approach(approach_text, context=query)
+                    scored_lines.append(f"{line}  *(score: {score}/10)*")
+                else:
+                    scored_lines.append(line)
+
+            return "\n".join(scored_lines)[:1500]
         except Exception:
             return (
                 "Deep reasoning: breaking down the problem step by step.\n"

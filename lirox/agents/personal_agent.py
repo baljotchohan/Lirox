@@ -302,9 +302,9 @@ class PersonalAgent(BaseAgent):
         # Self-improvement / scanning branch
         if any(kw in q_lower for kw in ("improve", "fix", "scan", "analyse", "analyze", "bugs")):
             yield {"type": "agent_progress", "message": "🔍 Performing deep codebase analysis…"}
-            improver = SelfImprover()
-            yield from improver.analyse_and_stream(str(lirox_dir))
-            summary = improver.get_improvement_summary(str(lirox_dir))
+            improver = SelfImprover(str(lirox_dir))
+            yield from improver.analyse_and_stream()
+            summary = improver.get_improvement_summary()
             self.memory.save_exchange(query, summary)
             for chunk in _STREAMER.stream_in_paragraphs(summary):
                 yield {"type": "streaming", "message": chunk}
@@ -358,8 +358,14 @@ class PersonalAgent(BaseAgent):
             query, root=str(Path(PROJECT_ROOT) / "lirox"),
             save_path=save_path, validate=True
         ):
-            if event.get("type") == "streaming":
-                # The generator already emits the final code as a streaming chunk
+            etype = event.get("type")
+            if etype == "code":
+                # Final generated code block — stream it to the user
+                answer = event.get("message", "")
+                self.memory.save_exchange(query, answer)
+                for chunk in _STREAMER.stream_in_paragraphs(answer):
+                    yield {"type": "streaming", "message": chunk}
+            elif etype == "streaming":
                 answer = event.get("message", "")
                 self.memory.save_exchange(query, answer)
                 for chunk in _STREAMER.stream_in_paragraphs(answer):

@@ -163,7 +163,12 @@ class CodeGenerator:
             ok, msg = _fs.write_file(save_path, result["code"])
             yield {"type": "info", "message": msg}
 
+        code_block = f"```python\n{result['code']}\n```"
+        yield {
+            "type": "streaming",
+            "message": code_block,
+        }
         yield {
             "type": "code",
-            "message": f"```python\n{result['code']}\n```",
+            "message": code_block,
         }

@@ -657,8 +657,8 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
 
         if not rest or rest in ("scan", "analyze"):
             info_panel("🔍 Running autonomous codebase scan…")
-            improver = SelfImprover()
-            summary  = improver.get_improvement_summary(lirox_dir)
+            improver = SelfImprover(lirox_dir)
+            summary  = improver.get_improvement_summary()
             from rich.markdown import Markdown as _Md
             console.print(_Md(summary))
         else:
@@ -672,27 +672,33 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
                 success_message("Code generated and validated:")
                 from rich.markdown import Markdown as _Md
                 console.print(_Md(f"```python\n{result['code']}\n```"))
-
-
-        desc = cmd[10:].strip()
+    elif base == "/add-skill":
+        desc = cmd[len("/add-skill"):].strip()
         if not desc:
             info_panel("Usage: /add-skill <description of what the skill should do>")
         else:
-            info_panel(f"Building skill: {desc[:60]}…")
+            info_panel(f"🧠 Building skill: {desc[:60]}…")
             from lirox.mind.agent import get_skills
             try:
-                res  = get_skills().build_skill_from_description(desc)
-                if res.get("success"):
-                    name = res.get("name", "?")
-                    path = res.get("path", "")
-                    success_message(f"✅ Skill '{name}' created!\n"
-                                    f"   Saved: {path}\n"
-                                    f"   Use:   /use-skill {name}")
-                else:
-                    error_panel("SKILL FAILED", res.get("error", "Unknown error"))
+                for event in get_skills().build_skill_from_description_stream(desc):
+                    etype = event.get("type", "")
+                    msg   = event.get("message", "")
+                    if etype == "done":
+                        res = event.get("result", {})
+                        if res.get("success"):
+                            name = res.get("name", "?")
+                            path = res.get("path", "")
+                            success_message(f"✅ Skill '{name}' created!\n"
+                                            f"   Saved: {path}\n"
+                                            f"   Use:   /use-skill {name}")
+                        else:
+                            error_panel("SKILL FAILED", res.get("error", "Unknown error"))
+                    elif etype == "error":
+                        error_panel("SKILL ERROR", msg)
+                    elif msg:
+                        render_progress_indicator(etype or "agent_progress", msg)
             except Exception as e:
                 error_panel("SKILL ERROR", str(e))
-
     elif base == "/skills":
         from lirox.mind.agent import get_skills
         skills = get_skills().list_skills()
@@ -766,18 +772,28 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
                   or re.search(r'@([A-Za-z][A-Za-z0-9_]+)', desc)
                   or re.search(r'\b([A-Z][a-z][a-zA-Z0-9_]+)\b', desc))
             agent_name = nm.group(1) if nm else "CustomAgent"
-            info_panel(f"Building agent '{agent_name}'…")
+            info_panel(f"🧠 Building agent '{agent_name}'…")
             from lirox.mind.agent import get_sub_agents
             try:
-                res = get_sub_agents().build_agent_from_description(desc, name=agent_name)
-                if res.get("success"):
-                    name = res.get("name", agent_name)
-                    path = res.get("path", "")
-                    success_message(f"✅ Agent '{name}' created!\n"
-                                    f"   Saved: {path}\n"
-                                    f"   Use:   @{name} <query>")
-                else:
-                    error_panel("AGENT FAILED", res.get("error", "Unknown error"))
+                for event in get_sub_agents().build_agent_from_description_stream(
+                    desc, name=agent_name
+                ):
+                    etype = event.get("type", "")
+                    msg   = event.get("message", "")
+                    if etype == "done":
+                        res = event.get("result", {})
+                        if res.get("success"):
+                            name = res.get("name", agent_name)
+                            path = res.get("path", "")
+                            success_message(f"✅ Agent '{name}' created!\n"
+                                            f"   Saved: {path}\n"
+                                            f"   Use:   @{name} <query>")
+                        else:
+                            error_panel("AGENT FAILED", res.get("error", "Unknown error"))
+                    elif etype == "error":
+                        error_panel("AGENT ERROR", msg)
+                    elif msg:
+                        render_progress_indicator(etype or "agent_progress", msg)
             except Exception as e:
                 error_panel("AGENT ERROR", str(e))
 

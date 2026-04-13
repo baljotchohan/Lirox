@@ -175,60 +175,28 @@ class SkillsRegistry:
 
     def build_skill_from_description(self, description: str) -> Dict[str, Any]:
         """
-        Use LLM to write a skill from a plain English description.
+        Use AgentBuilder to write a skill from a plain English description.
+        Runs all 5 phases (think → generate → validate → test → register).
         Returns {success, name, path, error}
         """
-        try:
-            code = generate_response(
-                _BUILD_SKILL_PROMPT.format(description=description),
-                provider="auto",
-                system_prompt="You write Python skill modules. Output ONLY Python code.",
-            )
+        from lirox.agents.agent_builder import AgentBuilder
+        result: Dict[str, Any] = {"success": False}
+        for event in AgentBuilder().build_skill_stream(description, registry=self):
+            if event.get("type") == "done":
+                return event.get("result", result)
+        return result
 
-            # Clean up code
-            code = code.strip()
-            if code.startswith("```"):
-                code = "\n".join(code.split("\n")[1:])
-            if code.endswith("```"):
-                code = "\n".join(code.split("\n")[:-1])
-            code = code.strip()
+    def build_skill_from_description_stream(
+        self, description: str
+    ):
+        """Stream AgentBuilder events while building a skill.
 
-            # Test compile
-            try:
-                compile(code, "<skill>", "exec")
-            except SyntaxError as se:
-                # Try to auto-fix
-                fixed = generate_response(
-                    _FIX_SKILL_PROMPT.format(error=str(se), code=code),
-                    provider="auto",
-                    system_prompt="Fix Python syntax. Output ONLY code.",
-                )
-                from lirox.utils.llm import strip_code_fences
-                fixed = strip_code_fences(fixed, lang="python")
-                compile(fixed, "<skill>", "exec")
-                code = fixed
+        Yields progress events and returns the final result in the
+        ``"done"`` event's ``"result"`` key.
+        """
+        from lirox.agents.agent_builder import AgentBuilder
+        yield from AgentBuilder().build_skill_stream(description, registry=self)
 
-            # Extract skill name from code
-            import re
-            m = re.search(r'SKILL_NAME\s*=\s*["\']([^"\']+)["\']', code)
-            skill_name = m.group(1) if m else "custom_skill_" + str(int(time.time()))[-4:]
-
-            # Save skill file
-            skill_path = self._dir / f"{skill_name}.py"
-            skill_path.write_text(code)
-
-            # Load it
-            loaded_name = self._load_skill_file(skill_path)
-
-            return {
-                "success": True,
-                "name": loaded_name or skill_name,
-                "path": str(skill_path),
-                "code": code,
-            }
-
-        except Exception as e:
-            return {"success": False, "error": str(e)}
 
     def add_skill_from_code(self, code: str, name: str = None) -> Dict[str, Any]:
         """
