@@ -3,6 +3,12 @@ import os
 import sys
 import time
 import argparse
+from pathlib import Path
+
+# ── Ensure Project Root is in sys.path ────────────────────────────────────────
+_repo_root = Path(__file__).resolve().parent.parent
+if str(_repo_root) not in sys.path:
+    sys.path.insert(0, str(_repo_root))
 
 
 def fix_windows_path():
@@ -772,20 +778,28 @@ def _restart_process() -> None:
 def run_update():
     import subprocess
     from lirox.config import PROJECT_ROOT
-    info_panel("Checking for updates…")
+    from pathlib import Path
+    
+    # Ensure we use an absolute, resolved path
+    root = str(Path(PROJECT_ROOT).resolve())
+    info_panel(f"Checking for updates in {root}…")
+    
     try:
-        if os.path.exists(os.path.join(PROJECT_ROOT, ".git")):
-            result = subprocess.run(["git", "-C", PROJECT_ROOT, "pull"],
+        git_dir = os.path.join(root, ".git")
+        if os.path.exists(git_dir):
+            # Using -C ensures git runs in the correct directory regardless of current pwd
+            result = subprocess.run(["git", "-C", root, "pull"],
                                     capture_output=True, text=True, check=True)
             if "Already up to date." in result.stdout:
                 success_message("Already up to date.")
             else:
                 console.print(f"[dim]{result.stdout.strip()}[/]")
-                subprocess.run([sys.executable, "-m", "pip", "install", "-e", PROJECT_ROOT],
+                # Re-install in editable mode to update dependencies/scripts
+                subprocess.run([sys.executable, "-m", "pip", "install", "-e", root],
                                capture_output=True)
-                success_message("Updated. Please restart.")
+                success_message("Updated. Please restart Lirox.")
         else:
-            info_panel("Not a git repo.\nRun: pip install --upgrade lirox")
+            info_panel(f"Not a git repository ({root}).\nRun: pip install --upgrade lirox")
     except Exception as e:
         error_panel("UPDATE FAILED", str(e))
 
