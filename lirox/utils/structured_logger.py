@@ -31,19 +31,23 @@ class StructuredFormatter(logging.Formatter):
         return json.dumps(log_data)
 
 
+import threading
+_logger_lock = threading.Lock()
+
 def get_logger(name: str) -> logging.Logger:
-    """Get a structured logger instance."""
+    """Get a structured logger instance. Thread-safe handler setup."""
     logger = logging.getLogger(name)
-    
     if not logger.handlers:
-        from lirox.config import DATA_DIR
-        import os
-        log_path = os.path.join(DATA_DIR, "agent.log")
-        handler = logging.FileHandler(log_path)
-        handler.setFormatter(StructuredFormatter())
-        logger.addHandler(handler)
-        logger.setLevel(logging.INFO)
-    
+        with _logger_lock:
+            # Re-check inside the lock (double-checked locking)
+            if not logger.handlers:
+                from lirox.config import DATA_DIR
+                import os
+                log_path = os.path.join(DATA_DIR, "agent.log")
+                handler = logging.FileHandler(log_path)
+                handler.setFormatter(StructuredFormatter())
+                logger.addHandler(handler)
+                logger.setLevel(logging.INFO)
     return logger
 
 
