@@ -129,6 +129,10 @@ class MindAgent(BaseAgent):
         # ── Step 4: Advisor response ──────────────────────────────────────────
         from lirox.utils.streaming import StreamingResponse
         _streamer = StreamingResponse()
+        mem_ctx    = self.memory.get_relevant_context(query)
+        sys_prompt = system_prompt or self._sys(soul, learnings)
+        prompt     = (f"Context:\n{mem_ctx}\n\nUser: {query}" if mem_ctx else query)
+        if context: prompt = f"Reasoning:\n{context[:2000]}\n\n{prompt}"
 
         try:
             answer = generate_response(prompt, provider="auto", system_prompt=sys_prompt)
