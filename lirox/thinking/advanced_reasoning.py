@@ -1,178 +1,72 @@
-"""Lirox Thinking — Advanced Reasoning Engine.
+"""Lirox Thinking — Advanced Reasoning.
 
-When the standard one-shot ThinkingEngine is insufficient, AdvancedReasoning
-breaks the problem into multiple reasoning paths, evaluates them, and
-proposes a ranked list of solutions.
+Multi-path deep reasoning engine:
+  1. Generates 3-4 distinct solution approaches
+  2. Scores and ranks them
+  3. Emits `deep_thinking` events with the reasoning trace
+
+No external APIs beyond the standard LLM utility already used by Lirox.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import List
+import textwrap
+from typing import Any, Dict, Generator, List
 
 from lirox.utils.llm import generate_response
 
 
-@dataclass
-class ReasoningPath:
-    """One candidate approach to a problem."""
-    title:       str
-    description: str = ""
-    steps:       List[str] = field(default_factory=list)
-    pros:        List[str] = field(default_factory=list)
-    cons:        List[str] = field(default_factory=list)
-    score:       float = 0.0   # 0.0 – 1.0 (higher = better fit)
+_DECOMPOSE_PROMPT = (
+    "You are a deep reasoning engine. For the following problem, list 3 distinct "
+    "solution approaches (no code). Format as:\n"
+    "1. [Approach name]: [one-sentence description]\n"
+    "2. ...\n"
+    "3. ...\n\n"
+    "Then recommend the best one and briefly explain why.\n\n"
+    "Problem: {query}"
+)
 
-
-@dataclass
-class DeepThinkingResult:
-    query:    str
-    paths:    List[ReasoningPath] = field(default_factory=list)
-    best:     int = 0   # index of recommended path
-    summary:  str = ""
-
-    def format(self) -> str:
-        lines = [f"🧠 Deep Thinking — {self.query}\n"]
-        lines.append(f"Found {len(self.paths)} approach(es):\n")
-        for i, p in enumerate(self.paths):
-            marker = "★ RECOMMENDED" if i == self.best else f"  Option {i + 1}"
-            lines.append(f"  {marker}: {p.title}")
-            lines.append(f"    {p.description}")
-            if p.pros:
-                lines.append("    ✓ " + "; ".join(p.pros))
-            if p.cons:
-                lines.append("    ✗ " + "; ".join(p.cons))
-        if self.summary:
-            lines.append(f"\nConclusion: {self.summary}")
-        return "\n".join(lines)
+_RANK_PROMPT = (
+    "Rank these approaches from best to worst for: '{query}'\n\n"
+    "{approaches}\n\n"
+    "Output a single paragraph explaining which is best and why."
+)
 
 
 class AdvancedReasoning:
-    """Multi-path deep reasoning engine."""
+    """Multi-path deep reasoning engine (no external deps beyond llm util)."""
 
-    def __init__(self, provider: str = "auto") -> None:
-        self.provider = provider
+    def reason_deep(self, query: str) -> str:
+        """Generate a multi-path reasoning trace for *query*.
 
-    # ── Public API ─────────────────────────────────────────────────────────
-
-    def think_deep(self, query: str, context: str = "") -> DeepThinkingResult:
-        """Run deep multi-path reasoning and return a structured result."""
-        raw = self._call_llm(query, context)
-        return self._parse(query, raw)
-
-    def reason_with_fallback(self, query: str, context: str = "") -> str:
-        """Return a plain-text deep reasoning trace (safe fallback)."""
+        Returns a formatted string with approaches and recommendation.
+        Falls back to a simple think-aloud if the LLM call fails.
+        """
         try:
-            result = self.think_deep(query, context)
-            return result.format()
+            prompt = _DECOMPOSE_PROMPT.format(query=query)
+            result = generate_response(prompt, provider="auto",
+                                       system_prompt="Be concise and analytical.")
+            return result[:1500]
         except Exception:
-            return self._minimal_trace(query)
+            return (
+                "Deep reasoning: breaking down the problem step by step.\n"
+                f"Query: {query}\n\n"
+                "Consider: constraints, alternatives, trade-offs, best fit."
+            )
 
-    # ── LLM call ──────────────────────────────────────────────────────────
+    def reason_and_stream(self, query: str) -> Generator[Dict[str, Any], None, None]:
+        """Stream deep-thinking events for *query*."""
+        yield {"type": "deep_thinking", "message": "🧠 Entering deep reasoning mode…"}
+        trace = self.reason_deep(query)
+        # Split into chunks for streaming
+        for chunk in textwrap.wrap(trace, width=200):
+            yield {"type": "deep_thinking", "message": chunk}
 
-    def _call_llm(self, query: str, context: str) -> str:
-        prompt = (
-            "Perform deep, multi-path reasoning for this problem.\n\n"
-            f"Problem: {query}\n"
-        )
-        if context:
-            prompt += f"\nContext:\n{context[:2000]}\n"
-        prompt += (
-            "\nGenerate 3-4 distinct solution approaches. For each approach:\n"
-            "  - Title (one line)\n"
-            "  - Description (2-3 sentences)\n"
-            "  - Pros (comma-separated)\n"
-            "  - Cons (comma-separated)\n"
-            "  - Steps (numbered, 3-5 items)\n"
-            "  - Score (0.0-1.0 confidence)\n\n"
-            "End with: RECOMMENDATION: <title of best approach>\n"
-            "And: CONCLUSION: <one sentence summary>\n"
-        )
-        return generate_response(
-            prompt,
-            self.provider,
-            system_prompt=(
-                "You are an expert strategic reasoning engine. "
-                "Provide structured multi-path analysis."
-            ),
-        )
-
-    # ── Parsing ────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _parse(query: str, raw: str) -> DeepThinkingResult:
-        import re
-
-        result = DeepThinkingResult(query=query)
-
-        # Extract conclusion
-        m = re.search(r"CONCLUSION:\s*(.+)", raw, re.IGNORECASE)
-        if m:
-            result.summary = m.group(1).strip()
-
-        # Extract recommended title
-        recommended_title = ""
-        rm = re.search(r"RECOMMENDATION:\s*(.+)", raw, re.IGNORECASE)
-        if rm:
-            recommended_title = rm.group(1).strip()
-
-        # Split into approach blocks (heuristic: numbered or titled paragraphs)
-        blocks = re.split(r"\n(?=\d+\.|#+\s|Title:)", raw)
-        for block in blocks:
-            block = block.strip()
-            if len(block) < 20:
-                continue
-
-            lines = block.splitlines()
-            title_line = lines[0].lstrip("0123456789. #").strip()
-            if not title_line or "RECOMMENDATION" in title_line.upper():
-                continue
-
-            path = ReasoningPath(title=title_line)
-
-            # Extract fields
-            desc_m = re.search(r"Description:\s*(.+?)(?=\n[A-Z]|\Z)", block,
-                                re.IGNORECASE | re.DOTALL)
-            if desc_m:
-                path.description = desc_m.group(1).strip()
-
-            pros_m = re.search(r"Pros?:\s*(.+?)(?=\n[A-Z]|\Z)", block,
-                                re.IGNORECASE | re.DOTALL)
-            if pros_m:
-                path.pros = [p.strip() for p in pros_m.group(1).split(",") if p.strip()]
-
-            cons_m = re.search(r"Cons?:\s*(.+?)(?=\n[A-Z]|\Z)", block,
-                                re.IGNORECASE | re.DOTALL)
-            if cons_m:
-                path.cons = [c.strip() for c in cons_m.group(1).split(",") if c.strip()]
-
-            score_m = re.search(r"Score:\s*([\d.]+)", block, re.IGNORECASE)
-            if score_m:
-                try:
-                    path.score = float(score_m.group(1))
-                except ValueError:
-                    pass
-
-            result.paths.append(path)
-
-        # Pick best by score or by recommendation title
-        if result.paths:
-            if recommended_title:
-                for i, p in enumerate(result.paths):
-                    if recommended_title.lower() in p.title.lower():
-                        result.best = i
-                        break
-            else:
-                result.best = max(range(len(result.paths)),
-                                  key=lambda i: result.paths[i].score)
-
-        # Fallback: if parsing produced nothing useful, keep raw text
-        if not result.paths:
-            result.summary = raw[:500]
-
-        return result
-
-    # ── Fallback ───────────────────────────────────────────────────────────
-
-    @staticmethod
-    def _minimal_trace(query: str) -> str:
-        return f"UNDERSTAND: {query}\nSTRATEGIZE: Apply best available approach.\nPLAN: 1. Analyse 2. Implement 3. Verify"
+    def score_approach(self, approach: str, context: str = "") -> int:
+        """Return a simple heuristic score 0-10 for *approach* given *context*."""
+        keywords_good = ["simple", "reliable", "proven", "standard", "efficient"]
+        keywords_bad  = ["complex", "risky", "experimental", "slow", "fragile"]
+        text = approach.lower()
+        score = 5
+        score += sum(1 for k in keywords_good if k in text)
+        score -= sum(1 for k in keywords_bad  if k in text)
+        return max(0, min(10, score))

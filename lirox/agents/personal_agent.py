@@ -93,7 +93,7 @@ AUTONOMY_SIGNALS = [
     "need permission", "ask permission",
 ]
 
-# Signals that need advanced deep thinking
+# Signals that benefit from advanced deep thinking
 DEEP_THINK_SIGNALS = [
     "complex", "architecture", "design", "refactor", "best approach",
     "trade-off", "trade off", "pros and cons", "compare options",
@@ -177,7 +177,7 @@ class PersonalAgent(BaseAgent):
 
         # Try to get the shared permission system from the orchestrator
         permissions = getattr(self, "_permissions", None)
-        resolver = AutonomousResolver(permission_system=permissions)
+        resolver    = AutonomousResolver(permission_system=permissions)
 
         q = query.lower()
 
@@ -211,8 +211,7 @@ class PersonalAgent(BaseAgent):
                 yield {"type": "done", "answer": answer}
                 return
 
-            for ev in resolver.resolve_self_improvement():
-                yield ev
+            yield from resolver.resolve_self_improvement()
             return
 
         # Code analysis path
@@ -244,7 +243,7 @@ class PersonalAgent(BaseAgent):
                 yield {"type": "done", "answer": answer}
                 return
 
-            # Permission is available — run analysis
+            # Permission available — run analysis
             from lirox.autonomy.code_intelligence import CodeIntelligence
             yield {"type": "code_analysis", "message": "📖 Scanning project…"}
             ci      = CodeIntelligence()
@@ -263,17 +262,19 @@ class PersonalAgent(BaseAgent):
             return
 
         # Advanced code generation path
-        if any(s in q for s in ["generate code for", "create a caching", "build a", "implement a"]):
-            # Problem decomposition
+        if any(s in q for s in ["generate code for", "create a caching",
+                                 "build a", "implement a"]):
             yield {"type": "deep_thinking", "message": "Breaking down the problem…"}
-            from lirox.thinking.problem_decomposer import ProblemDecomposer
-            steps = ProblemDecomposer().decompose(query)
-            if steps:
-                step_text = "\n".join(f"  {i}. {s}" for i, s in enumerate(steps, 1))
-                yield {"type": "deep_thinking", "message": f"Steps:\n{step_text}"}
+            try:
+                from lirox.thinking.problem_decomposer import ProblemDecomposer
+                steps = ProblemDecomposer().decompose(query)
+                if steps:
+                    step_text = "\n".join(f"  {i}. {s}" for i, s in enumerate(steps, 1))
+                    yield {"type": "deep_thinking", "message": f"Steps:\n{step_text}"}
+            except Exception:
+                pass
 
-            for ev in resolver.resolve_code_generation(query):
-                yield ev
+            yield from resolver.resolve_code_generation(query)
             return
 
         # General fallback — use the standard code path with deep thinking context

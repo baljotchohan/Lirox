@@ -134,7 +134,6 @@ try:
         show_welcome, show_status_card, show_thinking, show_agent_event,
         show_answer, render_streaming_chunk, error_panel, info_panel,
         success_message, confirm_prompt, console,
-        render_deep_thinking, render_permission_request, render_progress_indicator,
     )
     from lirox.utils.llm import available_providers
     from lirox.config import APP_VERSION
@@ -202,7 +201,6 @@ def main():
         "/soul", "/mind", "/restart",
         "/backup", "/import-memory", "/export-profile",
         "/uninstall", "/update", "/exit",
-        "/permissions", "/ask-permission",
     ]
 
     class SlashCompleter(Completer):
@@ -261,47 +259,6 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     if ev.message != "Analyzing…" and status:
                         status.stop(); status = None
 
-            elif t == "deep_thinking":
-                if status: status.stop(); status = None
-                render_deep_thinking(ev.message)
-
-            elif t == "permission_request":
-                if status: status.stop(); status = None
-                render_permission_request(ev.message)
-                # Ask user interactively
-                req_data = ev.data.get("request")
-                if req_data is not None:
-                    tier   = req_data.tier
-                    answer = console.input(
-                        f"  [bold #f59e0b]Allow TIER {tier.value}? (y/n): [/]"
-                    ).strip().lower()
-                    if answer in ("y", "yes"):
-                        orch.permissions.grant(tier)
-                        console.print(
-                            f"  [bold #10b981]✓ Permission granted: TIER {tier.value}[/]"
-                        )
-                    else:
-                        console.print(
-                            f"  [bold #ef4444]✖ Permission denied for TIER {tier.value}[/]"
-                        )
-
-            elif t == "permission_grant":
-                if status: status.stop(); status = None
-                console.print(f"  [bold #10b981]{escape_msg(ev.message)}[/]")
-
-            elif t == "permission_deny":
-                if status: status.stop(); status = None
-                console.print(f"  [bold #ef4444]{escape_msg(ev.message)}[/]")
-
-            elif t in ("code_analysis", "code_generation", "code_validation",
-                       "code_testing", "self_improvement", "step_execution"):
-                if status: status.stop(); status = None
-                render_progress_indicator(ev.message)
-
-            elif t == "fallback":
-                if status: status.stop(); status = None
-                info_panel(ev.message)
-
             elif t == "plan_display":
                 if status: status.stop(); status = None
                 console.print(ev.message)
@@ -315,6 +272,32 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     console.print(f"\n{icon} [{color}]Response:[/]")
                     was_streamed = True
                 render_streaming_chunk(ev.message)
+
+            elif t == "deep_thinking":
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_deep_thinking
+                render_deep_thinking(ev.message)
+
+            elif t == "permission_request":
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_permission_request
+                render_permission_request(ev.data if ev.data else {"message": ev.message})
+
+            elif t == "permission_grant":
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_permission_grant
+                render_permission_grant(ev.data if ev.data else {"message": ev.message})
+
+            elif t == "permission_deny":
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_permission_deny
+                render_permission_deny(ev.data if ev.data else {"message": ev.message})
+
+            elif t in ("code_analysis", "code_generation", "code_validation",
+                       "code_testing", "self_improvement", "step_execution", "fallback"):
+                if status: status.stop(); status = None
+                from lirox.ui.display import render_progress_indicator
+                render_progress_indicator(t, ev.message)
 
             elif t == "done":
                 if status: status.stop(); status = None
@@ -340,12 +323,6 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     show_agent_event(ev.agent or last_agent, "error", ev.message)
     finally:
         if status: status.stop()
-
-
-def escape_msg(msg: str) -> str:
-    """Escape Rich markup in a message string."""
-    from rich.markup import escape as _escape
-    return _escape(msg)
 
 
 def handle_agent_query(line: str) -> None:
@@ -444,12 +421,12 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             ("@name <query>",       "Talk to a custom sub-agent"),
             ("/improve",            "Audit codebase and stage patches"),
             ("/self-execute [desc]", "Autonomous code scan or generate+validate code"),
+            ("/permissions",        "Show current permission tiers"),
+            ("/ask-permission <0-5>", "Request a specific permission tier"),
             ("/pending",            "List patches waiting for review"),
             ("/apply",              "Apply all staged patches"),
             ("/soul",               "View agent soul"),
             ("/mind",               "Full Mind Agent state"),
-            ("/permissions",        "Show current permission tier table"),
-            ("/ask-permission <n>", "Grant TIER n permission for this session (0-5)"),
             ("/backup",             "Backup all data to ~/.lirox_backup/"),
             ("/import-memory",      "Import from ChatGPT/Claude/Gemini export"),
             ("/export-profile",     "Export profile as JSON"),
@@ -817,37 +794,32 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             info_panel("\n".join(lines))
 
     elif base == "/permissions":
-        info_panel(orch.permissions.summary_table())
+        try:
+            from lirox.ui.permission_ui import show_permissions_table
+            show_permissions_table(orch.permission_system)
+        except Exception as exc:
+            info_panel(f"Permission system unavailable: {exc}")
 
     elif base == "/ask-permission":
-        from lirox.autonomy.permission_system import PermissionTier, TIER_LABELS, TIER_ICONS
-        tier_arg = parts[1] if len(parts) > 1 else ""
-        if not tier_arg.isdigit() or int(tier_arg) not in range(6):
+        tier_str = parts[1] if len(parts) > 1 else ""
+        if not tier_str.isdigit() or int(tier_str) not in range(6):
             info_panel(
-                "Usage: /ask-permission <tier> (0-5)\n\n"
-                + "\n".join(
-                    f"  TIER {t.value}: {TIER_ICONS[t]} {TIER_LABELS[t]}"
-                    for t in PermissionTier
-                )
+                "Usage: /ask-permission <0-5>\n\n"
+                "  0 = Basic (default)\n"
+                "  1 = File Read\n"
+                "  2 = File Write\n"
+                "  3 = Code Execution\n"
+                "  4 = Full System (shell/git)\n"
+                "  5 = Self-Modification"
             )
         else:
-            tier = PermissionTier(int(tier_arg))
-            if orch.permissions.has_permission(tier):
-                success_message(
-                    f"TIER {tier.value} ({TIER_LABELS[tier]}) is already granted."
-                )
-            else:
-                if confirm_prompt(
-                    f"Grant TIER {tier.value} ({TIER_ICONS[tier]} {TIER_LABELS[tier]}) "
-                    f"for this session?"
-                ):
-                    orch.permissions.grant(tier)
-                    success_message(
-                        f"TIER {tier.value} granted for this session. "
-                        f"Use /permissions to see all granted tiers."
-                    )
-                else:
-                    console.print(f"  [dim]Permission not granted.[/]")
+            try:
+                from lirox.autonomy.permission_system import PermissionTier
+                from lirox.ui.permission_ui import ask_permission
+                tier = PermissionTier(int(tier_str))
+                ask_permission(orch.permission_system, tier)
+            except Exception as exc:
+                error_panel("PERMISSION ERROR", str(exc))
 
     elif base == "/restart":
         info_panel("🔄 Restarting…")

@@ -8,7 +8,8 @@ Orchestrates the full autonomy subsystem:
   5. Self-improvement
   6. Fallback strategies
 
-Yields structured events that the orchestrator/UI layers consume.
+Yields structured events for the orchestrator/UI layers to consume.
+No external APIs or network calls.
 """
 from __future__ import annotations
 
@@ -32,171 +33,136 @@ class AutonomousResolver:
         permission_system: Optional[PermissionSystem] = None,
         user_confirm_fn: Optional[Callable[[str], bool]] = None,
     ) -> None:
-        self.permissions    = permission_system or PermissionSystem()
-        self._confirm       = user_confirm_fn  # blocking console prompt, or None
+        self.permissions = permission_system or PermissionSystem()
+        self._confirm    = user_confirm_fn  # blocking console prompt, or None
 
     # ── Permission helpers ─────────────────────────────────────────────────
 
-    def ensure_permission(
+    def _require_permission(
         self,
         tier: PermissionTier,
         reason: str,
         action: str,
         alternatives: list = None,
-    ) -> Generator[Dict[str, Any], None, bool]:
-        """Yield permission events; return True if permission is available.
+    ) -> Generator[Dict[str, Any], bool, None]:
+        """Internal generator: yield request event, return bool (has permission).
 
-        This is a generator—callers must iterate it before reading the return
-        value (use `yield from` with send pattern, or collect events manually).
+        Usage pattern (inside another generator):
+            ok = yield from self._require_permission(...)
+            if not ok:
+                return
         """
         if self.permissions.has_permission(tier):
             return True
 
         req = PermissionRequest(
-            tier=tier,
-            reason=reason,
-            action=action,
+            tier=tier, reason=reason, action=action,
             alternatives=alternatives or [],
         )
-
-        # Yield the request event for the UI to render
         for ev in self.permissions.request_events(req):
             yield {"type": ev.type, "message": ev.message, "data": ev.data}
 
-        # If we have a blocking confirm function, use it now
+        # If a user-confirm callback is provided, ask interactively
         if self._confirm is not None:
-            granted = self._confirm(f"Allow TIER {tier.value} permission?")
-            if granted:
-                ev = self.permissions.process_grant(tier)
+            if self._confirm(f"Grant {req.label}? (y/n): "):
+                grant_ev = self.permissions.grant_event(tier)
+                yield {"type": grant_ev.type, "message": grant_ev.message,
+                       "data": grant_ev.data}
+                return True
             else:
-                ev = self.permissions.process_deny(tier)
-            yield {"type": ev.type, "message": ev.message}
-            return granted
+                deny_ev = self.permissions.deny_event(tier, alternatives or [])
+                yield {"type": deny_ev.type, "message": deny_ev.message,
+                       "data": deny_ev.data}
+                return False
 
-        # Without a confirm function the caller must handle via send()
+        # No callback — just emit the deny event
+        deny_ev = self.permissions.deny_event(tier, alternatives or [])
+        yield {"type": deny_ev.type, "message": deny_ev.message, "data": deny_ev.data}
         return False
 
-    # ── High-level tasks ───────────────────────────────────────────────────
+    # ── Code generation pipeline ───────────────────────────────────────────
 
-    def resolve_code_generation(
-        self, description: str, save_path: str = ""
-    ) -> EventStream:
-        """Full code-generation pipeline with permission checks."""
-        yield {"type": "deep_thinking", "message": "🧠 Analysing requirements…"}
+    def resolve_code_generation(self, description: str) -> EventStream:
+        """Generate, validate, and optionally test code for *description*."""
+        yield {"type": "code_generation", "message": "🧠 Starting code generation…"}
 
-        # Decompose the problem
-        from lirox.thinking.problem_decomposer import ProblemDecomposer
-        decomposer = ProblemDecomposer()
-        steps      = decomposer.decompose(description)
-        if steps:
-            yield {
-                "type":    "deep_thinking",
-                "message": "Decomposed into steps:\n" + "\n".join(
-                    f"  {i}. {s}" for i, s in enumerate(steps, 1)
-                ),
-            }
-
-        # Gather codebase context
-        yield {"type": "code_analysis", "message": "📖 Reading project style…"}
-        from lirox.autonomy.code_intelligence import CodeIntelligence
-        ci    = CodeIntelligence()
-        style = ci.detect_style()
-
-        # Generate code
-        yield {"type": "code_generation", "message": "✍ Generating code…"}
-        from lirox.autonomy.code_generator import AutoCodeGenerator
-        gen  = AutoCodeGenerator(style=style)
-        code = gen.generate_from_description(description)
-
-        # Validate
-        yield {"type": "code_validation", "message": "🔍 Validating generated code…"}
+        # No permission needed for pure generation
+        from lirox.autonomy.code_generator import CodeGenerator
         from lirox.autonomy.code_validator import CodeValidator
-        vr = CodeValidator().validate(code)
-        if not vr.valid:
-            yield {
-                "type":    "code_validation",
-                "message": "⚠ Validation issues:\n" + "\n".join(vr.errors),
-            }
-        if vr.warnings:
-            yield {
-                "type":    "code_validation",
-                "message": "Warnings:\n" + "\n".join(vr.warnings),
-            }
 
-        # Save if path provided and permission exists
-        if save_path and self.permissions.has_permission(PermissionTier.FILE_WRITE):
-            yield {"type": "step_execution", "message": f"💾 Saving to {save_path}…"}
-            from pathlib import Path
-            try:
-                Path(save_path).expanduser().write_text(code, encoding="utf-8")
-                yield {"type": "step_execution", "message": f"✓ Saved: {save_path}"}
-            except OSError as exc:
-                yield {"type": "error", "message": f"Save failed: {exc}"}
+        generator = CodeGenerator()
+        validator = CodeValidator()
 
-        yield {
-            "type":    "done",
-            "message": code,
-            "answer":  code,
-        }
+        yield {"type": "code_generation", "message": "✍️  Generating code…"}
+        try:
+            result = generator.generate(description, validate=False)
+        except Exception as exc:
+            yield {"type": "code_generation",
+                   "message": f"Generation failed: {exc}"}
+            return
+
+        code = result.get("code", "")
+        if not code:
+            yield {"type": "code_generation", "message": "No code produced."}
+            return
+
+        # Validation (pure Python — no execution, no permission needed)
+        vr = validator.check_syntax(code)
+        if vr.valid:
+            yield {"type": "code_generation", "message": "✓ Syntax valid"}
+        else:
+            for err in vr.errors:
+                yield {"type": "code_generation", "message": f"  ✖ {err}"}
+
+        sec = validator.security_scan(code)
+        for w in sec.warnings:
+            yield {"type": "code_generation", "message": f"  ⚠ {w}"}
+
+        yield {"type": "streaming", "message": f"```python\n{code}\n```"}
+        yield {"type": "done", "answer": f"```python\n{code}\n```"}
+
+    # ── Self-improvement pipeline ──────────────────────────────────────────
 
     def resolve_self_improvement(self) -> EventStream:
-        """Full self-improvement pipeline."""
-        if not self.permissions.has_permission(PermissionTier.SELF_MODIFY):
-            yield {
-                "type":    "permission_request",
-                "message": (
-                    "🔬 Self-modification requires TIER 5 permission.\n"
-                    "Use /ask-permission 5 to grant it."
-                ),
-            }
-            return
+        """Scan the Lirox codebase for issues and report findings."""
+        yield {"type": "self_improvement", "message": "🔬 Starting self-improvement scan…"}
 
-        yield {"type": "self_improvement", "message": "🔬 Starting self-audit…"}
-
+        from lirox.config import PROJECT_ROOT
+        from pathlib import Path
         from lirox.autonomy.self_improver import SelfImprover
+
+        lirox_dir = str(Path(PROJECT_ROOT) / "lirox")
+
         improver = SelfImprover()
+        yield from improver.analyse_and_stream(lirox_dir)
 
-        # Stream scan progress
-        for ev in improver.scan_events():
-            yield ev
+        summary = improver.get_improvement_summary(lirox_dir)
+        yield {"type": "self_improvement", "message": summary}
+        yield {"type": "done", "answer": summary}
 
-        issues = improver._issues
-        if not issues:
-            yield {"type": "self_improvement", "message": "✓ No issues found."}
-            return
+    # ── Analysis pipeline ──────────────────────────────────────────────────
 
-        yield {
-            "type":    "self_improvement",
-            "message": f"Found {len(issues)} issue(s). Generating patches…",
-        }
-        yield {"type": "code_generation", "message": "Generating patches…"}
-        patches = improver.generate_patches()
+    def resolve_code_analysis(self, query: str = "") -> EventStream:
+        """Run AST-based project analysis and stream results."""
+        yield {"type": "code_analysis", "message": "📖 Scanning project…"}
 
-        if not patches:
-            yield {"type": "self_improvement", "message": "No patches generated."}
-            return
+        from lirox.autonomy.code_intelligence import CodeIntelligence
 
-        diffs = "\n\n".join(p.diff for p in patches)
-        yield {
-            "type":    "self_improvement",
-            "message": f"✓ {len(patches)} patch(es) ready.",
-            "data":    {"patches": patches, "diffs": diffs},
-        }
+        ci      = CodeIntelligence()
+        summary = ci.summary()
+        yield {"type": "code_analysis", "message": summary}
+        yield {"type": "done", "answer": summary}
+
+    # ── Fallback pipeline ──────────────────────────────────────────────────
 
     def resolve_fallback(
         self,
-        original_action: str,
-        denied_tier: PermissionTier,
+        blocked_tier: PermissionTier,
+        task_description: str,
+        original_error: str = "",
     ) -> EventStream:
-        """Yield fallback alternatives when permission is denied."""
+        """Generate fallback suggestions when an action is blocked."""
         from lirox.autonomy.fallback_strategies import FallbackStrategies
-        plan = FallbackStrategies().get_alternatives(
-            denied_tier=denied_tier,
-            original_action=original_action,
-            granted_tier=self.permissions.current_max_tier(),
+        yield from FallbackStrategies().stream_fallback(
+            blocked_tier, task_description, original_error
         )
-        yield {
-            "type":    "fallback",
-            "message": plan.summary(),
-            "data":    {"plan": plan},
-        }

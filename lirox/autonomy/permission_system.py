@@ -1,174 +1,187 @@
-"""Lirox Autonomy — Permission System (TIER 0-5).
+"""Lirox Autonomy — Tiered Permission System.
 
-Session-based permission grants: once the user approves a tier, it stays
-granted for the lifetime of the current process.  Nothing is persisted to disk.
+Implements a session-scoped, cumulative permission model with TIER 0–5:
+
+  TIER 0  BASIC       — Read-only reasoning; no filesystem access
+  TIER 1  FILE_READ   — Read project files
+  TIER 2  FILE_WRITE  — Create / modify files (with preview)
+  TIER 3  CODE_EXEC   — Execute Python scripts in a sandbox
+  TIER 4  FULL_SYSTEM — Shell commands, git operations
+  TIER 5  SELF_MODIFY — Modify the Lirox codebase itself
+
+Permissions are granted cumulatively: granting TIER 3 implies TIER 0–2.
+No external APIs or network calls are used.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Callable, Dict, Generator, List, Optional, Set
+from typing import Any, Dict, Generator, List, Optional
 
 
 class PermissionTier(IntEnum):
-    """Capability tiers from most restricted to most powerful."""
-    BASIC       = 0   # Read-only, no system access
-    FILE_READ   = 1   # Read files in project
-    FILE_WRITE  = 2   # Modify files (with preview)
-    CODE_EXEC   = 3   # Execute Python scripts
-    FULL_SYSTEM = 4   # Shell commands, git operations
-    SELF_MODIFY = 5   # Modify own codebase
+    BASIC       = 0
+    FILE_READ   = 1
+    FILE_WRITE  = 2
+    CODE_EXEC   = 3
+    FULL_SYSTEM = 4
+    SELF_MODIFY = 5
 
 
-TIER_LABELS: Dict[PermissionTier, str] = {
-    PermissionTier.BASIC:       "Basic Mode (read-only, no system access)",
-    PermissionTier.FILE_READ:   "File Read (read files in project)",
-    PermissionTier.FILE_WRITE:  "File Write (modify files with preview)",
-    PermissionTier.CODE_EXEC:   "Code Execution (execute Python scripts)",
-    PermissionTier.FULL_SYSTEM: "Full System (shell commands, git operations)",
-    PermissionTier.SELF_MODIFY: "Self-Modification (modify own codebase)",
+_TIER_LABELS: Dict[PermissionTier, str] = {
+    PermissionTier.BASIC:       "TIER 0 — Basic (read-only reasoning)",
+    PermissionTier.FILE_READ:   "TIER 1 — File Read",
+    PermissionTier.FILE_WRITE:  "TIER 2 — File Write",
+    PermissionTier.CODE_EXEC:   "TIER 3 — Code Execution",
+    PermissionTier.FULL_SYSTEM: "TIER 4 — Full System (shell / git)",
+    PermissionTier.SELF_MODIFY: "TIER 5 — Self-Modification",
 }
 
-TIER_ICONS: Dict[PermissionTier, str] = {
-    PermissionTier.BASIC:       "🔒",
-    PermissionTier.FILE_READ:   "📖",
-    PermissionTier.FILE_WRITE:  "✏️",
-    PermissionTier.CODE_EXEC:   "⚙️",
-    PermissionTier.FULL_SYSTEM: "🖥️",
-    PermissionTier.SELF_MODIFY: "🔬",
+_TIER_DESCRIPTIONS: Dict[PermissionTier, str] = {
+    PermissionTier.BASIC:       "Pure reasoning with no filesystem or system access.",
+    PermissionTier.FILE_READ:   "Read project files to analyse and understand them.",
+    PermissionTier.FILE_WRITE:  "Create or modify files (diffs shown before writing).",
+    PermissionTier.CODE_EXEC:   "Execute Python scripts in an isolated subprocess.",
+    PermissionTier.FULL_SYSTEM: "Run shell commands and git operations.",
+    PermissionTier.SELF_MODIFY: "Scan the Lirox codebase, generate and apply patches.",
 }
 
 
 @dataclass
 class PermissionRequest:
-    """Describes a single permission request from the agent."""
-    tier:        PermissionTier
-    reason:      str                    # Why the agent needs this
-    action:      str                    # What it wants to do
-    alternatives: List[str] = field(default_factory=list)  # Lower-tier workarounds
+    """Describes a permission request the agent wants to make."""
+    tier:         PermissionTier
+    reason:       str
+    action:       str
+    alternatives: List[str] = field(default_factory=list)
+
+    @property
+    def label(self) -> str:
+        return _TIER_LABELS.get(self.tier, str(self.tier))
+
+    @property
+    def description(self) -> str:
+        return _TIER_DESCRIPTIONS.get(self.tier, "")
 
 
 @dataclass
 class PermissionEvent:
-    """Yielded by the PermissionSystem to drive the UI interaction."""
-    type:    str   # "permission_request" | "permission_grant" | "permission_deny"
-    tier:    PermissionTier
+    """An event emitted during permission flow."""
+    type:    str            # "permission_request" | "permission_grant" | "permission_deny"
     message: str
-    data:    dict = field(default_factory=dict)
+    data:    Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class PermissionGrant:
+    """Records a successful permission grant."""
+    tier:    PermissionTier
+    session: str = ""       # optional session tag
 
 
 class PermissionSystem:
-    """Manages capability tiers and handles interactive permission requests.
+    """Session-scoped, cumulative permission manager.
 
-    Usage::
+    Permissions are additive: granting TIER N implies all tiers below N are
+    also available (``has_permission(tier)`` checks ≤ current max).
 
-        ps = PermissionSystem()
-        if not ps.has_permission(PermissionTier.FILE_WRITE):
-            req = PermissionRequest(
-                tier=PermissionTier.FILE_WRITE,
-                reason="I need to save the generated code to disk.",
-                action="Write file: output.py",
-            )
-            granted = ps.request_interactive(req, user_confirm_fn=ask_user)
+    All logic is pure Python — no external APIs, no network calls.
     """
 
     def __init__(self) -> None:
-        # Start at BASIC by default; accumulate grants during the session
-        self._granted: Set[PermissionTier] = {PermissionTier.BASIC}
+        # Highest tier currently granted (None = nothing granted yet)
+        self._max_tier: Optional[PermissionTier] = None
+        self._grants:   List[PermissionGrant]    = []
 
-    # ── Query ──────────────────────────────────────────────────────────────
+    # ── Queries ────────────────────────────────────────────────────────────
+
+    def current_tier(self) -> Optional[PermissionTier]:
+        """Return the highest tier currently granted, or None."""
+        return self._max_tier
 
     def has_permission(self, tier: PermissionTier) -> bool:
-        """Return True if *tier* (or higher) has already been granted."""
-        return any(g >= tier for g in self._granted)
+        """Return True if *tier* (or higher) has been granted this session."""
+        if self._max_tier is None:
+            return tier == PermissionTier.BASIC
+        return int(self._max_tier) >= int(tier)
 
-    def current_max_tier(self) -> PermissionTier:
-        return max(self._granted) if self._granted else PermissionTier.BASIC
-
-    def list_granted(self) -> List[PermissionTier]:
-        return sorted(self._granted)
-
-    # ── Grant / Revoke ─────────────────────────────────────────────────────
-
-    def grant(self, tier: PermissionTier) -> None:
-        """Permanently grant *tier* for this session."""
-        # Also grant all tiers below it (cumulative)
+    def status_table(self) -> List[Dict[str, Any]]:
+        """Return a list of dicts describing each tier and its grant status."""
+        rows = []
         for t in PermissionTier:
-            if t <= tier:
-                self._granted.add(t)
+            rows.append({
+                "tier":        int(t),
+                "label":       _TIER_LABELS[t],
+                "description": _TIER_DESCRIPTIONS[t],
+                "granted":     self.has_permission(t),
+            })
+        return rows
 
-    def revoke(self, tier: PermissionTier) -> None:
-        """Revoke *tier* and all tiers above it."""
-        self._granted = {t for t in self._granted if t < tier}
+    # ── Mutations ──────────────────────────────────────────────────────────
 
-    # ── Interactive request ────────────────────────────────────────────────
+    def grant(self, tier: PermissionTier) -> PermissionGrant:
+        """Grant *tier* (and implicitly all lower tiers).  Returns the grant."""
+        if self._max_tier is None or int(tier) > int(self._max_tier):
+            self._max_tier = tier
+        g = PermissionGrant(tier=tier)
+        self._grants.append(g)
+        return g
+
+    def revoke_all(self) -> None:
+        """Reset the permission system to the initial state (BASIC only)."""
+        self._max_tier = None
+        self._grants   = []
+
+    # ── Event stream helpers ───────────────────────────────────────────────
 
     def request_events(
         self, req: PermissionRequest
     ) -> Generator[PermissionEvent, None, None]:
-        """Yield events that describe a permission request (for the UI to render)."""
+        """Yield structured events for a permission request (no I/O performed).
+
+        The caller is responsible for displaying the events and obtaining user
+        confirmation; then calling :meth:`grant` or handling the denial.
+        """
         yield PermissionEvent(
             type="permission_request",
-            tier=req.tier,
             message=(
-                f"{TIER_ICONS[req.tier]} Permission requested: "
-                f"TIER {req.tier} ({TIER_LABELS[req.tier]})\n"
+                f"🔐 Permission Request: {req.label}\n"
                 f"  Reason : {req.reason}\n"
                 f"  Action : {req.action}"
             ),
-            data={"request": req, "alternatives": req.alternatives},
+            data={
+                "tier":         int(req.tier),
+                "label":        req.label,
+                "reason":       req.reason,
+                "action":       req.action,
+                "alternatives": req.alternatives,
+            },
         )
 
-    def process_grant(self, tier: PermissionTier) -> PermissionEvent:
+    def grant_event(self, tier: PermissionTier) -> PermissionEvent:
+        """Return a *permission_grant* event after calling :meth:`grant`."""
         self.grant(tier)
         return PermissionEvent(
             type="permission_grant",
-            tier=tier,
-            message=f"✓ Permission granted: TIER {tier} ({TIER_LABELS[tier]})",
+            message=f"✓ Permission granted: {_TIER_LABELS[tier]}",
+            data={"tier": int(tier), "label": _TIER_LABELS[tier]},
         )
 
-    def process_deny(self, tier: PermissionTier) -> PermissionEvent:
+    def deny_event(
+        self, tier: PermissionTier, alternatives: List[str] = None
+    ) -> PermissionEvent:
+        """Return a *permission_deny* event (permission NOT granted)."""
+        alt_text = ""
+        if alternatives:
+            alt_text = "\n  Alternatives:\n" + "\n".join(
+                f"    • {a}" for a in alternatives
+            )
         return PermissionEvent(
             type="permission_deny",
-            tier=tier,
-            message=f"✖ Permission denied for TIER {tier}.",
+            message=f"✖ Permission denied: {_TIER_LABELS[tier]}{alt_text}",
+            data={
+                "tier":         int(tier),
+                "label":        _TIER_LABELS[tier],
+                "alternatives": alternatives or [],
+            },
         )
-
-    def request_interactive(
-        self,
-        req: PermissionRequest,
-        user_confirm_fn: Callable[[str], bool],
-    ) -> bool:
-        """Blocking helper: show request, ask user, update grants.
-
-        *user_confirm_fn* receives a prompt string and returns True/False.
-        """
-        icon  = TIER_ICONS[req.tier]
-        label = TIER_LABELS[req.tier]
-        prompt = (
-            f"\n{icon}  Permission needed: TIER {req.tier.value} — {label}\n"
-            f"  Reason : {req.reason}\n"
-            f"  Action : {req.action}"
-        )
-        if req.alternatives:
-            prompt += "\n  Alternatives:\n" + "\n".join(
-                f"    • {a}" for a in req.alternatives
-            )
-        prompt += "\n  Allow?"
-        granted = user_confirm_fn(prompt)
-        if granted:
-            self.grant(req.tier)
-        return granted
-
-    # ── Helpers ────────────────────────────────────────────────────────────
-
-    @staticmethod
-    def describe_tier(tier: PermissionTier) -> str:
-        return f"TIER {tier.value}: {TIER_ICONS[tier]} {TIER_LABELS[tier]}"
-
-    def summary_table(self) -> str:
-        lines = ["PERMISSION TIERS\n"]
-        for t in PermissionTier:
-            status = "✓ GRANTED" if self.has_permission(t) else "  locked"
-            lines.append(f"  {TIER_ICONS[t]} TIER {t.value}  {TIER_LABELS[t]:<50}  [{status}]")
-        return "\n".join(lines)

@@ -35,18 +35,16 @@ Be concise."""
             return self.last_trace
 
     def reason_deep(self, query: str, context: str = "") -> str:
-        """Run multi-path deep reasoning and return a formatted trace.
+        """Multi-path deep reasoning with approach comparison.
 
-        Falls back to standard ``reason()`` if the advanced engine fails.
+        Falls back to :meth:`reason` if the advanced reasoning module is
+        unavailable or the LLM call fails.
         """
         try:
             from lirox.thinking.advanced_reasoning import AdvancedReasoning
-            result = AdvancedReasoning(provider=self.provider).think_deep(query, context)
-            self.last_trace = result.format()
-            return self.last_trace
-        except Exception as e:
-            import logging
-            logging.getLogger("lirox.thinking").warning(
-                f"ThinkingEngine.reason_deep failed, falling back to reason(): {e}"
-            )
+            trace = AdvancedReasoning().reason_deep(query)
+            self.last_trace = trace
+            return trace
+        except Exception:
             return self.reason(query, context)
+
