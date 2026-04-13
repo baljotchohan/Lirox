@@ -62,16 +62,6 @@ class SelfImprover:
                     "kind": "bare_except",
                     "message": "Bare 'except:' clause — catch specific exceptions instead.",
                 })
-            # TODO / FIXME / HACK comments
-            if isinstance(node, ast.Constant) and isinstance(node.value, str):
-                for marker in ("TODO", "FIXME", "HACK", "XXX"):
-                    if marker in node.value:
-                        issues.append({
-                            "file": path,
-                            "line": getattr(node, "lineno", 0),
-                            "kind": "todo_comment",
-                            "message": f"{marker} found in string literal.",
-                        })
 
         # Line-level checks
         for i, line in enumerate(lines, start=1):

@@ -627,7 +627,7 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         lirox_dir = str(Path(PROJECT_ROOT) / "lirox")
         rest = cmd[len("/self-execute"):].strip()
 
-        if not rest or rest in ("scan", "analyse", "analyze"):
+        if not rest or rest in ("scan", "analyze"):
             info_panel("🔍 Running autonomous codebase scan…")
             improver = SelfImprover()
             summary  = improver.get_improvement_summary(lirox_dir)
