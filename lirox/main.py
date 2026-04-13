@@ -198,7 +198,7 @@ def main():
         "/profile", "/reset", "/test",
         "/train", "/learnings", "/add-skill", "/skills", "/use-skill",
         "/add-agent", "/agents",
-        "/improve", "/apply", "/pending",
+        "/improve", "/apply", "/pending", "/self-execute",
         "/soul", "/mind", "/restart",
         "/backup", "/import-memory", "/export-profile",
         "/uninstall", "/update", "/exit",
@@ -443,6 +443,7 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             ("/agents",             "List all sub-agents"),
             ("@name <query>",       "Talk to a custom sub-agent"),
             ("/improve",            "Audit codebase and stage patches"),
+            ("/self-execute [desc]", "Autonomous code scan or generate+validate code"),
             ("/pending",            "List patches waiting for review"),
             ("/apply",              "Apply all staged patches"),
             ("/soul",               "View agent soul"),
@@ -670,7 +671,32 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         else:
             info_panel("Cancelled. Patches remain in data/pending_patches/")
 
-    elif base == "/add-skill":
+    elif base == "/self-execute":
+        from lirox.config import PROJECT_ROOT
+        from lirox.autonomy.self_improver import SelfImprover
+        from lirox.autonomy.code_generator import CodeGenerator
+        lirox_dir = str(Path(PROJECT_ROOT) / "lirox")
+        rest = cmd[len("/self-execute"):].strip()
+
+        if not rest or rest in ("scan", "analyze"):
+            info_panel("🔍 Running autonomous codebase scan…")
+            improver = SelfImprover()
+            summary  = improver.get_improvement_summary(lirox_dir)
+            from rich.markdown import Markdown as _Md
+            console.print(_Md(summary))
+        else:
+            # Treat rest as a code-generation description
+            info_panel(f"✍️  Generating: {rest[:80]}…")
+            generator = CodeGenerator()
+            result    = generator.generate(rest, validate=True)
+            if result["errors"]:
+                error_panel("Code has errors", "\n".join(result["errors"]))
+            else:
+                success_message("Code generated and validated:")
+                from rich.markdown import Markdown as _Md
+                console.print(_Md(f"```python\n{result['code']}\n```"))
+
+
         desc = cmd[10:].strip()
         if not desc:
             info_panel("Usage: /add-skill <description of what the skill should do>")

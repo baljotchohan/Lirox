@@ -1,12 +1,21 @@
-"""Lirox Autonomy — Code Generator.
+"""Lirox Autonomy — Intelligent Code Generator (Production + Agent Ready)"""
 
-Generates Python code that matches the style of the existing codebase:
-type hints, docstrings, error handling, and imports are all included.
-"""
 from __future__ import annotations
 
-from typing import Any, Dict, Optional
+import re
+from typing import Any, Dict, Generator, List, Optional
 
+from lirox.autonomy.code_executor import CodeExecutor
+from lirox.autonomy.filesystem_manager import FilesystemManager
+
+
+_executor = CodeExecutor()
+_fs = FilesystemManager()
+
+
+# ─────────────────────────────────────────────────────────────
+# Templates (Structure Control)
+# ─────────────────────────────────────────────────────────────
 
 TEMPLATE_MODULE = '''\
 """{module_docstring}"""
@@ -16,13 +25,6 @@ from __future__ import annotations
 {body}
 '''
 
-TEMPLATE_CLASS = '''\
-class {name}:
-    """{docstring}"""
-
-{methods}
-'''
-
 TEMPLATE_FUNCTION = '''\
 def {name}({params}) -> {return_type}:
     """{docstring}"""
@@ -30,99 +32,138 @@ def {name}({params}) -> {return_type}:
 '''
 
 
-class AutoCodeGenerator:
-    """Generate Python code that matches the project's existing style."""
+# ─────────────────────────────────────────────────────────────
+# Code Generator
+# ─────────────────────────────────────────────────────────────
 
-    def __init__(self, style: Optional[Dict[str, Any]] = None) -> None:
-        if style is None:
-            from lirox.autonomy.code_intelligence import CodeIntelligence
-            style = CodeIntelligence().detect_style()
-        self.style = style
+class CodeGenerator:
+    """Generate, validate, and save production-ready Python code."""
 
-    # ── Public API ─────────────────────────────────────────────────────────
+    # ─────────────────────────────────────────────────────────
+    # Style Learning
+    # ─────────────────────────────────────────────────────────
 
-    def generate_from_description(self, description: str, context: str = "") -> str:
-        """Ask the LLM to generate code matching the project style."""
+    def sample_style(self, root: str, max_files: int = 5) -> str:
+        samples: List[str] = []
+        for py_path in _fs.get_python_files(root)[:max_files]:
+            ok, source = _fs.read_file(py_path)
+            if ok and source.strip():
+                samples.append(f"# {py_path}\n" + source[:800])
+        return "\n\n---\n\n".join(samples)
+
+    # ─────────────────────────────────────────────────────────
+    # LLM Generation Core
+    # ─────────────────────────────────────────────────────────
+
+    def generate(
+        self,
+        description: str,
+        style_sample: str = "",
+        extra_context: str = "",
+        validate: bool = True,
+    ) -> Dict[str, Any]:
+
         from lirox.utils.llm import generate_response
 
-        sys_prompt = self._build_system_prompt()
-        user_prompt = (
-            f"Generate Python code for the following requirement.\n\n"
-            f"Requirement: {description}\n"
+        style_hint = (
+            f"\nSTYLE REFERENCE:\n{style_sample[:1500]}"
+            if style_sample else ""
         )
-        if context:
-            user_prompt += f"\nContext / existing code:\n{context[:3000]}\n"
-        user_prompt += (
-            "\nRules:\n"
-            "• Complete implementation — no placeholders or '...'.\n"
-            "• Include all imports at the top.\n"
-            "• Add type hints to every function/method.\n"
-            "• Add docstrings to every class and public function.\n"
-            "• Include error handling with try/except.\n"
-            "• Add `if __name__ == '__main__':` demo block at the bottom.\n"
-        )
-        return generate_response(user_prompt, provider="auto", system_prompt=sys_prompt)
 
-    def generate_module(
+        context_hint = (
+            f"\nCONTEXT:\n{extra_context[:1000]}"
+            if extra_context else ""
+        )
+
+        system = (
+            "You are a senior Python engineer.\n"
+            "Generate COMPLETE production-ready code.\n"
+            "Rules:\n"
+            "• Include imports\n"
+            "• Type hints everywhere\n"
+            "• Docstrings\n"
+            "• Error handling\n"
+            "• Add main() demo\n"
+            "• No placeholders\n"
+            + style_hint
+        )
+
+        prompt = f"Write Python code for: {description}{context_hint}"
+
+        raw = generate_response(prompt, provider="auto", system_prompt=system)
+
+        code = self._extract_code(raw)
+        code = self._ensure_main(code)
+
+        errors = _executor.check_syntax(code)
+
+        run_result = None
+        if validate and not errors:
+            run_result = _executor.execute(code)
+
+        return {
+            "code": code,
+            "valid": not errors,
+            "errors": errors,
+            "run_result": run_result,
+        }
+
+    # ─────────────────────────────────────────────────────────
+    # Helpers
+    # ─────────────────────────────────────────────────────────
+
+    def _extract_code(self, text: str) -> str:
+        match = re.search(r"```(?:python)?\n?([\s\S]*?)```", text)
+        return match.group(1).strip() if match else text.strip()
+
+    def _ensure_main(self, code: str) -> str:
+        if "__name__" not in code:
+            code += '\n\nif __name__ == "__main__":\n    pass\n'
+        return code
+
+    # ─────────────────────────────────────────────────────────
+    # Streaming (Agent Mode)
+    # ─────────────────────────────────────────────────────────
+
+    def generate_and_stream(
         self,
-        name: str,
-        docstring: str,
-        imports: str,
-        body: str,
-    ) -> str:
-        return TEMPLATE_MODULE.format(
-            module_docstring=docstring,
-            imports=imports,
-            body=body,
+        description: str,
+        root: str = "",
+        save_path: str = "",
+        validate: bool = True,
+    ) -> Generator[Dict[str, Any], None, None]:
+
+        yield {"type": "agent_progress", "message": "✍️ Generating code..."}
+
+        style = self.sample_style(root) if root else ""
+
+        result = self.generate(
+            description,
+            style_sample=style,
+            validate=validate,
         )
 
-    def generate_class(
-        self,
-        name: str,
-        docstring: str,
-        methods: str,
-    ) -> str:
-        return TEMPLATE_CLASS.format(
-            name=name,
-            docstring=docstring,
-            methods=methods,
-        )
+        if result["errors"]:
+            yield {"type": "error", "message": "Syntax errors found"}
+            for err in result["errors"]:
+                yield {"type": "error", "message": err}
+        else:
+            yield {"type": "success", "message": "Code is valid"}
 
-    def generate_function(
-        self,
-        name: str,
-        params: str,
-        return_type: str,
-        docstring: str,
-        body: str,
-    ) -> str:
-        indented_body = "\n".join("    " + line for line in body.splitlines())
-        return TEMPLATE_FUNCTION.format(
-            name=name,
-            params=params,
-            return_type=return_type,
-            docstring=docstring,
-            body=indented_body,
-        )
+        if result["run_result"]:
+            rr = result["run_result"]
+            if rr.success:
+                yield {"type": "success", "message": "Execution success"}
+                if rr.stdout:
+                    yield {"type": "output", "message": rr.stdout[:200]}
+            else:
+                yield {"type": "error", "message": rr.summary()}
 
-    # ── Private helpers ────────────────────────────────────────────────────
+        if save_path:
+            ok, msg = _fs.write_file(save_path, result["code"])
+            yield {"type": "info", "message": msg}
 
-    def _build_system_prompt(self) -> str:
-        hints = (
-            "• Use type hints (e.g. `def foo(x: int) -> str:`).\n"
-            if self.style.get("uses_type_hints") else ""
-        )
-        dc = (
-            "• Use @dataclass where appropriate.\n"
-            if self.style.get("uses_dataclass") else ""
-        )
-        doc_style = self.style.get("docstring_style", '"""')
-        return (
-            "You are an expert Python code generator.\n"
-            "Generate complete, production-quality Python code:\n"
-            f"{hints}{dc}"
-            f"• Use {doc_style}triple-quote{doc_style} docstrings.\n"
-            "• Follow PEP 8 (4-space indentation, ~100 char lines).\n"
-            "• Never truncate — always write the full implementation.\n"
-            "• Include error handling and logging where appropriate.\n"
-        )
+        yield {
+            "type": "code",
+            "message": f"```python\n{result['code']}\n```",
+        }

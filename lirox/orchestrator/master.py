@@ -140,11 +140,14 @@ class MasterOrchestrator:
             try:
                 for event in agent.run(query, system_prompt=mind_sys,
                                        context=thinking_trace, mode="advisor"):
-                    yield OrchestratorEvent(type=event.get("type", "agent_progress"),
-                                             agent=agent_name, message=event.get("message", ""),
-                                             data=event)
-                    if event.get("type") == "done":
+                    event_type = event.get("type", "agent_progress")
+                    if event_type == "done":
+                        # Capture result; orchestrator emits its own "done" below
                         result_text = event.get("answer", event.get("message", ""))
+                    else:
+                        yield OrchestratorEvent(type=event_type,
+                                                 agent=agent_name, message=event.get("message", ""),
+                                                 data=event)
             except Exception as e:
                 yield OrchestratorEvent(type="error", message=str(e))
                 result_text = f"Error: {e}"
@@ -167,11 +170,14 @@ class MasterOrchestrator:
         try:
             for event in agent.run(query, system_prompt=system_prompt,
                                    context=complex_ctx, mode="complex"):
-                yield OrchestratorEvent(type=event.get("type", "agent_progress"),
-                                         agent="personal", message=event.get("message", ""),
-                                         data=event)
-                if event.get("type") == "done":
+                event_type = event.get("type", "agent_progress")
+                if event_type == "done":
+                    # Capture result; orchestrator emits its own "done" below
                     result_text = event.get("answer", event.get("message", ""))
+                else:
+                    yield OrchestratorEvent(type=event_type,
+                                             agent="personal", message=event.get("message", ""),
+                                             data=event)
         except Exception as e:
             yield OrchestratorEvent(type="error", message=str(e))
             result_text = f"Error: {e}"

@@ -109,7 +109,7 @@ def show_answer(answer: str, agent: str = "personal"):
 
 
 def render_streaming_chunk(chunk: str) -> None:
-    """Print a streaming chunk. Code blocks rendered with Markdown for syntax highlight."""
+    """Print a streaming chunk with live character-by-character animation."""
     if not chunk:
         return
     if chunk.strip().startswith("```"):
@@ -118,7 +118,12 @@ def render_streaming_chunk(chunk: str) -> None:
         except Exception:
             console.print(escape(chunk), soft_wrap=True)
     else:
-        console.print(escape(chunk), end="", soft_wrap=True)
+        import sys
+        import time
+        for char in chunk:
+            sys.stdout.write(char)
+            sys.stdout.flush()
+            time.sleep(0.007)
 
 
 def show_status_card(profile_data: dict, providers: list):
