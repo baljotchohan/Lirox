@@ -16,6 +16,7 @@ CLR_WARN     = "bold #f59e0b"
 CLR_DIM      = "dim #94a3b8"
 CLR_THINK    = "bold #a78bfa"
 CLR_PERSONAL = "bold #FFD700"
+CLR_PERM     = "bold #f59e0b"
 
 AGENT_COLORS = {"personal": CLR_PERSONAL, "mind": CLR_ACCENT, "skill": "bold #34d399"}
 AGENT_ICONS  = {"personal": "⚡", "mind": "🧠", "skill": "🔧"}
@@ -51,6 +52,26 @@ def show_thinking(msg: str):
         f"[{CLR_THINK}]{escape(msg)}[/]",
         title=f"[{CLR_THINK}]🧠 THINKING[/]",
         border_style="#a78bfa", padding=(0,1)))
+
+
+def render_deep_thinking(msg: str) -> None:
+    """Render an advanced / deep-thinking progress line."""
+    console.print(f"  [bold #a78bfa]  🧠 {escape(msg)}[/]")
+
+
+def render_permission_request(message: str) -> None:
+    """Render a permission-request panel emitted by the autonomy subsystem."""
+    console.print(Panel(
+        f"[{CLR_PERM}]{escape(message)}[/]",
+        title=f"[{CLR_PERM}]🔐 Permission Request[/]",
+        border_style="#f59e0b",
+        padding=(0, 1),
+    ))
+
+
+def render_progress_indicator(message: str) -> None:
+    """Render a generic progress/step-execution indicator."""
+    console.print(f"  [{CLR_DIM}]  ├─ ▶ {escape(message)}[/]")
 
 
 def show_agent_event(agent: str, etype: str, msg: str):

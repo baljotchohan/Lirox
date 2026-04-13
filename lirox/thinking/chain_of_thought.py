@@ -33,3 +33,20 @@ Be concise."""
             )
             self.last_trace = f"UNDERSTAND: {query}"
             return self.last_trace
+
+    def reason_deep(self, query: str, context: str = "") -> str:
+        """Run multi-path deep reasoning and return a formatted trace.
+
+        Falls back to standard ``reason()`` if the advanced engine fails.
+        """
+        try:
+            from lirox.thinking.advanced_reasoning import AdvancedReasoning
+            result = AdvancedReasoning(provider=self.provider).think_deep(query, context)
+            self.last_trace = result.format()
+            return self.last_trace
+        except Exception as e:
+            import logging
+            logging.getLogger("lirox.thinking").warning(
+                f"ThinkingEngine.reason_deep failed, falling back to reason(): {e}"
+            )
+            return self.reason(query, context)
