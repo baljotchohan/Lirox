@@ -201,7 +201,8 @@ class SkillsRegistry:
                     provider="auto",
                     system_prompt="Fix Python syntax. Output ONLY code.",
                 )
-                fixed = fixed.strip().lstrip("```python").lstrip("```").rstrip("```").strip()
+                from lirox.utils.llm import strip_code_fences
+                fixed = strip_code_fences(fixed, lang="python")
                 compile(fixed, "<skill>", "exec")
                 code = fixed
 

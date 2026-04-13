@@ -85,7 +85,8 @@ class MemoryImporter:
                 provider="auto",
                 system_prompt="Extract user knowledge. Output only JSON.",
             )
-            raw = raw.strip().lstrip("```json").lstrip("```").rstrip("```").strip()
+            from lirox.utils.llm import strip_code_fences
+            raw = strip_code_fences(raw, lang="json")
             data = json.loads(raw)
 
             for fact in data.get("facts", []):
