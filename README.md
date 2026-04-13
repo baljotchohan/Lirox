@@ -80,14 +80,6 @@ ollama run llama3
 
 ---
 
-## 🎨 Interface Preview
-
-<div align="center">
-  <img src="media/terminal.png" alt="Lirox Terminal UI" width="600px" style="border-radius: 10px; box-shadow: 0 4px 30px rgba(0,0,0,0.5);">
-</div>
-
----
-
 ## 🛠 Command Registry
 
 | Command | Action | Description |
