@@ -54,17 +54,12 @@ class BaseAgent(ABC):
 
     def fetch_url(self, url: str) -> str:
         try:
-            import requests
+            from lirox.tools.browser import BrowserTool
             import re
-            from bs4 import BeautifulSoup
-            resp = requests.get(url, headers={"User-Agent": "Lirox/1.0"}, timeout=15)
-            resp.raise_for_status()
-            soup = BeautifulSoup(resp.text, "lxml")
-            for tag in soup(["script", "style", "nav", "footer", "header"]):
-                tag.decompose()
-            main = soup.find("main") or soup.find("article") or soup.find("body")
-            text = (main.get_text(separator="\n", strip=True) if main
-                    else soup.get_text(separator="\n", strip=True))
-            return re.sub(r"\n{3,}", "\n\n", text)[:8000]
+            browser = BrowserTool()
+            html = browser.fetch_url(url)   # raises ValueError if URL is blocked
+            return browser.extract_text(html)[:8000]
+        except ValueError as e:
+            return f"URL blocked: {e}"
         except Exception as e:
             return f"Fetch error: {e}"

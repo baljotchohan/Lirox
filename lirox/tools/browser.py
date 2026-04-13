@@ -74,7 +74,19 @@ class BrowserTool:
         Check if a URL is safe to fetch.
 
         Returns (True, "ok") for safe URLs, (False, reason) for blocked ones.
+        Delegates to BrowserSecurityValidator for dangerous-port and CRLF checks,
+        then applies the additional private-IP and internal-domain checks.
         """
+        # First: run BrowserSecurityValidator (dangerous ports, CRLF injection, etc.)
+        try:
+            from lirox.tools.browser_security import BrowserSecurityValidator
+            _sec = BrowserSecurityValidator()
+            ok, reason = _sec.validate_url(url)
+            if not ok:
+                return False, reason
+        except Exception:
+            pass  # if validator is unavailable, fall through to built-in checks
+
         try:
             parsed = urlparse(url)
         except Exception:

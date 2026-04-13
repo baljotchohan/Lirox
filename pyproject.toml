@@ -21,15 +21,12 @@ dependencies = [
     "python-dotenv>=1.0.0",
     "beautifulsoup4>=4.12.0",
     "lxml>=4.9.0",
-    "schedule>=1.2.0",
     "duckduckgo-search>=6.1.0",
-    "pyautogui>=0.9.54",
-    "pillow>=10.0.0",
-    "pytesseract>=0.3.10"
 ]
 
 [project.optional-dependencies]
 full = ["openai>=1.0.0", "anthropic>=0.7.0", "groq>=0.4.0", "websockets>=12.0"]
+desktop = ["pyautogui>=0.9.54", "pillow>=10.0.0", "pytesseract>=0.3.10"]
 
 [project.scripts]
 lirox = "lirox.main:main"
