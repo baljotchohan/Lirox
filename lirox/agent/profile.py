@@ -72,52 +72,56 @@ class UserProfile:
                         get_logger("lirox.profile").warning(f"Non-critical error removing temp file: {e2}")
 
     def update(self, key: str, value):
-        self.data[key] = value
+        with self._lock:
+            self.data[key] = value
         self.save()
 
     def add_learned_fact(self, fact: str):
-        if fact not in self.data["learned_facts"]:
-            self.data["learned_facts"].append(fact)
-            if len(self.data["learned_facts"]) > 50:
-                self.data["learned_facts"] = self.data["learned_facts"][-50:]
-            self.save()
+        with self._lock:
+            if fact not in self.data["learned_facts"]:
+                self.data["learned_facts"].append(fact)
+                if len(self.data["learned_facts"]) > 50:
+                    self.data["learned_facts"] = self.data["learned_facts"][-50:]
+        self.save()
 
     def add_goal(self, goal: str):
-        if goal and goal not in self.data.get("goals", []):
+        if not goal:
+            return
+        with self._lock:
             if "goals" not in self.data:
                 self.data["goals"] = []
-            self.data["goals"].append(goal)
-            self.save()
+            if goal not in self.data["goals"]:
+                self.data["goals"].append(goal)
+        self.save()
 
     def add_learned_preference(self, category: str, preference: str):
         """Learn user preferences over time."""
-        if "preferences" not in self.data:
-            self.data["preferences"] = {}
-        
-        if category not in self.data["preferences"]:
-            self.data["preferences"][category] = []
-        
-        if preference not in self.data["preferences"][category]:
-            self.data["preferences"][category].append(preference)
-            if len(self.data["preferences"][category]) > 20:
-                self.data["preferences"][category] = self.data["preferences"][category][-20:]
-            self.save()
+        with self._lock:
+            if "preferences" not in self.data:
+                self.data["preferences"] = {}
+            if category not in self.data["preferences"]:
+                self.data["preferences"][category] = []
+            if preference not in self.data["preferences"][category]:
+                self.data["preferences"][category].append(preference)
+                if len(self.data["preferences"][category]) > 20:
+                    self.data["preferences"][category] = \
+                        self.data["preferences"][category][-20:]
+        self.save()
 
-    def track_task_execution(self, task_description: str, success: bool, duration_seconds: float):
+    def track_task_execution(self, task_description: str, success: bool,
+                             duration_seconds: float):
         """Track what tasks the user typically runs."""
-        if "task_history" not in self.data:
-            self.data["task_history"] = []
-        
-        self.data["task_history"].append({
-            "task": task_description[:100],
-            "success": success,
-            "duration": duration_seconds,
-            "timestamp": datetime.now().isoformat()
-        })
-        
-        if len(self.data["task_history"]) > 100:
-            self.data["task_history"] = self.data["task_history"][-100:]
-        
+        with self._lock:
+            if "task_history" not in self.data:
+                self.data["task_history"] = []
+            self.data["task_history"].append({
+                "task": task_description[:100],
+                "success": success,
+                "duration": duration_seconds,
+                "timestamp": datetime.now().isoformat(),
+            })
+            if len(self.data["task_history"]) > 100:
+                self.data["task_history"] = self.data["task_history"][-100:]
         self.save()
 
     def get_dominant_topics(self) -> list:

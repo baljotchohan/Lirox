@@ -97,16 +97,20 @@ class MemoryManager:
         return [w for w, _ in top]
 
     def add_fact(self, fact: str):
+        import copy
         with self._lock:
             facts = self._lt.get("facts", [])
-            # Bug #17: Use set-based dedup for O(1) lookup instead of O(n) loop
             fact_norm = " ".join(sorted(fact.lower().split()))
             existing_norms = {" ".join(sorted(f.lower().split())) for f in facts}
             if fact in facts or fact_norm in existing_norms:
                 return
             facts.append(fact)
             self._lt["facts"] = facts[-200:]
-            lt_snapshot = dict(self._lt)
+            # Deep copy while still holding the lock so the snapshot
+            # cannot be mutated by a concurrent thread before _save() runs.
+            lt_snapshot = copy.deepcopy(self._lt)
+        # _save() is intentionally outside the lock to avoid I/O holding the lock.
+        # lt_snapshot is a fully independent copy — no aliasing.
         self._save(self.lt_path, lt_snapshot)
 
     def get_stats(self) -> Dict:
