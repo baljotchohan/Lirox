@@ -9,7 +9,11 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-APP_VERSION  = "1.0.0"
+try:
+    from importlib.metadata import version as _pkg_version
+    APP_VERSION = _pkg_version("lirox")
+except Exception:
+    APP_VERSION = "1.0.0"  # fallback when running from source without install
 _REPO_ROOT   = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
 DATA_DIR     = str(_REPO_ROOT / "data")
@@ -44,7 +48,6 @@ THINKING_ENABLED     = os.getenv("THINKING_ENABLED", "true").lower() == "true"
 LLM_TIMEOUT          = int(os.getenv("LLM_TIMEOUT", "90"))
 PLAN_CONFIRM         = True
 MAX_RETRIES          = 3
-CONTEXT_MAX_CHARS    = 6000
 
 MAX_LLM_PROMPT_CHARS    = 16000
 MAX_TOOL_RESULT_CHARS   = 4000

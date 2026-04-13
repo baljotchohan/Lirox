@@ -671,7 +671,7 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
                 params.get("text") or
                 params.get("query") or
                 (next(iter(params.values()), "") if params else "") or
-                skill_name  # fallback: use skill name as minimal context
+                ""   # no params = empty query; let the skill handle it
             )
 
             result = None

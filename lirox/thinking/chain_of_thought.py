@@ -33,13 +33,3 @@ Be concise."""
             )
             self.last_trace = f"UNDERSTAND: {query}"
             return self.last_trace
-
-    def reflect(self, query: str, result: str) -> str:
-        try:
-            return generate_response(
-                f"Rate 1-10. Complete? Accurate?\nQuery: {query}\nResult: {result[:MAX_TOOL_RESULT_CHARS]}",
-                self.provider,
-                system_prompt="Brief quality evaluator.",
-            )
-        except Exception:
-            return "Reflection unavailable."
