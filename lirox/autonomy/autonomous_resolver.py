@@ -133,10 +133,10 @@ class AutonomousResolver:
 
         lirox_dir = str(Path(PROJECT_ROOT) / "lirox")
 
-        improver = SelfImprover()
-        yield from improver.analyse_and_stream(lirox_dir)
+        improver = SelfImprover(lirox_dir)
+        yield from improver.analyse_and_stream()
 
-        summary = improver.get_improvement_summary(lirox_dir)
+        summary = improver.get_improvement_summary()
         yield {"type": "self_improvement", "message": summary}
         yield {"type": "done", "answer": summary}
 

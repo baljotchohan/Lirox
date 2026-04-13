@@ -17,7 +17,6 @@ from typing import Any, Dict, List
 # Dangerous patterns that are blocked in generated / user-supplied code
 _BLOCKED_CALLS = frozenset({
     "eval", "exec", "__import__", "compile",
-    "open",          # controlled via filesystem_manager instead
     "os.system",     "os.popen",
     "subprocess.run", "subprocess.call", "subprocess.Popen",  # use CodeExecutor
     "shutil.rmtree", "shutil.move",

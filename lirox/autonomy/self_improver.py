@@ -58,7 +58,10 @@ def make_diff(original: str, patched: str, filename: str) -> str:
 class SelfImprover:
     """Analyse, fix, and improve the codebase autonomously."""
 
-    def __init__(self, root: str):
+    def __init__(self, root: Optional[str] = None):
+        if root is None:
+            # Default to the lirox package directory
+            root = str(Path(__file__).parent.parent)
         self.root = Path(root)
         self.issues: List[Issue] = []
         self.patches: List[Patch] = []
@@ -209,3 +212,62 @@ Return only fixed code.
                 "type": "diff",
                 "message": p.diff[:500]
             }
+
+    def analyse_and_stream(self, root: Optional[str] = None) -> Generator[Dict[str, Any], None, None]:
+        """Alias for improve_and_stream(); optionally re-targets a different root."""
+        if root is not None:
+            self.root = Path(root)
+        yield from self.improve_and_stream()
+
+    def get_improvement_summary(self, root: Optional[str] = None) -> str:
+        """Return a Markdown-formatted summary of issues and patches.
+
+        If *root* is provided, re-targets the scan to that directory first.
+        Reuses already-scanned data if available and root hasn't changed.
+        """
+        if root is not None:
+            new_root = Path(root)
+            if new_root != self.root:
+                self.root = new_root
+                self.issues = []
+                self.patches = []
+
+        if not self.issues:
+            self.scan()
+        if not self.patches and self.issues:
+            self.generate_patches()
+
+        issues = self.issues
+        patches = self.patches
+
+        lines: List[str] = [
+            "## 🔬 Self-Improvement Summary\n",
+            f"**Root scanned:** `{self.root}`",
+            f"**Issues found:** {len(issues)}",
+            f"**Patches generated:** {len(patches)}\n",
+        ]
+
+        if issues:
+            lines.append("### Issues")
+            by_severity: Dict[str, List[Issue]] = {}
+            for iss in issues:
+                by_severity.setdefault(iss.severity, []).append(iss)
+            for sev in ("high", "medium", "low"):
+                group = by_severity.get(sev, [])
+                if group:
+                    lines.append(f"\n#### {sev.capitalize()} ({len(group)})")
+                    for iss in group[:5]:
+                        loc = f":{iss.line}" if iss.line else ""
+                        lines.append(f"- `{iss.file}{loc}` — {iss.message}")
+                    if len(group) > 5:
+                        lines.append(f"- …and {len(group) - 5} more")
+
+        if patches:
+            lines.append("\n### Generated Patches")
+            for p in patches:
+                lines.append(f"- **{p.issue.file}**: {p.issue.message}")
+
+        if not issues:
+            lines.append("\n✅ No issues found — codebase looks clean!")
+
+        return "\n".join(lines)

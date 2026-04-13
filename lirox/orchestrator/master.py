@@ -101,10 +101,26 @@ class MasterOrchestrator:
     def _build_thinking_trace(self, query: str) -> str:
         context = self.global_memory.get_relevant_context(query)
         try:
+            # Use AdvancedReasoning for complex queries (multi-path with scored approaches)
+            if self._is_complex_query(query):
+                from lirox.thinking.advanced_reasoning import AdvancedReasoning
+                return AdvancedReasoning().reason_deep(query)
             from lirox.thinking.chain_of_thought import ThinkingEngine
             return ThinkingEngine().reason(query, context)
         except Exception:
             return ""
+
+    @staticmethod
+    def _is_complex_query(query: str) -> bool:
+        """Return True when the query is likely to benefit from deep multi-path reasoning."""
+        complex_signals = [
+            "how should", "what is the best", "compare", "why does", "design",
+            "architect", "trade-off", "trade off", "pros and cons", "evaluate",
+            "which approach", "recommend", "strategy", "plan", "explain",
+            "analyse", "analyze", "reasoning", "think through",
+        ]
+        q = query.lower()
+        return any(s in q for s in complex_signals) or len(query) > 200
 
     def _needs_agent(self, query: str) -> bool:
         q = query.lower()
