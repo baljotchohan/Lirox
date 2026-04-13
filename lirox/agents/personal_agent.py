@@ -125,8 +125,36 @@ class PersonalAgent(BaseAgent):
     # ── Self ──────────────────────────────────────────────────────────────
     def _self(self, query, mem_ctx, context, sp=""):
         from lirox.config import PROJECT_ROOT
-        yield {"type": "agent_progress", "message": "📖 Reading own source code…"}
+        from lirox.autonomy.self_improver import SelfImprover
+        from lirox.autonomy.code_executor import CodeExecutor
+
+        q_lower = query.lower()
         lirox_dir = Path(PROJECT_ROOT) / "lirox"
+
+        # Self-improvement / scanning branch
+        if any(kw in q_lower for kw in ("improve", "fix", "scan", "analyse", "analyze", "bugs")):
+            yield {"type": "agent_progress", "message": "🔍 Performing deep codebase analysis…"}
+            improver = SelfImprover()
+            yield from improver.analyse_and_stream(str(lirox_dir))
+            summary = improver.get_improvement_summary(str(lirox_dir))
+            self.memory.save_exchange(query, summary)
+            for chunk in _STREAMER.stream_in_paragraphs(summary):
+                yield {"type": "streaming", "message": chunk}
+            yield {"type": "done", "answer": summary}
+            return
+
+        # Execution branch — run a code snippet found in the query
+        if any(kw in q_lower for kw in ("execute", "run", "test")) and "```" in query:
+            executor = CodeExecutor()
+            code_match = re.search(r"```(?:python)?\n?([\s\S]+?)```", query)
+            if code_match:
+                yield {"type": "agent_progress", "message": "⚙️  Executing provided code…"}
+                yield from executor.run_and_stream(code_match.group(1))
+                yield {"type": "done", "answer": "Code executed."}
+                return
+
+        # Default: read own source and answer the query
+        yield {"type": "agent_progress", "message": "📖 Reading own source code…"}
         file_map  = {str(p.relative_to(PROJECT_ROOT)): p.read_text(errors="replace")[:2000]
                      for p in sorted(lirox_dir.rglob("*.py"))
                      if "__pycache__" not in str(p)}
@@ -142,19 +170,36 @@ class PersonalAgent(BaseAgent):
 
     # ── Code ──────────────────────────────────────────────────────────────
     def _code(self, query, mem_ctx, context, sp=""):
+        from lirox.config import PROJECT_ROOT
+        from lirox.autonomy.code_generator import CodeGenerator
+        from lirox.autonomy.code_executor import CodeExecutor
+
         yield {"type": "agent_progress", "message": "💻 Writing code…"}
-        sys_p = _get_sys(self.profile_data) + (
-            "\n\nCODE RULES: Write COMPLETE code. All imports. Error handling. "
-            "`if __name__ == '__main__':` example. NEVER truncate. NEVER use '...'.")
-        prompt = (f"Context:\n{mem_ctx}\n\nTask: {query}" if mem_ctx else query)
-        if context:
-            prompt = f"Thinking:\n{context[:2000]}\n\n{prompt}"
-        answer = generate_response(prompt, provider="auto", system_prompt=sys_p)
-        self._maybe_save(query, answer)
-        self.memory.save_exchange(query, answer)
-        for chunk in _STREAMER.stream_in_paragraphs(answer):
-            yield {"type": "streaming", "message": chunk}
-        yield {"type": "done", "answer": answer}
+
+        # Determine if a save path was requested
+        save_path = ""
+        for pat in [r"(?:save|write|create|store)(?:\s+\w+)?\s+(?:to|in|as|at)\s+([~/\w.\-/]+)",
+                    r"in\s+(?:my\s+)?([~/\w\-]+(?:/[~/\w.\-]+)*\.[a-z]+)"]:
+            m = re.search(pat, query, re.IGNORECASE)
+            if m:
+                save_path = str(Path(m.group(1)).expanduser())
+                break
+
+        generator = CodeGenerator()
+        for event in generator.generate_and_stream(
+            query, root=str(Path(PROJECT_ROOT) / "lirox"),
+            save_path=save_path, validate=True
+        ):
+            if event.get("type") == "streaming":
+                # The generator already emits the final code as a streaming chunk
+                answer = event.get("message", "")
+                self.memory.save_exchange(query, answer)
+                for chunk in _STREAMER.stream_in_paragraphs(answer):
+                    yield {"type": "streaming", "message": chunk}
+            else:
+                yield event
+
+        yield {"type": "done", "answer": "Code generation complete."}
 
     def _maybe_save(self, query: str, answer: str):
         from lirox.tools.file_tools import file_write
