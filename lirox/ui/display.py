@@ -1,4 +1,5 @@
 """Lirox v1.0.0 — Terminal UI"""
+import re
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
@@ -7,6 +8,29 @@ from rich.markdown import Markdown
 from lirox.config import APP_VERSION
 
 console = Console()
+
+
+def _strip_md(text: str) -> str:
+    """Convert common markdown symbols to clean plain text for terminal streaming."""
+    # Remove code fences
+    text = re.sub(r'```[\w]*\n?', '', text)
+    # Headers: ## Heading → HEADING  (keep caps for visual weight)
+    text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
+    # Bold+italic ***text***
+    text = re.sub(r'\*{3}(.+?)\*{3}', r'\1', text)
+    # Bold **text**
+    text = re.sub(r'\*{2}(.+?)\*{2}', r'\1', text)
+    # Italic *text* or _text_
+    text = re.sub(r'\*(.+?)\*', r'\1', text)
+    text = re.sub(r'_(.+?)_', r'\1', text)
+    # Unordered bullets: '* item' or '- item' → '• item'
+    text = re.sub(r'^[\*\-]\s+', '• ', text, flags=re.MULTILINE)
+    # Numbered lists stay as-is
+    # Inline code `code` → code
+    text = re.sub(r'`([^`]+)`', r'\1', text)
+    # Horizontal rules
+    text = re.sub(r'^[-\*]{3,}\s*$', '', text, flags=re.MULTILINE)
+    return text
 
 CLR_LIROX    = "bold #FFC107"
 CLR_ACCENT   = "bold #FFD54F"
@@ -138,9 +162,14 @@ def render_progress_indicator(event_type: str, message: str) -> None:
 
 
 def render_streaming_chunk(chunk: str) -> None:
-    """Print a streaming chunk with live character-by-character animation."""
+    """Print a streaming chunk with live character-by-character animation.
+
+    Markdown symbols (#, *, **) are stripped before output so they never
+    appear as raw characters in the terminal stream.
+    """
     if not chunk:
         return
+    # Code blocks are rendered via Rich Markdown — no stripping needed
     if chunk.strip().startswith("```"):
         try:
             console.print(Markdown(chunk))
@@ -149,7 +178,8 @@ def render_streaming_chunk(chunk: str) -> None:
     else:
         import sys
         import time
-        for char in chunk:
+        clean = _strip_md(chunk)
+        for char in clean:
             sys.stdout.write(char)
             sys.stdout.flush()
             time.sleep(0.007)
