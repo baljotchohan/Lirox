@@ -1,6 +1,8 @@
 """Lirox UI — Permission Request Dialogs."""
 from __future__ import annotations
 
+from typing import List, Optional
+
 from rich.console import Console
 from rich.panel import Panel
 from rich.markup import escape
@@ -57,9 +59,15 @@ def render_permission_deny(tier: PermissionTier) -> None:
     )
 
 
-def ask_permission(tier: PermissionTier, reason: str, action: str) -> bool:
+def ask_permission(
+    tier: PermissionTier,
+    reason: str,
+    action: str,
+    alternatives: Optional[List[str]] = None,
+) -> bool:
     """Interactively ask the user to grant a permission tier."""
-    req = PermissionRequest(tier=tier, reason=reason, action=action)
+    req = PermissionRequest(tier=tier, reason=reason, action=action,
+                            alternatives=alternatives or [])
     render_permission_request(req)
     answer = console.input(f"  [{_CLR_WARN}]Allow? (y/n): [/]").strip().lower()
     granted = answer in ("y", "yes")

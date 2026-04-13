@@ -19,7 +19,7 @@ _DANGEROUS_PATTERNS = [
     r"\beval\s*\(",
     r"\bexec\s*\(",
     r"\b__import__\s*\(",
-    r"\bopen\s*\(.*['\"]w['\"]",   # writing to arbitrary files
+    r"""open\s*\([^)]*['"][wa]['"]""",   # writing to arbitrary paths
     r"\bshutil\.rmtree\b",
     r"\bpathlib\.Path\b.*\.unlink\b",
     r"\bsocket\b",

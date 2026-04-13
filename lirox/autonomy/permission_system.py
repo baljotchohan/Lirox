@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Callable, Dict, Generator, List, Optional
+from typing import Callable, Dict, Generator, List, Optional, Set
 
 
 class PermissionTier(IntEnum):
@@ -74,7 +74,7 @@ class PermissionSystem:
 
     def __init__(self) -> None:
         # Start at BASIC by default; accumulate grants during the session
-        self._granted: set[PermissionTier] = {PermissionTier.BASIC}
+        self._granted: Set[PermissionTier] = {PermissionTier.BASIC}
 
     # ── Query ──────────────────────────────────────────────────────────────
 

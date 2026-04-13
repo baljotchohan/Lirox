@@ -15,7 +15,10 @@ _CLR_INFO = "bold #60a5fa"
 
 def render_progress_step(step: str, total: int, current: int, label: str = "") -> None:
     """Print a compact progress line: [2/5] Generating code…"""
-    pct  = int(current / total * 100) if total else 0
+    if total <= 0:
+        console.print(f"  [{_CLR_DIM}]{escape(label or step)}[/]")
+        return
+    pct  = int(current / total * 100)
     bar  = "█" * (pct // 10) + "░" * (10 - pct // 10)
     msg  = f"  [{_CLR_DIM}][{current}/{total}] {bar} {escape(label or step)}[/]"
     console.print(msg)

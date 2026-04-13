@@ -171,7 +171,7 @@ class PersonalAgent(BaseAgent):
     def _autonomy(self, query, mem_ctx, context, sp=""):
         """Route the query through the autonomy subsystem."""
         from lirox.autonomy.autonomous_resolver import AutonomousResolver
-        from lirox.autonomy.permission_system import PermissionTier
+        from lirox.autonomy.permission_system import PermissionTier, PermissionRequest
 
         yield {"type": "agent_progress", "message": "🤖 Activating autonomy subsystem…"}
 
@@ -185,6 +185,12 @@ class PersonalAgent(BaseAgent):
         if any(s in q for s in ["improve your code", "improve yourself", "self-improve",
                                  "fix yourself", "audit code", "scan codebase"]):
             if not resolver.permissions.has_permission(PermissionTier.SELF_MODIFY):
+                req = PermissionRequest(
+                    tier=PermissionTier.SELF_MODIFY,
+                    reason="Scan and improve the Lirox codebase",
+                    action="Read all .py files, detect issues, generate patches",
+                    alternatives=["Use /improve command for the standard audit flow"],
+                )
                 yield {
                     "type":    "permission_request",
                     "message": (
@@ -192,14 +198,7 @@ class PersonalAgent(BaseAgent):
                         "  Reason : To scan and improve the Lirox codebase\n"
                         "  Action : Read all .py files, detect issues, generate patches"
                     ),
-                    "data": {
-                        "request": type("Req", (), {
-                            "tier": PermissionTier.SELF_MODIFY,
-                            "reason": "Scan and improve the Lirox codebase",
-                            "action": "Read all .py files, detect issues, generate patches",
-                            "alternatives": ["Use /improve command for the standard audit flow"],
-                        })(),
-                    },
+                    "data": {"request": req},
                 }
                 answer = (
                     "Self-modification requires TIER 5 permission.\n"
@@ -220,6 +219,12 @@ class PersonalAgent(BaseAgent):
         if any(s in q for s in ["analyze my code", "analyse my code", "fix bugs",
                                  "scan", "find issues"]):
             if not resolver.permissions.has_permission(PermissionTier.FILE_READ):
+                req = PermissionRequest(
+                    tier=PermissionTier.FILE_READ,
+                    reason="Read project files to analyse them",
+                    action="Scan all Python files for issues",
+                    alternatives=["Describe the issue and I'll advise without file access"],
+                )
                 yield {
                     "type":    "permission_request",
                     "message": (
@@ -227,14 +232,7 @@ class PersonalAgent(BaseAgent):
                         "  Reason : I need to read your project files to analyse them.\n"
                         "  Action : Scan all Python files for issues"
                     ),
-                    "data": {
-                        "request": type("Req", (), {
-                            "tier": PermissionTier.FILE_READ,
-                            "reason": "Read project files to analyse them",
-                            "action": "Scan all Python files for issues",
-                            "alternatives": ["Describe the issue and I'll advise without file access"],
-                        })(),
-                    },
+                    "data": {"request": req},
                 }
                 answer = (
                     "Code analysis requires TIER 1 (File Read) permission.\n"

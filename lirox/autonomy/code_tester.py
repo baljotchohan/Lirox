@@ -6,7 +6,7 @@ pass/fail counts and any failure messages.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Optional
 
 from lirox.autonomy.code_executor import CodeExecutor, ExecutionResult
 
@@ -33,7 +33,7 @@ class TestReport:
 class CodeTester:
     """Generate and run tests for a piece of Python source code."""
 
-    def __init__(self, executor: CodeExecutor = None) -> None:
+    def __init__(self, executor: Optional[CodeExecutor] = None) -> None:
         self._executor = executor or CodeExecutor()
 
     # ── Public API ─────────────────────────────────────────────────────────

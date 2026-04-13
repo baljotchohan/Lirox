@@ -114,8 +114,8 @@ class SelfImprover:
                 # Strip accidental markdown fences
                 if patched.startswith("```"):
                     patched = "\n".join(
-                        l for l in patched.splitlines()
-                        if not l.startswith("```")
+                        line for line in patched.splitlines()
+                        if not line.startswith("```")
                     )
                 diff = _make_diff(original, patched, issue.file)
                 if diff:
