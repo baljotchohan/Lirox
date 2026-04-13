@@ -95,8 +95,9 @@ class TrainingEngine:
 
     def _get_conversation_text(self, memory_manager) -> str:
         """Convert memory buffer to plain conversation text."""
+        from lirox.config import MEMORY_LIMIT
         lines = []
-        for msg in memory_manager.conversation_buffer[-60:]:  # last 60 msgs
+        for msg in memory_manager.conversation_buffer[-MEMORY_LIMIT:]:
             role = "USER" if msg["role"] == "user" else "AGENT"
             lines.append(f"{role}: {msg['content'][:500]}")
         return "\n".join(lines)

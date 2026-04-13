@@ -75,13 +75,15 @@ class SkillsRegistry:
 
     def _load_all(self) -> None:
         """Load all .py skill files from the skills directory."""
+        from lirox.utils.structured_logger import get_logger
+        _log = get_logger("lirox.skills")
         for path in self._dir.glob("*.py"):
             if path.name.startswith("_"):
                 continue
             try:
                 self._load_skill_file(path)
             except Exception as e:
-                print(f"  [skill] Failed to load {path.name}: {e}")
+                _log.warning(f"Failed to load skill {path.name}: {e}")
 
     def _load_skill_file(self, path: Path) -> Optional[str]:
         """

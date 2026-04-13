@@ -165,8 +165,18 @@ class PersonalAgent(BaseAgent):
                 path = m.group(1).replace("~", str(Path.home()))
                 cm   = re.search(r"```(?:\w+)?\n([\s\S]+?)```", answer)
                 if cm:
-                    try: file_write(path, cm.group(1))
-                    except Exception: pass
+                    try:
+                        result = file_write(path, cm.group(1))
+                        if result.startswith("❌") or "error" in result.lower():
+                            from lirox.utils.structured_logger import get_logger
+                            get_logger("lirox.personal_agent").warning(
+                                f"_maybe_save failed for path '{path}': {result}"
+                            )
+                    except Exception as e:
+                        from lirox.utils.structured_logger import get_logger
+                        get_logger("lirox.personal_agent").warning(
+                            f"_maybe_save exception: {e}"
+                        )
                 break
 
     # ── File ──────────────────────────────────────────────────────────────

@@ -54,12 +54,3 @@ class InputValidator:
                 return False, f"Access to {blocked} blocked for security"
         
         return True, None
-    
-    @staticmethod
-    def validate_file_path(path: str) -> Tuple[bool, Optional[str]]:
-        """Validate file path for safety."""
-        if ".." in path:
-            return False, "Path traversal (..) not allowed"
-        if path.startswith("/"):
-            return False, "Absolute paths not allowed"
-        return True, None
