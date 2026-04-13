@@ -85,13 +85,6 @@ class MasterOrchestrator:
                 profile_data=self.profile_data)
         return self._mind_agent
 
-    def _get_identity_prompt(self) -> str:
-        try:
-            from lirox.mind.agent import get_soul, get_learnings
-            return get_soul().to_system_prompt(get_learnings().to_context_string())
-        except Exception:
-            return "You are Lirox, an autonomous personal AI agent."
-
     def _build_thinking_trace(self, query: str) -> str:
         context = self.global_memory.get_relevant_context(query)
         try:
@@ -159,7 +152,7 @@ class MasterOrchestrator:
                                      data={"total_time": time.time() - start})
             # BUG-C3 FIX: auto-train every 20 interactions (non-blocking)
             if self._interaction_count % 20 == 0:
-                yield from self._auto_train()
+                self._auto_train()   # non-blocking — fires background thread
             return
 
         complex_ctx = thinking_trace or ""
@@ -187,21 +180,30 @@ class MasterOrchestrator:
                                  data={"total_time": time.time() - start})
         # BUG-C3 FIX: auto-train every 20 interactions (non-blocking)
         if self._interaction_count % 20 == 0:
-            yield from self._auto_train()
+            self._auto_train()   # non-blocking — fires background thread
 
-    def _auto_train(self) -> Generator[OrchestratorEvent, None, None]:
-        """BUG-C3 FIX: Automatically extract learnings every 20 interactions."""
-        try:
-            from lirox.mind.agent import get_trainer
-            stats = get_trainer(self.global_memory).train(
-                self.global_memory, self.session_store
-            )
-            facts_added = stats.get("facts_added", 0)
-            if facts_added > 0:
-                yield OrchestratorEvent(
-                    type="auto_train",
-                    message=f"✓ Learned {facts_added} new fact{'s' if facts_added != 1 else ''}",
-                    data=stats,
+    def _auto_train(self) -> None:
+        """
+        Automatically extract learnings every 20 interactions.
+        Runs in a daemon background thread — never blocks the REPL.
+        """
+        import threading
+
+        def _train_worker():
+            try:
+                from lirox.mind.agent import get_trainer
+                stats = get_trainer(self.global_memory).train(
+                    self.global_memory, self.session_store
                 )
-        except Exception:
-            pass  # auto-training is best-effort; never block the user
+                facts_added = stats.get("facts_added", 0)
+                if facts_added > 0:
+                    # Can't yield from a thread; log to structured logger instead.
+                    from lirox.utils.structured_logger import get_logger
+                    get_logger("lirox.auto_train").info(
+                        f"Auto-trained: {facts_added} new fact(s)"
+                    )
+            except Exception:
+                pass  # auto-training is always best-effort
+
+        t = threading.Thread(target=_train_worker, daemon=True, name="lirox-auto-train")
+        t.start()
