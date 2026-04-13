@@ -204,41 +204,13 @@ def file_search(root: str, query: str, max_results: int = 50) -> str:
 def run_shell(command: str, timeout: int = 30) -> str:
     """
     Execute a shell command with security validation.
+    Delegates to the hardened terminal tool (shell=False, shlex-parsed).
     Only commands in ALLOWED_COMMANDS are permitted.
     BLOCK_PATTERNS are always rejected.
     """
-    from lirox.config import ALLOWED_COMMANDS, BLOCK_PATTERNS
-
-    # Block dangerous patterns
-    for pattern in BLOCK_PATTERNS:
-        if pattern.lower() in command.lower():
-            return f"❌ BLOCKED: '{pattern}' is a forbidden command pattern"
-
-    # Check first token is in allowed list
-    first_token = command.strip().split()[0].lower() if command.strip() else ""
-    base_cmd = os.path.basename(first_token)
-    if base_cmd not in ALLOWED_COMMANDS:
-        return (
-            f"❌ Command '{base_cmd}' is not in the allowed list.\n"
-            f"Allowed commands: {', '.join(sorted(ALLOWED_COMMANDS))}"
-        )
-
-    try:
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True,
-            timeout=timeout
-        )
-        output = result.stdout + result.stderr
-        if not output.strip():
-            return f"✅ Command ran (no output)"
-        # Bug #16: Indicate when output is truncated
-        if len(output) > 4000:
-            return output.strip()[:4000] + f"\n\n[Output truncated — {len(output)} total chars]"
-        return output.strip()
-    except subprocess.TimeoutExpired:
-        return f"❌ Command timed out after {timeout}s"
-    except Exception as e:
-        return f"❌ Shell error: {e}"
+    from lirox.tools.terminal import run_command
+    # run_command already does allowlist + injection checking + shell=False
+    return run_command(command)
 
 
 # ── Advanced File Operations ──────────────────────────────────────────────────

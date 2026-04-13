@@ -75,12 +75,14 @@ class SkillManager:
         return path
 
     def delete_skill(self, name: str) -> bool:
-        """Remove a skill by name.  Returns *True* on success."""
+        """Remove a skill by name. Returns True on success."""
         skill = self.get_skill(name)
         if skill is None:
             return False
-        target = name.strip().lower().replace(" ", "_")
-        path = os.path.join(self.skills_dir, f"{target}.json")
+        # Use the path recorded in the skill metadata, not a re-derived path.
+        path = skill.get("path", "")
+        if not path:
+            return False
         try:
             os.remove(path)
             return True
