@@ -196,14 +196,22 @@ def _verify_api_key(provider_name: str, api_key: str) -> bool:
         elif provider_name == "OpenAI":
             r = requests.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
         elif provider_name == "Anthropic":
-            r = requests.get("https://api.anthropic.com/v1/models", headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"}, timeout=5)
-            # Anthropic models endpoint may 404 or 403, but 401 explicitly means invalid key
+            r = requests.get(
+                "https://api.anthropic.com/v1/models",
+                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
+                timeout=5,
+            )
+            # ONLY 401 means invalid key. 403 = valid key, wrong permissions.
+            if r.status_code == 401:
+                console.print("  [bold red]✖ Invalid API key. Verification failed.[/]")
+                return False
+            return True
         elif provider_name == "DeepSeek":
             r = requests.get("https://api.deepseek.com/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
         else:
             return True
 
-        if r.status_code in (401, 403):
+        if r.status_code == 401:
             console.print("  [bold red]✖ Invalid API key. Verification failed.[/]")
             return False
             
