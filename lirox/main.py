@@ -609,7 +609,7 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             if res["applied"] > 0:
                 info_panel("🔄 Restarting Lirox with patched code…")
                 time.sleep(1)
-                os.execv(sys.executable, [sys.executable] + sys.argv)
+                _restart_process()
         else:
             info_panel("Cancelled. Patches remain in data/pending_patches/")
 
@@ -736,7 +736,7 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
     elif base == "/restart":
         info_panel("🔄 Restarting…")
         time.sleep(1)
-        os.execv(sys.executable, [sys.executable] + sys.argv)
+        _restart_process()
 
     elif base == "/backup":
         run_backup()
@@ -746,6 +746,27 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
 
     else:
         console.print(f"  [dim]Unknown command: {base}. Type /help.[/]")
+
+
+def _restart_process() -> None:
+    """
+    Cross-platform process restart.
+
+    - Unix/macOS : os.execv() replaces the current process in-place (no flash).
+    - Windows    : os.execv() exits then spawns a *new* process, which causes
+                   the PowerShell prompt to surface briefly before the new
+                   window appears.  We use subprocess.Popen + sys.exit instead
+                   so the new Lirox window opens before the old one closes.
+    """
+    import subprocess
+    args = [sys.executable] + sys.argv
+    if sys.platform == "win32":
+        # CREATE_NEW_CONSOLE keeps the new window alive in the same terminal
+        # session; DETACHED_PROCESS would open a separate window.
+        subprocess.Popen(args, creationflags=subprocess.CREATE_NEW_CONSOLE)
+        sys.exit(0)
+    else:
+        os.execv(sys.executable, args)
 
 
 def run_update():
