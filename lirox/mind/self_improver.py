@@ -55,10 +55,6 @@ class SelfImprover:
         self._errors.append({"source": source, "error": error, "at": time.time()})
         if len(self._errors) > 30: self._errors = self._errors[-30:]
 
-    def read_own_code(self, filename: str) -> str:
-        p = self._root / filename
-        return p.read_text(errors="replace") if p.exists() else f"Not found: {filename}"
-
     def list_source_files(self) -> List[str]:
         return [str(p.relative_to(self._root))
                 for p in sorted((self._root/"lirox").rglob("*.py"))
@@ -121,7 +117,8 @@ class SelfImprover:
                         _PATCH_PROMPT.format(issue=iss["issue"],
                                              suggestion=iss.get("suggestion",""),code=code[:8000]),
                         provider="auto", system_prompt="Apply fix. Output ONLY Python code.")
-                    patched = re.sub(r"^```python\s*|^```\s*","",patched.strip()).rstrip("```").strip()
+                    from lirox.utils.llm import strip_code_fences
+                    patched = strip_code_fences(patched, lang="python")
                     compile(patched, rel, "exec")
                     ts   = int(time.time())
                     safe = rel.replace("/","_").replace(".py","")
@@ -148,6 +145,8 @@ class SelfImprover:
                 orig = self._root / meta["original_file"]
                 if not pf.exists(): continue
                 patched = pf.read_text()
+                from lirox.utils.llm import strip_code_fences
+                patched = strip_code_fences(patched, lang="python")
                 compile(patched, meta["original_file"], "exec")
                 shutil.copy2(orig, orig.with_suffix(".py.bak"))
                 orig.write_text(patched)
