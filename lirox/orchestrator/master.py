@@ -42,24 +42,50 @@ class MasterOrchestrator:
         self._restore_last_session()
 
     def _restore_last_session(self) -> None:
-        """BUG-H1 FIX: Load the most recent session into the conversation buffer so
-        previous conversation context is available after a restart."""
+        """
+        Restore session metadata only — NOT conversation content.
+
+        Loading raw conversation turns causes context bleed where the agent
+        responds to old topics when the user starts fresh. Instead we only
+        restore the session record so /history and /session commands work,
+        and build a compact summary available on explicit request.
+        """
         try:
             sessions = self.session_store.list_sessions(limit=1)
             if not sessions:
                 return
             last = sessions[0]
-            # Make the last session the current session so conversation continues
+            # Restore the session identity but NOT its conversation content
+            # into the live buffer. The content stays on disk and is only
+            # surfaced when the user explicitly asks about past conversations.
             self.session_store.set_current(last)
-            # Restore the last 20 entries into global_memory conversation_buffer
-            for entry in last.entries[-20:]:
-                self.global_memory.conversation_buffer.append({
-                    "role":    entry.role,
-                    "content": entry.content,
-                    "ts":      entry.ts,
-                })
         except Exception:
-            pass  # memory restoration is best-effort; never block startup
+            pass  # startup must never fail due to session restoration
+
+    def _get_recent_context_summary(self, limit: int = 3) -> str:
+        """
+        Build a compact 1-3 exchange summary from the current session ONLY.
+        Used to give the agent awareness of what was just discussed without
+        contaminating fresh conversations.
+        Returns empty string for first message in a session.
+        """
+        try:
+            session = self.session_store.current()
+            # Only include entries from THIS session run (after startup)
+            recent = [e for e in session.entries if e.role in ("user", "assistant")]
+            # Don't include the just-added user message (last entry)
+            recent = recent[:-1]
+            if not recent:
+                return ""
+            # Take the last `limit` exchanges
+            pairs = recent[-(limit * 2):]
+            lines = []
+            for e in pairs:
+                label = "User" if e.role == "user" else "Assistant"
+                lines.append(f"{label}: {e.content[:300]}")
+            return "\n".join(lines)
+        except Exception:
+            return ""
 
     @property
     def permission_system(self):
@@ -139,11 +165,13 @@ class MasterOrchestrator:
             mode: str = None, agent_override: str = None
             ) -> Generator[OrchestratorEvent, None, None]:
         start   = time.time()
-        # BUG-C3 FIX: increment interaction counter for auto-training trigger
         self._interaction_count += 1
         session = self.session_store.current()
         session.add("user", query, agent="personal", mode="complex")
-        history_ctx = self.session_store.get_context_for_agent("personal", limit=10)
+
+        # Only use context from THIS session's recent turns (not previous sessions)
+        # This prevents context bleed from previous restarts/conversations
+        history_ctx = self._get_recent_context_summary(limit=3)
 
         thinking_trace = ""
         if THINKING_ENABLED:
@@ -159,16 +187,19 @@ class MasterOrchestrator:
         if not self._needs_agent(query):
             agent      = self._get_mind_agent()
             agent_name = "mind"
-            mind_sys   = (f"{system_prompt}\n\nCONVERSATION HISTORY:\n{history_ctx}"
-                          if history_ctx and system_prompt else
-                          f"CONVERSATION HISTORY:\n{history_ctx}" if history_ctx else system_prompt)
+            # Only inject history if we actually have some from this session
+            if history_ctx:
+                mind_sys = f"RECENT CONTEXT (this session only):\n{history_ctx}"
+                if system_prompt:
+                    mind_sys = f"{system_prompt}\n\n{mind_sys}"
+            else:
+                mind_sys = system_prompt or ""
             result_text = ""
             try:
                 for event in agent.run(query, system_prompt=mind_sys,
                                        context=thinking_trace, mode="advisor"):
                     event_type = event.get("type", "agent_progress")
                     if event_type == "done":
-                        # Capture result; orchestrator emits its own "done" below
                         result_text = event.get("answer", event.get("message", ""))
                     else:
                         yield OrchestratorEvent(type=event_type,
@@ -182,14 +213,14 @@ class MasterOrchestrator:
             self.session_store.save_current()
             yield OrchestratorEvent(type="done", agent=agent_name, message=result_text,
                                      data={"total_time": time.time() - start})
-            # BUG-C3 FIX: auto-train every 20 interactions (non-blocking)
             if self._interaction_count % 20 == 0:
-                self._auto_train()   # non-blocking — fires background thread
+                self._auto_train()
             return
 
+        # Personal agent path — only inject recent context, not full history
         complex_ctx = thinking_trace or ""
         if history_ctx:
-            complex_ctx = f"CONVERSATION HISTORY:\n{history_ctx}\n\n{complex_ctx}"
+            complex_ctx = f"RECENT CONTEXT:\n{history_ctx}\n\n{complex_ctx}" if complex_ctx else f"RECENT CONTEXT:\n{history_ctx}"
 
         agent       = self._get_personal_agent()
         result_text = ""
