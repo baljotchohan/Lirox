@@ -258,3 +258,37 @@ class LearningsStore:
             f"{facts} facts · {topics} topics · {projects} projects · "
             f"{trained} training sessions · {total} total interactions"
         )
+
+    def get_user_context_for_prompt(self, max_facts: int = 8) -> str:
+        """
+        Build the richest possible context about this user for the system prompt.
+        This is injected into EVERY response so the agent always knows who it's talking to.
+        Returns empty string if nothing has been learned yet.
+        """
+        parts = []
+
+        # High-confidence facts first
+        facts = [f for f in self.data.get("user_facts", []) if f.get("confidence", 0) >= 0.7]
+        facts.sort(key=lambda x: x.get("confidence", 0), reverse=True)
+        if facts:
+            fact_lines = [f"  • {f['fact']}" for f in facts[:max_facts]]
+            parts.append("WHAT I KNOW ABOUT YOU:\n" + "\n".join(fact_lines))
+
+        # Active projects
+        projects = self.data.get("projects", [])
+        if projects:
+            recent = sorted(projects, key=lambda p: p.get("last_seen", ""), reverse=True)[:3]
+            parts.append("YOUR ACTIVE PROJECTS: " + ", ".join(p["name"] for p in recent))
+
+        # Top interests
+        top_topics = self.get_top_topics(4)
+        if top_topics:
+            parts.append("YOUR MAIN INTERESTS: " + ", ".join(t["topic"] for t in top_topics))
+
+        # Communication preferences
+        comm_style = self.data.get("communication_style", {})
+        if comm_style:
+            style_lines = [f"  • {k}: {v}" for k, v in list(comm_style.items())[:3]]
+            parts.append("YOUR PREFERENCES:\n" + "\n".join(style_lines))
+
+        return "\n\n".join(parts)

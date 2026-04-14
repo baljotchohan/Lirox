@@ -150,8 +150,14 @@ class MindAgent(BaseAgent):
     def _sys(self, soul, learnings) -> str:
         base = soul.to_system_prompt(learnings.to_context_string())
         if self.profile_data:
+            # Always inject the correct name from profile into the system prompt
+            agent_name = self.profile_data.get("agent_name", "")
+            if agent_name and agent_name not in base[:100]:
+                # Prepend the identity if soul doesn't have the right name
+                base = f"YOUR NAME IS {agent_name}. " + base
+
             lines = [f"• {lbl}: {self.profile_data.get(k,'')}"
-                     for k, lbl in [("user_name","User name"),("niche","Their work"),
+                     for k, lbl in [("user_name","User's name"),("niche","Their work"),
                                      ("current_project","Current project")]
                      if self.profile_data.get(k)]
             if lines and "USER PROFILE" not in base:
