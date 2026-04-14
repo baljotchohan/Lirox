@@ -10,6 +10,17 @@ data/mind/soul.json
 data/mind/learnings.json
 data/mind/skills/
 data/mind/agents/
+data/memory/
+data/sessions/
+data/pending_patches/
+
+# Temporary / Export files
+lirox_memory_export_*.json
+test_export.json
+scratch/
+outputs/
+*.bak
+*.tmp
 
 # Testing / Debug Scripts
 test_*.py

@@ -45,12 +45,14 @@ class MemoryImporter:
 
     def import_file(self, file_path: str) -> Dict[str, Any]:
         """
-        Auto-detect file format and import.
-        Returns {imported, facts_added, topics_added, error}
+        Auto-detect file format and import. Handles files and directories.
         """
         path = Path(file_path)
         if not path.exists():
             return {"error": f"File not found: {file_path}"}
+
+        if path.is_dir():
+            return self._import_folder(path)
 
         ext = path.suffix.lower()
         fname = path.name.lower()
@@ -84,6 +86,24 @@ class MemoryImporter:
         except Exception as e:
             return {"error": str(e)}
 
+    def _import_folder(self, path: Path) -> Dict[str, Any]:
+        """Scan folder for relevant AI exports."""
+        # Check for Gemini Takeout
+        gemini_files = list(path.glob("**/Gemini/**/*.json"))
+        if gemini_files:
+             return self._import_gemini(path)
+        
+        # Check for Claude/ChatGPT files in folder
+        json_files = list(path.glob("*.json"))
+        for jf in json_files:
+            if "conversations" in jf.name.lower() or "chatgpt" in jf.name.lower():
+                return self._import_chatgpt(jf)
+            if "claude" in jf.name.lower():
+                return self._import_claude(jf)
+                
+        return {"error": "No recognizable AI export files found in directory."}
+
+
     def _extract_text_samples(self, messages: List[str], max_chars: int = 8000) -> str:
         """Get a representative sample of conversation text."""
         combined = "\n---\n".join(messages[:30])
@@ -101,7 +121,18 @@ class MemoryImporter:
             )
             from lirox.utils.llm import strip_code_fences
             raw = strip_code_fences(raw, lang="json")
-            data = json.loads(raw)
+            
+            # Robust JSON extraction
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                # Fallback: find the first { and last }
+                match = re.search(r"(\{.*\})", raw, re.DOTALL)
+                if match:
+                    data = json.loads(match.group(1))
+                else:
+                    raise ValueError("Could not parse JSON from LLM response")
+
 
             for fact in data.get("facts", []):
                 if isinstance(fact, str) and len(fact) > 5:
@@ -139,7 +170,8 @@ class MemoryImporter:
             return {"error": "Unexpected ChatGPT format"}
 
         messages = []
-        for conv in data[:50]:  # First 50 conversations
+        # Support scanning more conversations to get better coverage
+        for conv in data[:200]:  # Increased from 50
             for node in conv.get("mapping", {}).values():
                 msg = node.get("message")
                 if msg and msg.get("author", {}).get("role") == "user":
@@ -217,4 +249,31 @@ class MemoryImporter:
         result = self._analyze_and_save(text, "text_file")
         result["imported"] = len(text.split("\n"))
         result["source"] = path.name
+        return result
+    def _import_gemini(self, path: Path) -> Dict[str, Any]:
+        """Import Gemini Takeout export."""
+        messages = []
+        # Gemini JSON files often have a 'conversations' list with 'parts'
+        for jf in path.glob("**/Gemini/**/*.json"):
+            try:
+                data = json.loads(jf.read_text())
+                if isinstance(data, list):  # Format 1
+                    for conv in data:
+                        for part in conv.get("parts", []):
+                            if part.get("role") == "user":
+                                messages.append(part.get("text", "")[:300])
+                elif isinstance(data, dict):  # Format 2
+                    for entry in data.get("entries", []):
+                        if entry.get("role") == "user":
+                            messages.append(entry.get("text", "")[:300])
+            except Exception:
+                continue
+
+        if not messages:
+            return {"error": "No Gemini messages found in takeout folder."}
+
+        sample = self._extract_text_samples(messages)
+        result = self._analyze_and_save(sample, "gemini")
+        result["imported"] = len(messages)
+        result["source"] = "Gemini Takeout"
         return result
