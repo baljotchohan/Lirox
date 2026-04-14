@@ -1029,23 +1029,35 @@ def _legacy_commands(orch, profile, cmd, base):
         run_update()
 
     elif base == "/import-memory":
-        console.print("\n  [bold #FFC107]Import memory from export file:[/]")
-        filepath = console.input("  [dim]Path to file: [/]").strip()
-        if filepath:
+        path = cmd[len("/import-memory"):].strip()
+        if not path:
+             console.print("\n  [bold #FFC107]📋 Import memory from export file:[/]")
+             path = console.input("  [dim]Path to file (ChatGPT/Claude JSON or Lirox Export): [/]").strip()
+        
+        if path:
             from lirox.memory.import_handler import MemoryImporter
             from lirox.mind.agent import get_learnings
-            info_panel("Importing…")
-            res = MemoryImporter(get_learnings()).import_file(filepath)
+            with console.status("[bold cyan]Importing and analyzing memory...[/]", spinner="dots"):
+                res = MemoryImporter(get_learnings()).import_file(path)
+            
             if "error" in res:
                 error_panel("IMPORT ERROR", res["error"])
             else:
-                success_message(
-                    f"Imported: {res['imported']} messages · "
-                    f"{res['facts_added']} facts")
+                success_message(f"Imported from {res.get('source', 'file')}")
+                if res.get("is_full"):
+                    console.print(f"  [dim]Restored full profile and {res.get('facts_added', 0)} facts.[/]")
+                else:
+                    console.print(f"  [dim]Imported {res.get('imported', 0)} messages · {res.get('facts_added', 0)} facts[/]")
 
-    elif base == "/export-profile":
-        import json as _json
-        console.print(_json.dumps(profile.data, indent=2, default=str))
+    elif base == "/export-profile" or base == "/export-memory":
+        from lirox.utils.memory_utils import export_full_memory
+        with console.status("[bold cyan]Exporting full memory...[/]", spinner="dots"):
+            try:
+                out = export_full_memory()
+                success_message(f"Memory export complete.")
+                console.print(f"  [dim]Saved to: {out}[/]")
+            except Exception as e:
+                error_panel("EXPORT ERROR", str(e))
 
     elif base == "/exec":
         snippet = cmd[5:].strip()

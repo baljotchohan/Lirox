@@ -56,6 +56,20 @@ class MemoryImporter:
         fname = path.name.lower()
 
         try:
+            # Check for Lirox internal export format first
+            if ext == ".json" and ("lirox_memory" in fname or "lirox_export" in fname):
+                from lirox.utils.memory_utils import import_full_memory
+                full_res = import_full_memory(str(path))
+                if full_res.get("success"):
+                    return {
+                        "imported": "Full Profile",
+                        "facts_added": full_res.get("facts_added", 0),
+                        "source": "Lirox Export",
+                        "is_full": True
+                    }
+                else:
+                    return {"error": full_res.get("error", "Unknown internal import error")}
+
             if ext == ".json":
                 if "conversations" in fname or "chatgpt" in fname:
                     return self._import_chatgpt(path)

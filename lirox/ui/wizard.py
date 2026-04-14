@@ -128,7 +128,7 @@ def run_setup_wizard(profile):
     )
 
     if wants_import:
-        _show_memory_import_prompt(profile, user_name, agent_name)
+        _run_memory_import(profile)
 
     # ── Step 7: Summary ───────────────────────────────────────────────────
     console.clear()
@@ -265,13 +265,41 @@ def _setup_cloud_keys():
             break
 
 
-def _show_memory_import_prompt(profile, user_name, agent_name):
-    """Show instructions to import memory using a file path."""
+def _run_memory_import(profile):
+    """Interactively import memory from external sources."""
     console.print()
     console.print(Panel(
         "[bold #FFC107]📋 Memory Import[/]\n\n"
-        "You can export your conversation history from ChatGPT, Claude, or Gemini\n"
-        "and import it into Lirox so it knows you from day one.\n\n"
-        "Run the command [bold]/import-memory[/] and provide the file path to the JSON export.\n",
-        border_style="#FFC107", box=ROUNDED, width=70
+        "I can learn from your history with other AIs.\n"
+        "Supported: ChatGPT (JSON), Claude (JSON), or plain .txt/.md files.\n"
+        "You can also provide a previously exported [bold]Lirox Memory[/] file.\n",
+        border_style="#FFC107", box=ROUNDED, width=64
     ))
+    
+    file_path = Prompt.ask("  [bold #FFC107]Path to export file[/] [dim](or Enter to skip)[/]", default="")
+    if not file_path:
+        return
+
+    from lirox.memory.import_handler import MemoryImporter
+    from lirox.mind.agent import get_learnings
+    
+    with console.status("[bold cyan]Importing and analyzing memory...[/]", spinner="dots"):
+        importer = MemoryImporter(get_learnings())
+        res = importer.import_file(file_path)
+        
+    if "error" in res:
+        console.print(f"  [red]✖ Import failed: {res['error']}[/]")
+    else:
+        console.print(f"\n  [bold green]✓ Success![/]")
+        count = res.get('imported', 0)
+        source = res.get('source', 'unknown')
+        facts = res.get('facts_added', 0)
+        
+        if res.get("is_full"):
+             console.print(f"  [dim]Restored full Lirox profile and {facts} facts.[/]")
+        else:
+             console.print(f"  [dim]Imported {count} messages from {source}.[/]")
+             console.print(f"  [dim]Extracted {facts} facts and {res.get('topics_added', 0)} topics.[/]\n")
+        
+        console.print("  [dim]Identity synced. My understanding of you is now significantly deeper.[/]\n")
+
