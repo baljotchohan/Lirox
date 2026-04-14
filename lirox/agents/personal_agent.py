@@ -659,10 +659,103 @@ class PersonalAgent(BaseAgent):
 
     # ── Chat ──────────────────────────────────────────────────────────────
     def _chat(self, query, mem_ctx, context, system_prompt=""):
+        """
+        Conversational response. Always grounded in identity + user knowledge.
+        No context from previous sessions — only from this session.
+        """
         base_sys = system_prompt or _get_sys(self.profile_data)
-        prompt   = (f"{mem_ctx}\n\nUser: {query}" if mem_ctx else query)
-        if context: prompt = f"Thinking:\n{context[:2000]}\n\n{prompt}"
+
+        # Only use mem_ctx if it's directly relevant to this query
+        if mem_ctx and mem_ctx.strip():
+            prompt = f"Relevant context:\n{mem_ctx}\n\nUser: {query}"
+        else:
+            prompt = query
+
+        if context:
+            prompt = f"Thinking:\n{context[:1500]}\n\n{prompt}"
+
         answer = generate_response(prompt, provider="auto", system_prompt=base_sys)
+        self.memory.save_exchange(query, answer)
+        for chunk in _STREAMER.stream_in_paragraphs(answer):
+            yield {"type": "streaming", "message": chunk}
+        yield {"type": "done", "answer": answer}
+
+    # ── Memory (answers about history, identity, what agent knows) ─────────────────────
+    def _memory(self, query, mem_ctx, context, sp=""):
+        """
+        Handle questions about the agent's identity, the user's profile,
+        and conversation history. Uses actual stored data — never hallucinates.
+        """
+        from lirox.mind.agent import get_soul, get_learnings
+        from lirox.memory.session_store import SessionStore
+
+        q = query.lower()
+
+        soul      = get_soul()
+        learnings = get_learnings()
+        agent_name = self.profile_data.get("agent_name", soul.get_name())
+        user_name  = self.profile_data.get("user_name", "")
+
+        # Build a factual context block from ACTUAL stored data
+        context_block = []
+
+        # Identity questions
+        if any(kw in q for kw in ["who are you", "what are you", "introduce yourself",
+                                    "tell me about yourself", "your name"]):
+            context_block.append(
+                f"YOUR IDENTITY (factual, from stored profile):\n"
+                f"Name: {agent_name}\n"
+                f"Role: Personal AI agent for {user_name if user_name else 'this user'}\n"
+                f"Soul depth: {soul.state.get('interaction_count', 0)} interactions logged"
+            )
+
+        # User knowledge questions
+        if any(kw in q for kw in ["what do you know", "about me", "what's my", "who am i",
+                                    "what have you learned", "my name"]):
+            facts_summary = learnings.get_facts_summary(n=10)
+            topics = learnings.get_top_topics(5)
+            topic_str = ", ".join(t["topic"] for t in topics) if topics else "none yet"
+            context_block.append(
+                f"WHAT I KNOW ABOUT YOU (from LearningsStore):\n"
+                f"Facts:\n{facts_summary}\n"
+                f"Main interests: {topic_str}\n"
+                f"Projects: {', '.join(p['name'] for p in learnings.data.get('projects', [])[:3]) or 'none yet'}"
+            )
+
+        # History questions
+        if any(kw in q for kw in ["last conversation", "previous", "what did we discuss",
+                                    "our history", "last time", "remember when"]):
+            store = SessionStore()
+            recent_sessions = store.list_sessions(limit=5)
+            if recent_sessions:
+                history_lines = []
+                for s in recent_sessions[:3]:
+                    user_msgs = [e.content[:100] for e in s.entries if e.role == "user"][:2]
+                    if user_msgs:
+                        history_lines.append(
+                            f"  Session '{s.name}' ({s.created_at[:10]}): "
+                            + " | ".join(user_msgs)
+                        )
+                context_block.append(
+                    f"ACTUAL SESSION HISTORY (from disk):\n"
+                    + "\n".join(history_lines)
+                )
+            else:
+                context_block.append("No previous sessions found on disk.")
+
+        # Build the final answer using actual data + LLM synthesis
+        factual_ctx = "\n\n".join(context_block) if context_block else "No specific data found for this query."
+
+        sys_prompt = _get_sys(self.profile_data)
+        prompt = (
+            f"USER QUERY: {query}\n\n"
+            f"FACTUAL DATA FROM STORAGE (use ONLY this — do not invent or guess):\n"
+            f"{factual_ctx}\n\n"
+            f"Answer the user's question using ONLY the factual data above. "
+            f"If data is missing, say so honestly. Never make things up."
+        )
+
+        answer = generate_response(prompt, provider="auto", system_prompt=sys_prompt)
         self.memory.save_exchange(query, answer)
         for chunk in _STREAMER.stream_in_paragraphs(answer):
             yield {"type": "streaming", "message": chunk}

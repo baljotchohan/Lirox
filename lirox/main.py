@@ -217,6 +217,17 @@ def main():
     while True:
         try:
             # BUG-H3 FIX: read agent name fresh each iteration so /setup changes take effect
+            
+            # Show context status before prompting
+            try:
+                from lirox.ui.display import show_context_status
+                buffer_msgs = len(orchestrator.global_memory.conversation_buffer)
+                facts       = len(orchestrator.global_memory.session_facts)
+                provider    = os.getenv("_LIROX_PINNED_MODEL", "") or orchestrator.default_provider or "auto"
+                show_context_status(buffer_msgs, facts, provider)
+            except Exception:
+                pass
+                
             line = session.prompt(get_prompt_label(profile.data.get("agent_name", "Lirox")), style=style).strip()
             if not line: continue
             if line.lower() in ("exit", "quit", "/exit"):
@@ -918,7 +929,7 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
     elif base == "/backup":
         run_backup()
 
-    elif base in ("/uninstall", "/update", "/import-memory", "/export-profile"):
+    elif base in ("/uninstall", "/update", "/import-memory", "/export-profile", "/exec"):
         _legacy_commands(orch, profile, cmd, base)
 
     else:
