@@ -304,20 +304,29 @@ def _run_memory_import(profile):
     )
     console.print(Panel(sync_prompt, border_style="cyan", box=ROUNDED, padding=(1, 2), width=64))
     
-    console.print("\n  [dim]TIP: You can paste the [bold]file path[/] OR the [bold]JSON response[/] directly below.[/]\n")
+    console.print("\n  [dim]TIP: Paste a [bold]file path[/] OR type '[bold]p[/]' to enter [bold]multi-line paste mode[/] for JSON.[/]\n")
 
     while True:
-        user_input = Prompt.ask("  [bold #FFC107]Paste Path or Sync JSON[/] [dim](Enter to skip)[/]", default="")
+        user_input = Prompt.ask("  [bold #FFC107]Path or 'p' for paste[/] [dim](Enter to skip)[/]", default="")
         if not user_input:
             return
 
-        # Clean path (handle quotes if user pasted path with quotes)
-        input_str = user_input.strip().strip("'").strip('"')
-        
         from lirox.memory.import_handler import MemoryImporter
         from lirox.mind.agent import get_learnings
-        
         importer = MemoryImporter(get_learnings())
+        
+        if user_input.lower() == 'p':
+            console.print("\n  [bold cyan]── MULTI-LINE PASTE MODE ──[/]")
+            console.print("  [dim]Step 1: Paste your JSON block below.[/]")
+            console.print("  [dim]Step 2: Press [bold]Enter[/] then [bold]CTRL-D[/] (Mac/Linux) or [bold]CTRL-Z[/] (Windows) to save.[/]\n")
+            import sys
+            input_str = sys.stdin.read().strip()
+            if not input_str:
+                console.print("  [yellow]⚠ No data received. Returning...[/]")
+                continue
+        else:
+            # Clean path (handle quotes if user pasted path with quotes)
+            input_str = user_input.strip().strip("'").strip('"')
         
         # Check if it's a path or raw data
         path = Path(input_str)
