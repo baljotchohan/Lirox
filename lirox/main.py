@@ -451,8 +451,8 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             ("/soul",               "View agent soul"),
             ("/mind",               "Full Mind Agent state"),
             ("/backup",             "Backup all data to ~/.lirox_backup/"),
-            ("/import-memory",      "Import from ChatGPT/Claude/Gemini export"),
-            ("/export-profile",     "Export profile as JSON"),
+            ("/export-memory",      "Export profile + learnings as a Lirox JSON package"),
+            ("/import-memory",      "Import from ChatGPT/Claude/Gemini/Lirox export"),
             ("/restart",            "Restart Lirox"),
             ("/update",             "Update to latest version"),
             ("/uninstall",          "Remove all Lirox data"),
@@ -929,7 +929,40 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
     elif base == "/backup":
         run_backup()
 
-    elif base in ("/uninstall", "/update", "/import-memory", "/export-profile", "/exec"):
+    elif base == "/import-memory":
+        path = cmd[len("/import-memory"):].strip()
+        if not path:
+             console.print("\n  [bold #FFC107]📋 Import memory from export file:[/]")
+             path = console.input("  [dim]Path to file (ChatGPT/Claude JSON or Lirox Export): [/]").strip()
+        
+        if path:
+            # Clean path (handle quotes)
+            path = path.strip().strip("'").strip('"')
+            from lirox.memory.import_handler import MemoryImporter
+            from lirox.mind.agent import get_learnings
+            with console.status("[bold cyan]Importing and analyzing memory...[/]", spinner="dots"):
+                res = MemoryImporter(get_learnings()).import_file(path)
+            
+            if "error" in res:
+                error_panel("IMPORT ERROR", res["error"])
+            else:
+                success_message(f"Imported from {res.get('source', 'file')}")
+                if res.get("is_full"):
+                    console.print(f"  [dim]Restored full profile and {res.get('facts_added', 0)} facts.[/]")
+                else:
+                    console.print(f"  [dim]Imported {res.get('imported', 0)} messages · {res.get('facts_added', 0)} facts[/]")
+
+    elif base in ("/export-memory", "/export-profile"):
+        from lirox.utils.memory_utils import export_full_memory
+        with console.status("[bold cyan]Exporting full memory...[/]", spinner="dots"):
+            try:
+                out = export_full_memory()
+                success_message(f"Memory export complete.")
+                console.print(f"  [dim]Saved to: {out}[/]")
+            except Exception as e:
+                error_panel("EXPORT ERROR", str(e))
+
+    elif base in ("/uninstall", "/update", "/exec"):
         _legacy_commands(orch, profile, cmd, base)
 
     else:
@@ -1027,37 +1060,6 @@ def _legacy_commands(orch, profile, cmd, base):
 
     elif base == "/update":
         run_update()
-
-    elif base == "/import-memory":
-        path = cmd[len("/import-memory"):].strip()
-        if not path:
-             console.print("\n  [bold #FFC107]📋 Import memory from export file:[/]")
-             path = console.input("  [dim]Path to file (ChatGPT/Claude JSON or Lirox Export): [/]").strip()
-        
-        if path:
-            from lirox.memory.import_handler import MemoryImporter
-            from lirox.mind.agent import get_learnings
-            with console.status("[bold cyan]Importing and analyzing memory...[/]", spinner="dots"):
-                res = MemoryImporter(get_learnings()).import_file(path)
-            
-            if "error" in res:
-                error_panel("IMPORT ERROR", res["error"])
-            else:
-                success_message(f"Imported from {res.get('source', 'file')}")
-                if res.get("is_full"):
-                    console.print(f"  [dim]Restored full profile and {res.get('facts_added', 0)} facts.[/]")
-                else:
-                    console.print(f"  [dim]Imported {res.get('imported', 0)} messages · {res.get('facts_added', 0)} facts[/]")
-
-    elif base == "/export-profile" or base == "/export-memory":
-        from lirox.utils.memory_utils import export_full_memory
-        with console.status("[bold cyan]Exporting full memory...[/]", spinner="dots"):
-            try:
-                out = export_full_memory()
-                success_message(f"Memory export complete.")
-                console.print(f"  [dim]Saved to: {out}[/]")
-            except Exception as e:
-                error_panel("EXPORT ERROR", str(e))
 
     elif base == "/exec":
         snippet = cmd[5:].strip()

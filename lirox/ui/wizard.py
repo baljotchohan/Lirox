@@ -120,10 +120,19 @@ def run_setup_wizard(profile):
     if llm_type == "skip":
         console.print("  [dim]Skipped. You can add keys later with /setup[/]")
 
-    # ── Step 6: Memory Import ─────────────────────────────────────────────
+    # ── Step 6: Memory Management ─────────────────────────────────────────
     console.print()
+    
+    # If already setup, allow exporting current memory first
+    if profile.is_setup():
+        if Confirm.ask("  [bold #FFC107]📦 Already setup. Want to export your current memory first?[/]", default=False):
+            from lirox.utils.memory_utils import export_full_memory
+            with console.status("[bold cyan]Exporting...[/]"):
+                path = export_full_memory()
+            console.print(f"  [bold green]✓ Exported to: {path}[/]\n")
+
     wants_import = Confirm.ask(
-        f"  [bold #FFC107]🧠 Want to import your memory from ChatGPT / Claude / Gemini?[/]",
+        f"  [bold #FFC107]🧠 Want to import memory from ChatGPT / Claude / Gemini?[/]",
         default=False
     )
 
@@ -270,22 +279,38 @@ def _run_memory_import(profile):
     console.print()
     console.print(Panel(
         "[bold #FFC107]📋 Memory Import[/]\n\n"
-        "I can learn from your history with other AIs.\n"
+        "I can learn from your history with other AIs. Here's how to get your files:\n\n"
+        "  [bold]ChatGPT[/]: Settings → Data Controls → Export Data (you'll get a .zip with [italic]conversations.json[/])\n"
+        "  [bold]Claude[/]: Settings → Account → Export Data (you'll get a [italic]claude_conversations.json[/])\n"
+        "  [bold]Gemini[/]: takeout.google.com → Select 'Gemini' → Export (provide the [italic]Takeout[/] folder path)\n\n"
         "Supported: ChatGPT (JSON), Claude (JSON), or plain .txt/.md files.\n"
         "You can also provide a previously exported [bold]Lirox Memory[/] file.\n",
         border_style="#FFC107", box=ROUNDED, width=64
     ))
     
-    file_path = Prompt.ask("  [bold #FFC107]Path to export file[/] [dim](or Enter to skip)[/]", default="")
-    if not file_path:
-        return
+    while True:
+        file_path = Prompt.ask("  [bold #FFC107]Path to export file/folder[/] [dim](or Enter to skip)[/]", default="")
+        if not file_path:
+            return
+
+        # Clean path (handle quotes if user pasted path with quotes)
+        path_str = file_path.strip().strip("'").strip('"')
+        path = Path(path_str)
+
+        if not path.exists():
+            console.print(f"  [bold red]✖ File not found:[/] [dim]{path_str}[/]")
+            console.print("  [dim]Tip: Drag and drop the file into your terminal to paste the path.[/]\n")
+            if not Confirm.ask("  Try again?", default=True):
+                return
+            continue
+        break
 
     from lirox.memory.import_handler import MemoryImporter
     from lirox.mind.agent import get_learnings
     
     with console.status("[bold cyan]Importing and analyzing memory...[/]", spinner="dots"):
         importer = MemoryImporter(get_learnings())
-        res = importer.import_file(file_path)
+        res = importer.import_file(str(path))
         
     if "error" in res:
         console.print(f"  [red]✖ Import failed: {res['error']}[/]")
