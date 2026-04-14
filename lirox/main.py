@@ -195,11 +195,12 @@ def main():
     commands = [
         "/help", "/setup", "/history", "/session", "/models", "/use-model", "/memory", "/think",
         "/profile", "/reset", "/test",
-        "/train", "/learnings", "/add-skill", "/skills", "/use-skill",
+        "/train", "/learnings", "/recall", "/add-skill", "/skills", "/use-skill",
         "/add-agent", "/agents",
         "/improve", "/apply", "/pending", "/self-execute",
         "/soul", "/mind", "/restart",
         "/backup", "/import-memory", "/export-profile",
+        "/exec",
         "/uninstall", "/update", "/exit",
     ]
 
@@ -306,6 +307,17 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     console.print("  [bold #10b981]✓ Done[/]")
                 elif ev.message:
                     show_answer(ev.message, agent=last_agent)
+                # Show context status
+                try:
+                    from lirox.ui.display import show_context_status
+                    from lirox.utils.llm import available_providers
+                    providers = available_providers()
+                    buf = len(orch.global_memory.conversation_buffer)
+                    from lirox.mind.agent import get_learnings
+                    facts = len(get_learnings().data.get("user_facts", []))
+                    show_context_status(buf, facts, providers[0] if providers else "")
+                except Exception:
+                    pass
 
             elif t == "auto_train":
                 # BUG-C3 FIX: subtle indicator when auto-training extracts facts
@@ -553,15 +565,41 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         success_message("Diagnostics complete.")
 
     elif base == "/train":
-        info_panel("Analyzing sessions and extracting learnings…")
         from lirox.mind.agent import get_trainer
-        stats = get_trainer(orch.global_memory).train(orch.global_memory, orch.session_store)
-        success_message(
-            f"Training complete!\n"
-            f"  Facts learned     : {stats.get('facts_added', 0)}\n"
-            f"  Topics updated    : {stats.get('topics_bumped', 0)}\n"
-            f"  Preferences found : {stats.get('preferences_added', 0)}\n"
-            f"  Projects found    : {stats.get('projects_found', 0)}")
+        console.print("  [dim #a78bfa]🧠 Extracting learnings from sessions…[/]")
+
+        phases = [
+            ("Facts",       "Identifying permanent facts about you…"),
+            ("Topics",      "Mapping your main interests and topics…"),
+            ("Preferences", "Detecting your communication preferences…"),
+            ("Projects",    "Extracting active projects…"),
+        ]
+        for _icon, msg in phases:
+            console.print(f"  [dim #94a3b8]  ├─ {msg}[/]")
+
+        try:
+            with console.status("[bold #a78bfa]Training… (this takes ~30s)[/]", spinner="dots"):
+                stats = get_trainer(orch.global_memory).train(
+                    orch.global_memory, orch.session_store
+                )
+
+            if all(stats.get(k, 0) == 0 for k in ["facts_added", "topics_bumped", "preferences_added"]):
+                info_panel(
+                    "🧠 Training complete — nothing new to learn yet.\n\n"
+                    "Chat more first! The more you talk, the more I learn about you.\n"
+                    "Then run /train again."
+                )
+            else:
+                success_message(
+                    f"Training complete! I learned:\n"
+                    f"  ✓ Facts         : {stats.get('facts_added', 0)} new\n"
+                    f"  ✓ Topics        : {stats.get('topics_bumped', 0)} updated\n"
+                    f"  ✓ Preferences   : {stats.get('preferences_added', 0)} captured\n"
+                    f"  ✓ Projects      : {stats.get('projects_found', 0)} found\n\n"
+                    f"  Run /recall to see everything I know about you."
+                )
+        except Exception as e:
+            error_panel("TRAINING ERROR", str(e))
 
     elif base == "/learnings":
         from lirox.mind.agent import get_learnings
@@ -569,6 +607,41 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
         info_panel(f"🧠 LEARNINGS\n\n"
                    f"{learn.to_context_string() or 'Nothing learned yet — chat and /train'}\n\n"
                    f"STATS: {learn.stats_summary()}")
+
+    elif base == "/recall":
+        from lirox.mind.agent import get_learnings, get_soul
+        from lirox.agent.profile import UserProfile
+        _profile = UserProfile()
+        learn = get_learnings()
+        soul  = get_soul()
+        agent_name = _profile.data.get("agent_name", soul.get_name())
+        user_name  = _profile.data.get("user_name", "")
+
+        lines = [f"🧠 WHAT {agent_name.upper()} KNOWS ABOUT {user_name.upper() if user_name else 'YOU'}\n"]
+
+        # Facts
+        facts = learn.get_facts_summary(n=15)
+        if facts and "No facts" not in facts:
+            lines.append(f"FACTS:\n{facts}\n")
+
+        # Projects
+        projects = learn.data.get("projects", [])
+        if projects:
+            lines.append("PROJECTS:")
+            for p in projects[-5:]:
+                lines.append(f"  • {p['name']}: {p.get('description', '–')}")
+            lines.append("")
+
+        # Topics
+        topics = learn.get_top_topics(8)
+        if topics:
+            lines.append("INTERESTS: " + ", ".join(t["topic"] for t in topics))
+
+        # Training stats
+        lines.append(f"\n{learn.stats_summary()}")
+        lines.append(f"\nRun /train to extract more from recent conversations.")
+
+        info_panel("\n".join(lines))
 
     elif base == "/soul":
         from lirox.mind.agent import get_soul
@@ -962,3 +1035,18 @@ def _legacy_commands(orch, profile, cmd, base):
     elif base == "/export-profile":
         import json as _json
         console.print(_json.dumps(profile.data, indent=2, default=str))
+
+    elif base == "/exec":
+        snippet = cmd[5:].strip()
+        if not snippet:
+            info_panel("Usage: /exec <python code>\n\nExample: /exec print('hello')")
+        else:
+            from lirox.autonomy.code_executor import CodeExecutor
+            executor = CodeExecutor(timeout=15)
+            with console.status("[bold cyan]⚙ Running…[/]", spinner="dots"):
+                result = executor.execute(snippet)
+            if result.success:
+                output = result.stdout.strip() or "(no output)"
+                success_message(f"✓ Executed successfully\n\nOutput:\n{output[:1000]}")
+            else:
+                error_panel("EXEC ERROR", result.error or result.stderr or "Unknown error")
