@@ -216,3 +216,21 @@ def success_message(msg: str):
 def confirm_prompt(msg: str) -> bool:
     r = console.input(f"  [{CLR_WARN}]⚠ {msg} (y/n): [/]")
     return r.strip().lower() in ("y", "yes")
+
+
+def show_context_status(buffer_msgs: int, facts_count: int, provider: str = "") -> None:
+    """Show a compact status line — memory usage + provider."""
+    # Estimate tokens (rough: 4 chars/token, avg 100 chars/message)
+    est_tokens = buffer_msgs * 100 // 4
+    ctx_limit  = 8192  # conservative estimate
+    pct = min(100, (est_tokens * 100) // ctx_limit) if ctx_limit > 0 else 0
+
+    filled = pct // 10
+    bar = "█" * filled + "░" * (10 - filled)
+
+    provider_str = f" · {provider}" if provider else ""
+    console.print(
+        f"  [dim]💾 {buffer_msgs} msgs · {facts_count} facts · "
+        f"[{bar}] {pct}% ctx{provider_str}[/]",
+        end="\n"
+    )
