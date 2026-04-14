@@ -27,18 +27,52 @@ _SYSTEM_RULES = (
 
 
 def _get_sys(profile_data: dict = None) -> str:
+    """
+    Build the full system prompt. Profile data always takes priority for
+    identity — the soul adds personality and learnings on top.
+    This prevents the agent from forgetting its name or role.
+    """
+    profile_data = profile_data or {}
+
+    # ── Identity anchors (from profile — always authoritative) ────────────────────────
+    agent_name = profile_data.get("agent_name", "Lirox")
+    user_name  = profile_data.get("user_name", "")
+
+    # ── Soul + learnings (personality and user knowledge) ───────────────────────
     try:
         from lirox.mind.agent import get_soul, get_learnings
-        base = get_soul().to_system_prompt(get_learnings().to_context_string())
+        soul = get_soul()
+        # Ensure soul knows the correct name from profile
+        if soul.get_name() != agent_name:
+            soul.set_name(agent_name)
+        base = soul.to_system_prompt(get_learnings().to_context_string())
     except Exception:
-        base = "You are Lirox, an autonomous personal AI agent."
-    if profile_data:
-        lines = [f"• {lbl}: {profile_data.get(k,'')}"
-                 for k, lbl in [("user_name","User name"),("niche","Their work"),
-                                 ("current_project","Current project")]
-                 if profile_data.get(k)]
-        if lines and "USER PROFILE" not in base:
-            base += "\n\nUSER PROFILE:\n" + "\n".join(lines)
+        base = (
+            f"You are {agent_name}, a personal AI agent "
+            f"{'for ' + user_name if user_name else ''}. "
+            "You are direct, capable, and deeply personalized."
+        )
+
+    # ── Profile context ────────────────────────────────────────────────────────────────
+    profile_lines = []
+    for key, label in [
+        ("user_name", "User's name"),
+        ("niche", "Their work"),
+        ("current_project", "Current project"),
+        ("profession", "Profession"),
+    ]:
+        val = profile_data.get(key, "")
+        if val and val not in ("Operator", "Generalist"):
+            profile_lines.append(f"• {label}: {val}")
+
+    if profile_lines and "USER PROFILE" not in base:
+        base += "\n\nUSER PROFILE:\n" + "\n".join(profile_lines)
+
+    # ── Goals ────────────────────────────────────────────────────────────────────────────────
+    goals = profile_data.get("goals", [])
+    if goals:
+        base += "\n\nUSER'S GOALS:\n" + "\n".join(f"• {g}" for g in goals[:5])
+
     return base + _SYSTEM_RULES
 
 
@@ -114,7 +148,18 @@ def requires_deep_thinking(query: str) -> bool:
 def classify_task(query: str) -> str:
     q = query.lower()
     if any(s in q for s in SELF_SIGNALS):  return "self"
-    # Explicit file-path indicators take priority over generic "create a" phrases
+
+    # Memory/history queries — handle with actual stored data
+    MEMORY_SIGNALS = [
+        "last conversation", "previous conversation", "what did we discuss",
+        "what did we talk about", "what have you learned", "what do you know about me",
+        "our history", "remember when", "last time", "you told me", "i told you",
+        "what's my name", "who am i", "what are my", "tell me about yourself",
+        "who are you", "what are you", "introduce yourself"
+    ]
+    if any(s in q for s in MEMORY_SIGNALS): return "memory"
+
+    # File path indicators take priority
     _file_path_signals = ["in my ", "in the ", "file", "folder", "directory",
                           ".py", ".js", ".txt", ".json", ".csv", ".pdf", ".md",
                           "save to", "write to", "add to", "store", "add details",
@@ -149,9 +194,15 @@ class PersonalAgent(BaseAgent):
             return
 
         task_type = classify_task(query)
-        dispatch  = {"self": self._self, "code": self._code,
-                     "file": self._file, "shell": self._shell,
-                     "web": self._web, "chat": self._chat}
+        dispatch  = {
+            "self":   self._self,
+            "code":   self._code,
+            "file":   self._file,
+            "shell":  self._shell,
+            "web":    self._web,
+            "chat":   self._chat,
+            "memory": self._memory,   # NEW — handles identity/history queries
+        }
 
         # ── Deep thinking for complex queries ─────────────────────────────
         if requires_deep_thinking(query) and not context:
@@ -336,15 +387,38 @@ class PersonalAgent(BaseAgent):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
-    # ── Code ──────────────────────────────────────────────────────────────
+    # ── Code ─────────────────────────────────────────────────────────────────────────────
     def _code(self, query, mem_ctx, context, sp=""):
-        from lirox.config import PROJECT_ROOT
-        from lirox.autonomy.code_generator import CodeGenerator
-        from lirox.autonomy.code_executor import CodeExecutor
-
+        """Generate code AND optionally execute it to verify it works."""
         yield {"type": "agent_progress", "message": "💻 Writing code…"}
 
-        # Determine if a save path was requested
+        sys_p = _get_sys(self.profile_data) + (
+            "\n\nCODE RULES:\n"
+            "• Write COMPLETE code. ALL imports. Error handling. Never truncate.\n"
+            "• Include a `if __name__ == '__main__':` demo section.\n"
+            "• Add docstrings and type hints.\n"
+            "• NEVER use '...' or placeholders."
+        )
+
+        prompt = f"Context:\n{mem_ctx}\n\nTask: {query}" if mem_ctx else query
+        if context:
+            prompt = f"Thinking:\n{context[:2000]}\n\n{prompt}"
+
+        # Generate the code
+        raw_answer = generate_response(prompt, provider="auto", system_prompt=sys_p)
+
+        # Extract code block if present
+        code_match = re.search(r"```(?:python)?\n?([\s\S]+?)```", raw_answer)
+        code_block = code_match.group(1).strip() if code_match else ""
+
+        # Auto-execute if it's a short script and user asked to run it
+        should_execute = (
+            code_block and
+            len(code_block) < 5000 and
+            any(kw in query.lower() for kw in ["run", "execute", "test", "try", "demo", "show me"])
+        )
+
+        # Check for save path request
         save_path = ""
         for pat in [r"(?:save|write|create|store)(?:\s+\w+)?\s+(?:to|in|as|at)\s+([~/\w.\-/]+)",
                     r"in\s+(?:my\s+)?([~/\w\-]+(?:/[~/\w.\-]+)*\.[a-z]+)"]:
@@ -353,27 +427,34 @@ class PersonalAgent(BaseAgent):
                 save_path = str(Path(m.group(1)).expanduser())
                 break
 
-        generator = CodeGenerator()
-        for event in generator.generate_and_stream(
-            query, root=str(Path(PROJECT_ROOT) / "lirox"),
-            save_path=save_path, validate=True
-        ):
-            etype = event.get("type")
-            if etype == "code":
-                # Final generated code block — stream it to the user
-                answer = event.get("message", "")
-                self.memory.save_exchange(query, answer)
-                for chunk in _STREAMER.stream_in_paragraphs(answer):
-                    yield {"type": "streaming", "message": chunk}
-            elif etype == "streaming":
-                answer = event.get("message", "")
-                self.memory.save_exchange(query, answer)
-                for chunk in _STREAMER.stream_in_paragraphs(answer):
-                    yield {"type": "streaming", "message": chunk}
-            else:
-                yield event
+        # Save if requested
+        if save_path and code_block:
+            from lirox.tools.file_tools import file_write
+            save_result = file_write(save_path, code_block)
+            yield {"type": "tool_result", "message": save_result}
 
-        yield {"type": "done", "answer": "Code generation complete."}
+        # Execute if appropriate
+        if should_execute and code_block:
+            yield {"type": "agent_progress", "message": "⚙️ Running code to verify it works…"}
+            try:
+                from lirox.autonomy.code_executor import CodeExecutor
+                executor = CodeExecutor(timeout=15)
+                exec_result = executor.execute(code_block)
+                if exec_result.success:
+                    yield {"type": "tool_result", "message": "✅ Executed successfully"}
+                    if exec_result.stdout:
+                        yield {"type": "tool_result", "message": f"Output:\n{exec_result.stdout[:500]}"}
+                    raw_answer += f"\n\n**Execution output:**\n```\n{exec_result.stdout[:300]}\n```"
+                else:
+                    yield {"type": "tool_result",
+                           "message": f"⚠ Execution failed: {exec_result.error or exec_result.stderr[:200]}"}
+            except Exception:
+                pass  # execution is best-effort
+
+        self.memory.save_exchange(query, raw_answer)
+        for chunk in _STREAMER.stream_in_paragraphs(raw_answer):
+            yield {"type": "streaming", "message": chunk}
+        yield {"type": "done", "answer": raw_answer}
 
     def _maybe_save(self, query: str, answer: str):
         from lirox.tools.file_tools import file_write
@@ -398,85 +479,160 @@ class PersonalAgent(BaseAgent):
                         )
                 break
 
-    # ── File ──────────────────────────────────────────────────────────────
+    # ── File (upgraded) ───────────────────────────────────────────────────────────────────────
     def _file(self, query, mem_ctx, context, sp=""):
-        from lirox.tools.file_tools import file_read, file_write, file_list, file_delete, file_search
+        from lirox.tools.file_tools import (
+            file_read, file_write, file_list, file_delete,
+            file_search, file_patch, file_read_lines,
+            create_directory, file_append, list_directory_tree
+        )
         yield {"type": "agent_progress", "message": "📁 Planning file operation…"}
 
         plan_prompt = (
-            f"Task: {query}\n\nDetermine file operation. For write/create: include COMPLETE content.\n"
-            f'Output ONLY JSON: {{"op":"read_file|write_file|list_files|delete_file|search_files",'
-            f'"path":"...","content":"complete content","pattern":"*","query":"..."}}'
+            f"Task: {query}\n\n"
+            f"Determine the EXACT file operation needed. For write/create: include COMPLETE file content.\n\n"
+            f'Output ONLY JSON:\n'
+            f'{{"op":"read_file|read_lines|write_file|append_file|patch_file|list_files|'
+            f'tree|delete_file|search_files|create_dir",'
+            f'"path":"absolute or ~/relative path",'
+            f'"content":"complete file content if writing",'
+            f'"old_text":"exact text to replace (for patch)",'
+            f'"new_text":"replacement text (for patch)",'
+            f'"start_line":1,"end_line":50,'
+            f'"pattern":"*","query":"search term"}}'
         )
         raw = generate_response(plan_prompt, provider="auto",
-                                system_prompt="File operation planner. Output ONLY JSON.")
+                                system_prompt="File operation planner. Output ONLY valid JSON. No explanation.")
         result = ""
         try:
-            d  = _extract_json(raw)
-            if not isinstance(d, dict): d = {}
+            d = _extract_json(raw)
+            if not isinstance(d, dict):
+                d = {}
             op = d.get("op", "").lower()
+
             if not op:
                 q2 = query.lower()
                 if any(w in q2 for w in ["create","write","make","generate","save","add"]): op = "write_file"
-                elif any(w in q2 for w in ["read","show","open","what's in","look"]): op = "read_file"
-                elif any(w in q2 for w in ["list","ls","directory","folder"]): op = "list_files"
+                elif any(w in q2 for w in ["read","show","open","what's in","look","see"]): op = "read_file"
+                elif any(w in q2 for w in ["list","ls","directory","folder","files in"]): op = "list_files"
+                elif any(w in q2 for w in ["tree","structure","overview"]): op = "tree"
+                elif any(w in q2 for w in ["patch","replace","fix","change","edit"]): op = "patch_file"
+                elif any(w in q2 for w in ["append","add to","insert"]): op = "append_file"
+                elif any(w in q2 for w in ["mkdir","create folder","create dir"]): op = "create_dir"
                 else:
                     yield {"type": "tool_result", "message": "Could not determine file operation."}
                     yield from self._synth(query, "Could not determine file operation.")
                     return
 
             path    = str(Path(d.get("path","")).expanduser()) if d.get("path") else ""
-            content = d.get("content","")
-            pattern = d.get("pattern","*")
-            fquery  = d.get("query","")
+            content = d.get("content", "")
+            pattern = d.get("pattern", "*")
+            fquery  = d.get("query", "")
+            old_text = d.get("old_text", "")
+            new_text = d.get("new_text", "")
+            start_line = d.get("start_line", 1)
+            end_line   = d.get("end_line", None)
 
             yield {"type": "tool_call", "message": f"📁 {op}: {path}"}
 
             if op == "read_file":
                 result = file_read(path)
+            elif op == "read_lines":
+                result = file_read_lines(path, start_line, end_line)
             elif op == "write_file":
                 if not content:
                     content = generate_response(
-                        f"Generate complete file content for: {query}",
-                        provider="auto", system_prompt="Write complete file content only.")
+                        f"Generate COMPLETE file content for: {query}",
+                        provider="auto",
+                        system_prompt="Write complete file content only. No explanation. No markdown fences.")
                 result = file_write(path, content)
+            elif op == "append_file":
+                result = file_append(path, content)
+            elif op == "patch_file":
+                if old_text and new_text:
+                    result = file_patch(path, old_text, new_text)
+                else:
+                    result = "❌ patch_file requires old_text and new_text"
             elif op == "list_files":
-                result = file_list(path, pattern)
+                result = file_list(path or ".", pattern)
+            elif op == "tree":
+                result = list_directory_tree(path or ".")
             elif op == "delete_file":
                 result = file_delete(path)
             elif op == "search_files":
                 result = file_search(path or ".", fquery)
+            elif op == "create_dir":
+                result = create_directory(path)
             else:
                 result = f"Unknown op: {op}"
 
-            yield {"type": "tool_result", "message": str(result)[:300]}
+            yield {"type": "tool_result", "message": str(result)[:400]}
+
         except Exception as e:
             result = f"File error: {e}"
             yield {"type": "tool_result", "message": result}
 
         yield from self._synth(query, result)
 
-    # ── Shell ─────────────────────────────────────────────────────────────
+    # ── Shell (upgraded with real execution) ──────────────────────────────────────────────
     def _shell(self, query, mem_ctx, context, sp=""):
-        from lirox.tools.file_tools import run_shell
+        from lirox.tools.terminal import run_command, is_safe
         yield {"type": "agent_progress", "message": "💻 Planning shell command…"}
+
         raw = generate_response(
-            f"Task: {query}\nOutput ONLY JSON: "
-            f'{{"command":"exact command","reason":"why"}}',
-            provider="auto", system_prompt="Shell expert. Output ONLY JSON.")
+            f"Task: {query}\n"
+            f'Output ONLY JSON: {{"command":"exact shell command","reason":"why this command",'
+            f'"working_dir":"~ or specific path or empty for cwd"}}',
+            provider="auto",
+            system_prompt="Shell expert. Output ONLY JSON. Be precise.")
         result = ""
         try:
             d       = _extract_json(raw)
-            command = d.get("command","").strip()
-            if not command:   # FIX: guard empty command
+            command = d.get("command", "").strip()
+            reason  = d.get("reason", "")
+            cwd     = d.get("working_dir", "").strip()
+
+            if not command:
                 yield {"type": "tool_result", "message": "Could not determine command."}
                 yield from self._synth(query, "Could not determine command.")
                 return
-            reason = d.get("reason","")
+
+            # Expand home in working directory
+            if cwd:
+                cwd = str(Path(cwd).expanduser())
+
+            # Safety check before running
+            safe, safety_reason = is_safe(command)
+            if not safe:
+                yield {"type": "tool_result", "message": f"❌ Blocked: {safety_reason}"}
+                yield from self._synth(query, f"Command blocked: {safety_reason}")
+                return
+
             yield {"type": "tool_call", "message": f"$ {command}"}
-            if reason: yield {"type": "agent_progress", "message": reason}
-            result = run_shell(command)
-            yield {"type": "tool_result", "message": str(result)[:300]}
+            if reason:
+                yield {"type": "agent_progress", "message": reason}
+
+            # Execute with working directory if specified
+            import subprocess, sys as _sys, shlex
+            try:
+                parsed = shlex.split(command)
+                if parsed and parsed[0] in ("python3", "python"):
+                    parsed[0] = _sys.executable
+                proc = subprocess.run(
+                    parsed,
+                    capture_output=True, text=True, timeout=60,
+                    cwd=cwd if cwd and Path(cwd).exists() else None
+                )
+                output = (proc.stdout + proc.stderr).strip()
+                result = output if output else "✅ Command completed (no output)"
+                if len(result) > 3000:
+                    result = result[:3000] + f"\n\n[Output truncated — {len(result)} chars total]"
+            except subprocess.TimeoutExpired:
+                result = "❌ Command timed out after 60s"
+            except Exception as ex:
+                result = f"❌ Shell error: {ex}"
+
+            yield {"type": "tool_result", "message": str(result)[:400]}
         except Exception as e:
             result = f"Shell error: {e}"
             yield {"type": "tool_result", "message": result}
