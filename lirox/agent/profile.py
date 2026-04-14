@@ -75,6 +75,15 @@ class UserProfile:
         with self._lock:
             self.data[key] = value
         self.save()
+        # Sync agent_name to the living soul so identity is consistent
+        if key == "agent_name" and value:
+            try:
+                from lirox.mind.agent import get_soul
+                soul = get_soul()
+                if soul.get_name() != value:
+                    soul.set_name(value)
+            except Exception:
+                pass  # soul sync is best-effort; profile save already happened
 
     def add_learned_fact(self, fact: str):
         with self._lock:

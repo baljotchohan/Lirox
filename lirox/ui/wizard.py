@@ -54,6 +54,13 @@ def run_setup_wizard(profile):
     else:
         agent_name = agent_options[choice]
     profile.update("agent_name", agent_name)
+    # Sync the chosen name to the living soul immediately
+    try:
+        from lirox.mind.agent import get_soul
+        soul = get_soul()
+        soul.set_name(agent_name)
+    except Exception:
+        pass  # best-effort — profile already saved
     console.print(f"\n  [bold green]I'm {agent_name} now. Let's go. 🚀[/]\n")
 
     # ── Step 3: What do you do? ───────────────────────────────────────────

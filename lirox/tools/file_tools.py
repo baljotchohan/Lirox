@@ -307,6 +307,114 @@ def list_directory_tree(path: str = ".", depth: int = 3, ignore_hidden: bool = T
     return "\n".join(lines)
 
 
+# ── Patch Tool (surgical file edits) ─────────────────────────────────────────
+
+def file_patch(path: str, old_text: str, new_text: str) -> str:
+    """
+    Surgically replace EXACT text in a file. Much safer than full file_write
+    for making small targeted changes without corrupting the rest of the file.
+
+    Returns success message or error. Shows context around the change.
+    """
+    ok, info = _is_safe_path(path)
+    if not ok:
+        return info
+    try:
+        with open(info, "r", encoding="utf-8", errors="replace") as f:
+            original = f.read()
+
+        if old_text not in original:
+            lines = original.splitlines()
+            preview = "\n".join(lines[:10])
+            return (
+                f"❌ Text not found in {path}.\n"
+                f"File starts with:\n{preview}\n\n"
+                f"Make sure the old_text matches exactly (spaces, indentation, newlines)."
+            )
+
+        count = original.count(old_text)
+        if count > 1:
+            return (
+                f"❌ Found {count} occurrences of that text in {path}. "
+                f"Be more specific — include more surrounding context."
+            )
+
+        patched = original.replace(old_text, new_text, 1)
+
+        # Backup before writing
+        import shutil
+        backup = info + f".bak.{int(time.time())}"
+        try:
+            shutil.copy2(info, backup)
+        except Exception:
+            pass  # backup failure is non-fatal
+
+        with open(info, "w", encoding="utf-8") as f:
+            f.write(patched)
+
+        return f"✅ Patched {path} — replaced {len(old_text)} chars with {len(new_text)} chars"
+
+    except FileNotFoundError:
+        return f"File not found: {path}"
+    except Exception as e:
+        return f"Patch error: {e}"
+
+
+def file_read_lines(path: str, start_line: int = 1, end_line: int = None) -> str:
+    """
+    Read specific line ranges from a file. Useful for large files.
+    Lines are 1-indexed. end_line=None reads to end of file.
+    """
+    ok, info = _is_safe_path(path)
+    if not ok:
+        return info
+    try:
+        with open(info, "r", encoding="utf-8", errors="replace") as f:
+            lines = f.readlines()
+
+        total = len(lines)
+        start = max(1, start_line) - 1  # convert to 0-indexed
+        end   = min(total, end_line) if end_line else total
+
+        selected = lines[start:end]
+        result = "".join(selected)
+
+        return (
+            f"📄 {path} (lines {start+1}–{end} of {total}):\n\n"
+            f"{result}"
+        )
+    except FileNotFoundError:
+        return f"File not found: {path}"
+    except Exception as e:
+        return f"Read error: {e}"
+
+
+def create_directory(path: str) -> str:
+    """Create a directory and all parent directories."""
+    ok, info = _is_safe_path(path)
+    if not ok:
+        return info
+    try:
+        os.makedirs(info, exist_ok=True)
+        return f"✅ Directory created: {info}"
+    except Exception as e:
+        return f"Directory creation error: {e}"
+
+
+def file_append(path: str, content: str) -> str:
+    """Append content to a file. Creates the file if it doesn't exist."""
+    ok, info = _is_safe_path(path)
+    if not ok:
+        return info
+    try:
+        os.makedirs(os.path.dirname(info) or ".", exist_ok=True)
+        with open(info, "a", encoding="utf-8") as f:
+            f.write(content)
+        return f"✅ Appended {len(content)} chars to {info}"
+    except Exception as e:
+        return f"Append error: {e}"
+
+
 def file_search_advanced(
     root: str,
     query: str,
