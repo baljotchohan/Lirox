@@ -140,7 +140,12 @@ class LivingSoul:
 
         learnings_section = ""
         if learnings_context.strip():
-            learnings_section = f"\n\nWHAT YOU KNOW ABOUT THIS USER:\n{learnings_context}"
+            learnings_section = (
+                f"\n\n━━━ USER KNOWLEDGE BASE ━━━\n"
+                f"(Extracted from conversations — USE THIS to personalize every response)\n\n"
+                f"{learnings_context}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
 
         return f"""You are {name} — a personal AI advisor, not a generic assistant.
 
