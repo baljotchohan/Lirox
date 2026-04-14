@@ -1,9 +1,6 @@
 <div align="center">
 
-```text
-<img width="1024" height="1536" alt="771bd7cad37aa682fa4479121b6f3bd665b194d08ea6f8f407df98c39a10f79e" src="https://github.com/user-attachments/assets/5f2c7470-afbc-4cf7-b844-26b2c3187716" />
 
-```
 
 # 🦁 LIROX: THE AUTONOMOUS AGENTIC OS
 
