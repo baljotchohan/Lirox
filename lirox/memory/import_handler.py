@@ -43,6 +43,33 @@ class MemoryImporter:
     def __init__(self, learnings: LearningsStore):
         self.learnings = learnings
 
+    def import_raw_data(self, content: str, source: str = "pasted_text") -> Dict[str, Any]:
+        """Import data directly from a string (JSON or plain text)."""
+        content = content.strip()
+        if not content:
+            return {"error": "Empty content provided"}
+
+        # Try to parse as JSON first
+        from lirox.utils.llm import strip_code_fences
+        cleaned = strip_code_fences(content, lang="json")
+        
+        try:
+            # If it's a valid JSON with the expected structure, analyze it directly
+            data = json.loads(cleaned)
+            if isinstance(data, dict) and ("facts" in data or "preferences" in data):
+                res = self._save_learned_data(data, source)
+                res["imported"] = "Direct JSON"
+                res["source"] = source
+                return res
+        except Exception:
+            pass
+
+        # Otherwise treat as plain text and let LLM extract
+        res = self._analyze_and_save(content[:12000], source)
+        res["imported"] = "Direct Text"
+        res["source"] = source
+        return res
+
     def import_file(self, file_path: str) -> Dict[str, Any]:
         """
         Auto-detect file format and import. Handles files and directories.
@@ -111,8 +138,6 @@ class MemoryImporter:
 
     def _analyze_and_save(self, text_sample: str, source: str) -> Dict[str, Any]:
         """Use LLM to analyze conversation and extract learnings."""
-        results = {"facts_added": 0, "topics_added": 0, "projects_added": 0}
-
         try:
             raw = generate_response(
                 _IMPORT_ANALYZE_PROMPT.format(conversations=text_sample),
@@ -133,33 +158,40 @@ class MemoryImporter:
                 else:
                     raise ValueError("Could not parse JSON from LLM response")
 
-
-            for fact in data.get("facts", []):
-                if isinstance(fact, str) and len(fact) > 5:
-                    self.learnings.add_fact(fact, confidence=0.6, source=source)
-                    results["facts_added"] += 1
-
-            for cat, prefs in data.get("preferences", {}).items():
-                for p in (prefs or []):
-                    if isinstance(p, str):
-                        self.learnings.add_preference(cat, p)
-
-            for proj in data.get("projects", []):
-                if isinstance(proj, dict) and proj.get("name"):
-                    self.learnings.add_project(proj["name"], proj.get("description", ""))
-                    results["projects_added"] += 1
-
-            for topic in data.get("topics", []):
-                if isinstance(topic, str):
-                    self.learnings.bump_topic(topic)
-                    results["topics_added"] += 1
-
-            for k, v in data.get("communication_style", {}).items():
-                if isinstance(k, str) and isinstance(v, str):
-                    self.learnings.update_communication_style(k, v)
+            return self._save_learned_data(data, source)
 
         except Exception as e:
-            results["error"] = str(e)
+            return {"error": str(e), "facts_added": 0, "topics_added": 0, "projects_added": 0}
+
+    def _save_learned_data(self, data: Dict[str, Any], source: str) -> Dict[str, Any]:
+        """Save extracted knowledge dictionary into the learnings store."""
+        results = {"facts_added": 0, "topics_added": 0, "projects_added": 0}
+
+        for fact in data.get("facts", []):
+            if isinstance(fact, str) and len(fact) > 5:
+                self.learnings.add_fact(fact, confidence=0.6, source=source)
+                results["facts_added"] += 1
+
+        for cat, prefs in data.get("preferences", {}).items():
+            if not isinstance(prefs, list):
+                prefs = [prefs]
+            for p in (prefs or []):
+                if isinstance(p, str):
+                    self.learnings.add_preference(cat, p)
+
+        for proj in data.get("projects", []):
+            if isinstance(proj, dict) and proj.get("name"):
+                self.learnings.add_project(proj["name"], proj.get("description", ""))
+                results["projects_added"] += 1
+
+        for topic in data.get("topics", []):
+            if isinstance(topic, str):
+                self.learnings.bump_topic(topic)
+                results["topics_added"] += 1
+
+        for k, v in data.get("communication_style", {}).items():
+            if isinstance(k, str) and isinstance(v, str):
+                self.learnings.update_communication_style(k, v)
 
         return results
 

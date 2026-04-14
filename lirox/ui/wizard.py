@@ -278,39 +278,67 @@ def _run_memory_import(profile):
     """Interactively import memory from external sources."""
     console.print()
     console.print(Panel(
-        "[bold #FFC107]📋 Memory Import[/]\n\n"
-        "I can learn from your history with other AIs. Here's how to get your files:\n\n"
-        "  [bold]ChatGPT[/]: Settings → Data Controls → Export Data (you'll get a .zip with [italic]conversations.json[/])\n"
-        "  [bold]Claude[/]: Settings → Account → Export Data (you'll get a [italic]claude_conversations.json[/])\n"
-        "  [bold]Gemini[/]: takeout.google.com → Select 'Gemini' → Export (provide the [italic]Takeout[/] folder path)\n\n"
-        "Supported: ChatGPT (JSON), Claude (JSON), or plain .txt/.md files.\n"
-        "You can also provide a previously exported [bold]Lirox Memory[/] file.\n",
-        border_style="#FFC107", box=ROUNDED, width=64
+        "I can learn from your history with other AIs. Here's how to\n"
+        "get your files:\n\n"
+        "  [bold]ChatGPT[/]: Settings → Data Controls → Export Data (you'll\n"
+        "get a .zip with [italic]conversations.json[/])\n"
+        "  [bold]Claude[/]: Settings → Account → Export Data (you'll get a\n"
+        "[italic]claude_conversations.json[/])\n"
+        "  [bold]Gemini[/]: takeout.google.com → Select 'Gemini' → Export\n"
+        "(provide the [italic]Takeout[/] folder path)\n\n"
+        "Supported: ChatGPT (JSON), Claude (JSON), or plain .txt/.md\n"
+        "files. You can also provide a previously exported Lirox Memory\n"
+        "file.",
+        title="[bold]📋 Memory Import[/]",
+        border_style="#FFC107", box=HEAVY, width=64
     ))
+
+    console.print("\n  [bold #FFC107]⚡ Way 2: Quick Memory Sync Prompt[/]")
+    console.print("  [dim]Copy this prompt to ChatGPT/Claude and paste the result below:[/]\n")
     
+    sync_prompt = (
+        "Analyze our conversation history. Extract key facts about me, my preferences, "
+        "my current projects, and my communication style. Format the output ONLY as a "
+        "JSON block with keys: 'facts' (list), 'preferences' (dict), 'projects' (list), "
+        "'topics' (list), and 'communication_style' (dict)."
+    )
+    console.print(Panel(sync_prompt, border_style="cyan", box=ROUNDED, padding=(1, 2), width=64))
+    
+    console.print("\n  [dim]TIP: You can paste the [bold]file path[/] OR the [bold]JSON response[/] directly below.[/]\n")
+
     while True:
-        file_path = Prompt.ask("  [bold #FFC107]Path to export file/folder[/] [dim](or Enter to skip)[/]", default="")
-        if not file_path:
+        user_input = Prompt.ask("  [bold #FFC107]Paste Path or Sync JSON[/] [dim](Enter to skip)[/]", default="")
+        if not user_input:
             return
 
         # Clean path (handle quotes if user pasted path with quotes)
-        path_str = file_path.strip().strip("'").strip('"')
-        path = Path(path_str)
-
-        if not path.exists():
-            console.print(f"  [bold red]✖ File not found:[/] [dim]{path_str}[/]")
-            console.print("  [dim]Tip: Drag and drop the file into your terminal to paste the path.[/]\n")
-            if not Confirm.ask("  Try again?", default=True):
-                return
-            continue
+        input_str = user_input.strip().strip("'").strip('"')
+        
+        from lirox.memory.import_handler import MemoryImporter
+        from lirox.mind.agent import get_learnings
+        
+        importer = MemoryImporter(get_learnings())
+        
+        # Check if it's a path or raw data
+        path = Path(input_str)
+        if path.exists():
+            with console.status("[bold cyan]Importing from file...[/]", spinner="dots"):
+                res = importer.import_file(input_str)
+        else:
+            # It might be a path that doesn't exist OR it might be the raw JSON
+            if "{" in input_str and "}" in input_str:
+                with console.status("[bold cyan]Analyzing sync data...[/]", spinner="dots"):
+                    res = importer.import_raw_data(input_str)
+            else:
+                console.print(f"  [bold red]✖ Input not recognized.[/] [dim]Path doesn't exist and doesn't look like JSON.[/]")
+                console.print("  [dim]Tip: Drag and drop the file into your terminal or paste the full JSON block.[/]\n")
+                if not Confirm.ask("  Try again?", default=True):
+                    return
+                continue
         break
 
-    from lirox.memory.import_handler import MemoryImporter
-    from lirox.mind.agent import get_learnings
+    # The result (res) is already calculated in the loop above
     
-    with console.status("[bold cyan]Importing and analyzing memory...[/]", spinner="dots"):
-        importer = MemoryImporter(get_learnings())
-        res = importer.import_file(str(path))
         
     if "error" in res:
         console.print(f"  [red]✖ Import failed: {res['error']}[/]")
