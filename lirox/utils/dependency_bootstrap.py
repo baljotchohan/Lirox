@@ -8,6 +8,8 @@ from pathlib import Path
 from typing import Dict, List, Tuple
 
 _repo_root = Path(__file__).resolve().parent.parent.parent
+PIP_INSTALL_TIMEOUT_SECONDS = 300
+PER_PACKAGE_INSTALL_ATTEMPTS = 2
 
 
 def required_package_map() -> Dict[str, str]:
@@ -63,9 +65,13 @@ def missing_packages(package_to_module: Dict[str, str]) -> List[str]:
 
 def run_pip_install(packages: List[str]) -> bool:
     cmd = [sys.executable, "-m", "pip", "install", *packages]
-    timeout_seconds = 300
     try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
+        result = subprocess.run(
+            cmd,
+            capture_output=True,
+            text=True,
+            timeout=PIP_INSTALL_TIMEOUT_SECONDS,
+        )
     except subprocess.TimeoutExpired:
         return False
     if result.returncode == 0:
@@ -76,13 +82,18 @@ def run_pip_install(packages: List[str]) -> bool:
                 [sys.executable, "-m", "ensurepip", "--upgrade"],
                 capture_output=True,
                 text=True,
-                timeout=timeout_seconds,
+                timeout=PIP_INSTALL_TIMEOUT_SECONDS,
             )
         except subprocess.TimeoutExpired:
             return False
         if ensure.returncode == 0:
             try:
-                retry = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
+                retry = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=PIP_INSTALL_TIMEOUT_SECONDS,
+                )
             except subprocess.TimeoutExpired:
                 return False
             return retry.returncode == 0
@@ -100,7 +111,7 @@ def install_missing_packages(packages: List[str]) -> Tuple[List[str], List[str]]
     failed = []
     for pkg in packages:
         pkg_installed = False
-        for _ in range(2):
+        for _ in range(PER_PACKAGE_INSTALL_ATTEMPTS):
             if run_pip_install([pkg]):
                 pkg_installed = True
                 break
