@@ -315,7 +315,24 @@ def _run_memory_import(profile):
         from lirox.mind.agent import get_learnings
         importer = MemoryImporter(get_learnings())
         
-        if user_input.lower() == 'p':
+        input_str = user_input.strip()
+        
+        # Handle accidental direct paste of JSON instead of typing 'p'
+        if input_str.startswith("{") or input_str.startswith("["):
+            console.print("  [dim]Auto-detecting pasted JSON... (Press Enter on an empty line if it hangs)[/]")
+            lines = [input_str]
+            while True:
+                try:
+                    line = input()
+                    if not line.strip() and (lines[-1].strip().endswith("}") or lines[-1].strip().endswith("]")):
+                        break
+                    elif not line.strip() and not lines[-1].strip():
+                        break # two empty lines stop it
+                    lines.append(line)
+                except EOFError:
+                    break
+            input_str = "\n".join(lines)
+        elif input_str.lower() == 'p':
             console.print("\n  [bold cyan]── MULTI-LINE PASTE MODE ──[/]")
             console.print("  [dim]Step 1: Paste your JSON block below.[/]")
             console.print("  [dim]Step 2: Press [bold]Enter[/] then [bold]CTRL-D[/] (Mac/Linux) or [bold]CTRL-Z[/] (Windows) to save.[/]\n")
@@ -326,11 +343,16 @@ def _run_memory_import(profile):
                 continue
         else:
             # Clean path (handle quotes if user pasted path with quotes)
-            input_str = user_input.strip().strip("'").strip('"')
+            input_str = input_str.strip("'").strip('"')
         
         # Check if it's a path or raw data
         path = Path(input_str)
-        if path.exists():
+        try:
+            is_valid_path = path.exists()
+        except OSError:
+            is_valid_path = False
+
+        if is_valid_path:
             with console.status("[bold cyan]Importing from file...[/]", spinner="dots"):
                 res = importer.import_file(input_str)
         else:
@@ -345,6 +367,7 @@ def _run_memory_import(profile):
                     return
                 continue
         break
+
 
     # The result (res) is already calculated in the loop above
     
