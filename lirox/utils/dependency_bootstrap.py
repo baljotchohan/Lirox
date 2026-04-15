@@ -33,7 +33,7 @@ def required_package_map() -> Dict[str, str]:
         if not line or line.startswith("#"):
             continue
         line = line.split(" #", 1)[0].strip()
-        match = re.match(r"^([A-Za-z0-9_.-]+)", line)
+        match = re.match(r"^([A-Za-z0-9_][A-Za-z0-9_.-]*)", line)
         if not match:
             continue
         pkg = match.group(1)
@@ -63,15 +63,28 @@ def missing_packages(package_to_module: Dict[str, str]) -> List[str]:
 
 def run_pip_install(packages: List[str]) -> bool:
     cmd = [sys.executable, "-m", "pip", "install", *packages]
-    result = subprocess.run(cmd, capture_output=True, text=True)
+    timeout_seconds = 300
+    try:
+        result = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired:
+        return False
     if result.returncode == 0:
         return True
     if "No module named pip" in (result.stderr or ""):
-        ensure = subprocess.run(
-            [sys.executable, "-m", "ensurepip", "--upgrade"], capture_output=True, text=True
-        )
+        try:
+            ensure = subprocess.run(
+                [sys.executable, "-m", "ensurepip", "--upgrade"],
+                capture_output=True,
+                text=True,
+                timeout=timeout_seconds,
+            )
+        except subprocess.TimeoutExpired:
+            return False
         if ensure.returncode == 0:
-            retry = subprocess.run(cmd, capture_output=True, text=True)
+            try:
+                retry = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_seconds)
+            except subprocess.TimeoutExpired:
+                return False
             return retry.returncode == 0
     return False
 
@@ -92,7 +105,7 @@ def install_missing_packages(packages: List[str]) -> Tuple[List[str], List[str]]
 
 def manual_install_hint(packages: List[str]) -> str:
     pkg_str = " ".join(packages)
-    if platform.system().lower().startswith("win"):
+    if platform.system() == "Windows":
         return (
             "Manual fallback:\n"
             f"  py -m pip install {pkg_str}\n"

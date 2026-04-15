@@ -4,6 +4,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   verify-bootstrap:
     runs-on: ${{ matrix.os }}
@@ -27,29 +30,27 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if python -m pip install -r requirements.txt; then
-            exit 0
+          if ! python -m pip install -r requirements.txt; then
+            python - <<'PY'
+            import pathlib, re, subprocess, sys
+            req = pathlib.Path("requirements.txt")
+            failures = []
+            for line in req.read_text(encoding="utf-8").splitlines():
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                pkg = re.match(r"^([A-Za-z0-9_][A-Za-z0-9_.-]*)", line)
+                if not pkg:
+                    continue
+                name = pkg.group(1)
+                r = subprocess.run([sys.executable, "-m", "pip", "install", name], text=True)
+                if r.returncode != 0:
+                    failures.append(name)
+            if failures:
+                print("Failed packages:", ", ".join(failures))
+                sys.exit(1)
+            PY
           fi
-
-          python - <<'PY'
-          import pathlib, re, subprocess, sys
-          req = pathlib.Path("requirements.txt")
-          failures = []
-          for line in req.read_text(encoding="utf-8").splitlines():
-              line = line.strip()
-              if not line or line.startswith("#"):
-                  continue
-              pkg = re.match(r"^([A-Za-z0-9_.-]+)", line)
-              if not pkg:
-                  continue
-              name = pkg.group(1)
-              r = subprocess.run([sys.executable, "-m", "pip", "install", name], text=True)
-              if r.returncode != 0:
-                  failures.append(name)
-          if failures:
-              print("Failed packages:", ", ".join(failures))
-              sys.exit(1)
-          PY
 
       - name: Verify startup dependency check
         run: python -m lirox --version

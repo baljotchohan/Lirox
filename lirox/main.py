@@ -126,6 +126,7 @@ def check_dependencies():
     remaining = missing_packages(package_to_module)
     if not remaining:
         print("[Lirox] Dependency bootstrap complete. Restarting...")
+        # Replace current process so newly installed packages are imported cleanly.
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     print(f"\n[!] Some dependencies are still missing: {', '.join(remaining)}")

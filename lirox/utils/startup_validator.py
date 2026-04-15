@@ -9,6 +9,7 @@ import os
 import sys
 from typing import Dict, List, Tuple
 from pathlib import Path
+from lirox.utils.dependency_bootstrap import required_package_map
 
 
 class StartupValidator:
@@ -57,7 +58,7 @@ class StartupValidator:
             return False, ["Python 3.8+ required"]
         
         # 5. Check critical dependencies
-        required_modules = ["rich", "prompt_toolkit", "dotenv", "bs4", "duckduckgo_search", "google.genai"]
+        required_modules = list(required_package_map().values())
         missing = []
         for module in required_modules:
             try:

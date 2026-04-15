@@ -144,7 +144,7 @@ sequenceDiagram
 
 ## ⚡ Installation
 
-### 1. What is new in dependency setup
+### 1. What's new in dependency setup
 
 - On startup, Lirox now checks required Python dependencies automatically.
 - If packages are missing, Lirox tries to install them automatically with `pip`.
@@ -201,7 +201,7 @@ lirox --setup
 lirox
 ```
 
-### 5. If your `.py` environment is missing dependencies
+### 5. If your Python environment is missing dependencies
 
 Lirox auto-installs required packages at startup. If installation is partially blocked, use:
 

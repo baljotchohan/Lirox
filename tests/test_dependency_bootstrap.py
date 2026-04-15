@@ -28,10 +28,12 @@ class DependencyBootstrapTests(unittest.TestCase):
             self.assertEqual(pkg_map["duckduckgo-search"], "duckduckgo_search")
 
     def test_install_missing_packages_falls_back_to_individual_installs(self):
-        with mock.patch("lirox.utils.dependency_bootstrap.run_pip_install", side_effect=[False, True, False]):
+        with mock.patch("lirox.utils.dependency_bootstrap.run_pip_install", side_effect=[False, True, False]) as mocked_install:
             installed, failed = db.install_missing_packages(["rich", "requests"])
         self.assertEqual(installed, ["rich"])
         self.assertEqual(failed, ["requests"])
+        self.assertEqual(mocked_install.call_count, 3)
+        self.assertEqual(mocked_install.call_args_list[0].args[0], ["rich", "requests"])
 
     def test_manual_install_hint_windows(self):
         with mock.patch("lirox.utils.dependency_bootstrap.platform.system", return_value="Windows"):
