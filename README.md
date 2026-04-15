@@ -144,27 +144,84 @@ sequenceDiagram
 
 ## ⚡ Installation
 
-### 1. Requirements
-- Python 3.9+
-- Optional: [Ollama](https://ollama.com) for 100% local execution.
+### 1. What is new in dependency setup
 
-### 2. Quick Start
+- On startup, Lirox now checks required Python dependencies automatically.
+- If packages are missing, Lirox tries to install them automatically with `pip`.
+- If bulk installation fails, it retries package-by-package and reports exactly what failed.
+- Cross-platform fallback commands are shown for **macOS**, **Linux**, and **Windows**.
+
+### 2. Requirements
+
+- Python **3.9+**
+- `pip` (usually bundled with Python)
+- Optional: [Ollama](https://ollama.com) for 100% local execution
+
+### 3. Step-by-step setup (macOS / Linux)
+
 ```bash
-# Clone the repository
+# 1) Clone the repository
 git clone https://github.com/baljotchohan/lirox.git
 cd lirox
 
-# Install with all dependencies
-pip install -e ".[full]"
+# 2) (Recommended) Create and activate a virtual environment
+python3 -m venv .venv
+source .venv/bin/activate
 
-# Initialize your providers
+# 3) Upgrade pip
+python3 -m pip install --upgrade pip
+
+# 4) Install Lirox
+python3 -m pip install -e ".[full]"
+
+# 5) First run (auto dependency check/install also runs here)
 lirox --setup
-
-# Launch the OS
 lirox
 ```
 
-### 3. Local-First Configuration
+### 4. Step-by-step setup (Windows PowerShell)
+
+```powershell
+# 1) Clone the repository
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox
+
+# 2) (Recommended) Create and activate a virtual environment
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 3) Upgrade pip
+py -m pip install --upgrade pip
+
+# 4) Install Lirox
+py -m pip install -e ".[full]"
+
+# 5) First run (auto dependency check/install also runs here)
+lirox --setup
+lirox
+```
+
+### 5. If your `.py` environment is missing dependencies
+
+Lirox auto-installs required packages at startup. If installation is partially blocked, use:
+
+```bash
+# macOS/Linux
+python3 -m pip install -r requirements.txt
+```
+
+```powershell
+# Windows
+py -m pip install -r requirements.txt
+```
+
+If `pip` is not available:
+
+```bash
+python -m ensurepip --upgrade
+```
+
+### 6. Local-First Configuration
 To run 100% locally with Ollama, update your `.env`:
 ```env
 LOCAL_LLM_ENABLED=true

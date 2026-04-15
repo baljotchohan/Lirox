@@ -57,7 +57,7 @@ class StartupValidator:
             return False, ["Python 3.8+ required"]
         
         # 5. Check critical dependencies
-        required_modules = ["rich", "prompt_toolkit", "dotenv", "bs4"]
+        required_modules = ["rich", "prompt_toolkit", "dotenv", "bs4", "duckduckgo_search", "google.genai"]
         missing = []
         for module in required_modules:
             try:
@@ -66,6 +66,9 @@ class StartupValidator:
                 missing.append(module)
         
         if missing:
-            return False, [f"Missing: {', '.join(missing)}. Run: pip install -r requirements.txt"]
+            return False, [
+                f"Missing: {', '.join(missing)}. "
+                "Run Lirox once to auto-install, or run: python -m pip install -r requirements.txt"
+            ]
         
         return True, warnings
