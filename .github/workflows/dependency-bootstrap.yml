@@ -31,45 +31,45 @@ jobs:
         run: |
           set -euo pipefail
           if ! python -m pip install -r requirements.txt; then
-            python - <<'PY'
-            import pathlib, re, shlex, subprocess, sys
+          python - <<'PY'
+          import pathlib, re, shlex, subprocess, sys
 
-            req = pathlib.Path("requirements.txt")
-            requirements = []
-            for raw in req.read_text(encoding="utf-8").splitlines():
-                line = raw.strip()
-                if not line or line.startswith("#"):
-                    continue
-                requirement = re.sub(r"\s+#.*$", "", line).strip()
-                if not requirement:
-                    continue
-                requirements.append(requirement)
+          req = pathlib.Path("requirements.txt")
+          requirements = []
+          for raw in req.read_text(encoding="utf-8").splitlines():
+              line = raw.strip()
+              if not line or line.startswith("#"):
+                  continue
+              requirement = re.sub(r"\s+#.*$", "", line).strip()
+              if not requirement:
+                  continue
+              requirements.append(requirement)
 
-            failures = []
-            for requirement in requirements:
-                install_args = shlex.split(requirement) if requirement.startswith("-") else [requirement]
-                success = False
-                for attempt in (1, 2):
-                    result = subprocess.run(
-                        [sys.executable, "-m", "pip", "install", *install_args],
-                        capture_output=True,
-                        text=True,
-                    )
-                    if result.returncode == 0:
-                        success = True
-                        break
-                    if attempt == 1:
-                        print(f"Retrying install for {requirement} after initial failure...")
-                if not success:
-                    stderr = (result.stderr or "").strip()
-                    failures.append((requirement, stderr.splitlines()[-1] if stderr else "unknown pip error"))
+          failures = []
+          for requirement in requirements:
+              install_args = shlex.split(requirement) if requirement.startswith("-") else [requirement]
+              success = False
+              for attempt in (1, 2):
+                  result = subprocess.run(
+                      [sys.executable, "-m", "pip", "install", *install_args],
+                      capture_output=True,
+                      text=True,
+                  )
+                  if result.returncode == 0:
+                      success = True
+                      break
+                  if attempt == 1:
+                      print(f"Retrying install for {requirement} after initial failure...")
+              if not success:
+                  stderr = (result.stderr or "").strip()
+                  failures.append((requirement, stderr.splitlines()[-1] if stderr else "unknown pip error"))
 
-            if failures:
-                print("Failed packages after fallback attempts:")
-                for pkg, reason in failures:
-                    print(f"  - {pkg}: {reason}")
-                sys.exit(1)
-            PY
+          if failures:
+              print("Failed packages after fallback attempts:")
+              for pkg, reason in failures:
+                  print(f"  - {pkg}: {reason}")
+              sys.exit(1)
+          PY
           fi
 
       - name: Verify startup dependency check
