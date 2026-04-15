@@ -24,6 +24,7 @@ outputs/
 
 # Testing / Debug Scripts
 test_*.py
+!tests/test_*.py
 debug_*.py
 list_*.py
 testinglirox

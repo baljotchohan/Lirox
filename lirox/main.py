@@ -4,6 +4,12 @@ import sys
 import time
 import argparse
 from pathlib import Path
+from lirox.utils.dependency_bootstrap import (
+    required_package_map,
+    missing_packages,
+    install_missing_packages,
+    manual_install_hint,
+)
 
 # ── Ensure Project Root is in sys.path ────────────────────────────────────────
 _repo_root = Path(__file__).resolve().parent.parent
@@ -105,17 +111,29 @@ def fix_windows_path():
 
 
 def check_dependencies():
-    required = {
-        "rich": "rich", "prompt_toolkit": "prompt-toolkit",
-        "psutil": "psutil", "dotenv": "python-dotenv",
-        "bs4": "beautifulsoup4", "lxml": "lxml", "requests": "requests",
-    }
-    missing = [pkg for mod, pkg in required.items()
-               if not _try_import(mod.split(".")[0])]
-    if missing:
-        print(f"\n[!] Missing packages: {', '.join(missing)}")
-        print(f"    Run: pip install {' '.join(missing)}\n")
-        sys.exit(1)
+    package_to_module = required_package_map()
+    missing = missing_packages(package_to_module)
+    if not missing:
+        return
+
+    print(f"\n[Lirox] Missing Python dependencies detected: {', '.join(missing)}")
+    print("[Lirox] Attempting automatic installation...")
+
+    installed, failed = install_missing_packages(missing)
+    if installed:
+        print(f"[Lirox] Installed: {', '.join(installed)}")
+
+    remaining = missing_packages(package_to_module)
+    if not remaining:
+        print("[Lirox] Dependency bootstrap complete. Restarting...")
+        # Replace current process so newly installed packages are imported cleanly.
+        os.execv(sys.executable, [sys.executable] + sys.argv)
+
+    print(f"\n[!] Some dependencies are still missing: {', '.join(remaining)}")
+    if failed:
+        print(f"[!] Installation failed for: {', '.join(failed)}")
+    print(manual_install_hint(remaining))
+    sys.exit(1)
 
 
 def _try_import(m: str) -> bool:
@@ -126,22 +144,16 @@ def _try_import(m: str) -> bool:
         return False
 
 
-# BUG-1 FIX: guard module-level imports so check_dependencies() message
-# actually shows when deps are missing.
-try:
-    from lirox.orchestrator.master import MasterOrchestrator
-    from lirox.ui.display import (
-        show_welcome, show_status_card, show_thinking, show_agent_event,
-        show_answer, render_streaming_chunk, error_panel, info_panel,
-        success_message, confirm_prompt, console,
-    )
-    from lirox.utils.llm import available_providers
-    from lirox.config import APP_VERSION
-except ImportError as _import_err:
-    # Dependencies not installed yet — print friendly message
-    check_dependencies()          # this will sys.exit with a helpful message
-    # If check_dependencies didn't exit (shouldn't happen), re-raise
-    raise
+check_dependencies()
+
+from lirox.orchestrator.master import MasterOrchestrator
+from lirox.ui.display import (
+    show_welcome, show_status_card, show_thinking, show_agent_event,
+    show_answer, render_streaming_chunk, error_panel, info_panel,
+    success_message, confirm_prompt, console,
+)
+from lirox.utils.llm import available_providers
+from lirox.config import APP_VERSION
 
 
 def get_prompt_label(agent_name: str) -> list:

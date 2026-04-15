@@ -32,9 +32,7 @@ jobs:
           set -euo pipefail
           if ! python -m pip install -r requirements.txt; then
           python - <<'PY'
-          import pathlib
-          import subprocess
-          import sys
+          import pathlib, re, shlex, subprocess, sys
 
           req = pathlib.Path("requirements.txt")
           requirements = []
@@ -42,14 +40,18 @@ jobs:
               line = raw.strip()
               if not line or line.startswith("#"):
                   continue
-              requirements.append(line)
+              requirement = re.sub(r"\s+#.*$", "", line).strip()
+              if not requirement:
+                  continue
+              requirements.append(requirement)
 
           failures = []
           for requirement in requirements:
+              install_args = shlex.split(requirement) if requirement.startswith("-") else [requirement]
               success = False
               for attempt in (1, 2):
                   result = subprocess.run(
-                      [sys.executable, "-m", "pip", "install", requirement],
+                      [sys.executable, "-m", "pip", "install", *install_args],
                       capture_output=True,
                       text=True,
                   )
