@@ -99,7 +99,12 @@ def install_missing_packages(packages: List[str]) -> Tuple[List[str], List[str]]
     installed = []
     failed = []
     for pkg in packages:
-        if run_pip_install([pkg]) or run_pip_install([pkg]):
+        pkg_installed = False
+        for _ in range(2):
+            if run_pip_install([pkg]):
+                pkg_installed = True
+                break
+        if pkg_installed:
             installed.append(pkg)
         else:
             failed.append(pkg)
