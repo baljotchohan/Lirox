@@ -1015,16 +1015,20 @@ def run_update():
         git_dir = os.path.join(root, ".git")
         if os.path.exists(git_dir):
             # Using -C ensures git runs in the correct directory regardless of current pwd
-            result = subprocess.run(["git", "-C", root, "pull"],
-                                    capture_output=True, text=True, check=True)
-            if "Already up to date." in result.stdout:
-                success_message("Already up to date.")
-            else:
-                console.print(f"[dim]{result.stdout.strip()}[/]")
-                # Re-install in editable mode to update dependencies/scripts
-                subprocess.run([sys.executable, "-m", "pip", "install", "-e", root],
-                               capture_output=True)
-                success_message("Updated. Please restart Lirox.")
+            try:
+                result = subprocess.run(["git", "-C", root, "pull"],
+                                        capture_output=True, text=True, check=True)
+                if "Already up to date." in result.stdout:
+                    success_message("Already up to date.")
+                else:
+                    console.print(f"[dim]{result.stdout.strip()}[/]")
+                    # Re-install in editable mode to update dependencies/scripts
+                    subprocess.run([sys.executable, "-m", "pip", "install", "-e", root],
+                                   capture_output=True)
+                    success_message("Updated. Please restart Lirox.")
+            except subprocess.CalledProcessError as e:
+                error_msg = e.stderr.strip() if e.stderr else e.stdout.strip() if e.stdout else str(e)
+                error_panel("UPDATE FAILED", f"Git output:\n{error_msg}")
         else:
             info_panel(f"Not a git repository ({root}).\nRun: pip install --upgrade lirox")
     except Exception as e:
