@@ -28,12 +28,19 @@ class DependencyBootstrapTests(unittest.TestCase):
             self.assertEqual(pkg_map["duckduckgo-search"], "duckduckgo_search")
 
     def test_install_missing_packages_falls_back_to_individual_installs(self):
-        with mock.patch("lirox.utils.dependency_bootstrap.run_pip_install", side_effect=[False, True, False]) as mocked_install:
+        with mock.patch("lirox.utils.dependency_bootstrap.run_pip_install", side_effect=[False, True, False, False]) as mocked_install:
             installed, failed = db.install_missing_packages(["rich", "requests"])
         self.assertEqual(installed, ["rich"])
         self.assertEqual(failed, ["requests"])
-        self.assertEqual(mocked_install.call_count, 3)
+        self.assertEqual(mocked_install.call_count, 4)
         self.assertEqual(mocked_install.call_args_list[0].args[0], ["rich", "requests"])
+
+    def test_install_missing_packages_retries_single_package(self):
+        with mock.patch("lirox.utils.dependency_bootstrap.run_pip_install", side_effect=[False, False, True]) as mocked_install:
+            installed, failed = db.install_missing_packages(["rich"])
+        self.assertEqual(installed, ["rich"])
+        self.assertEqual(failed, [])
+        self.assertEqual(mocked_install.call_count, 3)
 
     def test_manual_install_hint_windows(self):
         with mock.patch("lirox.utils.dependency_bootstrap.platform.system", return_value="Windows"):
@@ -44,6 +51,15 @@ class DependencyBootstrapTests(unittest.TestCase):
         with mock.patch("lirox.utils.dependency_bootstrap.platform.system", return_value="Linux"):
             hint = db.manual_install_hint(["rich"])
         self.assertIn("python3 -m pip install rich", hint)
+
+    def test_format_failed_packages_message(self):
+        with mock.patch("lirox.utils.dependency_bootstrap.platform.system", return_value="Linux"):
+            message = db.format_failed_packages_message(["rich"])
+        self.assertIn("Failed packages: rich", message)
+        self.assertIn("python3 -m pip install rich", message)
+
+    def test_format_failed_packages_message_empty(self):
+        self.assertEqual(db.format_failed_packages_message([]), "")
 
 
 if __name__ == "__main__":
