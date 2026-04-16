@@ -1,11 +1,12 @@
-"""
-Lirox v0.5 — Memory Import Handler
+"""Lirox v2.0 — Memory Import Handler.
 
-Imports conversation history and facts from:
-- ChatGPT (conversations.json export)
-- Claude (claude_conversations.json export)
-- Gemini (Takeout/Gemini/ folder)
-- Plain text / markdown files
+Robust, one-paste import of user knowledge from any LLM or
+Lirox's own exports. Fixes every issue from v1:
+  - Handles markdown-fenced JSON (the format every LLM actually
+    outputs) without asking the user to strip fences.
+  - Updates profile.json AND LearningsStore (not just learnings).
+  - Deduplicates on normalized content.
+  - Returns structured, verifiable result.
 """
 from __future__ import annotations
 
@@ -13,70 +14,113 @@ import json
 import os
 import re
 from pathlib import Path
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Optional
 
 from lirox.mind.learnings import LearningsStore
 from lirox.utils.llm import generate_response
 
 
-_IMPORT_ANALYZE_PROMPT = """
-Analyze these conversation excerpts from a user's chat history.
-Extract key facts, preferences, projects, and patterns about the user.
+_IMPORT_ANALYZE_PROMPT = """Analyze these conversation excerpts from a user's chat history.
+Extract stable facts, preferences, projects, topics, and communication style.
 
 CONVERSATIONS:
 {conversations}
 
-Output JSON:
+Output ONLY this JSON schema (no preamble, no trailing text):
 {{
-  "facts": ["fact about user"],
-  "preferences": {{"category": ["preference"]}},
+  "facts": ["..."],
+  "preferences": {{"category": ["pref1"]}},
   "projects": [{{"name": "...", "description": "..."}}],
-  "topics": ["topic1", "topic2"],
-  "communication_style": {{"key": "value"}}
+  "topics": ["..."],
+  "communication_style": {{"key": "value"}},
+  "profile": {{"niche": "", "current_project": ""}}
 }}
 """
 
 
+def _extract_json_robust(raw: str) -> Optional[dict]:
+    """Extract the first JSON object from text, tolerating fences and preambles.
+
+    Handles:
+    - ```json ... ``` fences
+    - ``` ... ``` bare fences
+    - Preambles like "Here is the JSON:" before the object
+    - Trailing commentary after the object
+    """
+    if not raw or not raw.strip():
+        return None
+
+    text = raw.strip()
+
+    # Try direct parse first (common case)
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+
+    # Extract from markdown fence
+    fence_match = re.search(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", text, re.DOTALL)
+    if fence_match:
+        try:
+            return json.loads(fence_match.group(1))
+        except Exception:
+            pass
+
+    # Greedy extract first top-level JSON object
+    depth = 0
+    start = None
+    for i, ch in enumerate(text):
+        if ch == "{":
+            if depth == 0:
+                start = i
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+            if depth == 0 and start is not None:
+                try:
+                    return json.loads(text[start:i + 1])
+                except json.JSONDecodeError:
+                    start = None
+                    depth = 0
+    return None
+
+
 class MemoryImporter:
-    """Imports external conversation history into Lirox learnings."""
+    """Imports external conversation history into Lirox learnings + profile."""
 
     def __init__(self, learnings: LearningsStore):
         self.learnings = learnings
 
-    def import_raw_data(self, content: str, source: str = "pasted_text") -> Dict[str, Any]:
-        """Import data directly from a string (JSON or plain text)."""
-        content = content.strip()
+    # ── Public: from raw text (paste) ─────────────────────────────────
+
+    def import_raw_data(self, content: str, source: str = "pasted") -> Dict[str, Any]:
+        """Primary entry point for pasted LLM output."""
+        content = (content or "").strip()
         if not content:
-            return {"error": "Empty content provided"}
+            return {"error": "Empty content", "success": False}
 
-        # Try to parse as JSON first
-        from lirox.utils.llm import strip_code_fences
-        cleaned = strip_code_fences(content, lang="json")
-        
-        try:
-            # If it's a valid JSON with the expected structure, analyze it directly
-            data = json.loads(cleaned)
-            if isinstance(data, dict) and ("facts" in data or "preferences" in data):
-                res = self._save_learned_data(data, source)
-                res["imported"] = "Direct JSON"
-                res["source"] = source
-                return res
-        except Exception:
-            pass
+        # First, try structured JSON (what our sync prompt produces)
+        data = _extract_json_robust(content)
+        if isinstance(data, dict) and (
+            "facts" in data or "preferences" in data or "profile" in data
+        ):
+            result = self._apply_structured(data, source=source)
+            result["source"] = source
+            result["mode"] = "structured_json"
+            return result
 
-        # Otherwise treat as plain text and let LLM extract
-        res = self._analyze_and_save(content[:12000], source)
-        res["imported"] = "Direct Text"
-        res["source"] = source
-        return res
+        # Fall back: plain text, let LLM extract
+        result = self._llm_extract_and_apply(content[:12000], source)
+        result["source"] = source
+        result["mode"] = "llm_extracted"
+        return result
+
+    # ── Public: from file ─────────────────────────────────────────────
 
     def import_file(self, file_path: str) -> Dict[str, Any]:
-        """
-        Auto-detect file format and import. Handles files and directories.
-        """
-        path = Path(file_path)
+        path = Path(file_path).expanduser()
         if not path.exists():
-            return {"error": f"File not found: {file_path}"}
+            return {"error": f"File not found: {file_path}", "success": False}
 
         if path.is_dir():
             return self._import_folder(path)
@@ -85,227 +129,248 @@ class MemoryImporter:
         fname = path.name.lower()
 
         try:
-            # Check for Lirox internal export format first
             if ext == ".json" and ("lirox_memory" in fname or "lirox_export" in fname):
                 from lirox.utils.memory_utils import import_full_memory
-                full_res = import_full_memory(str(path))
-                if full_res.get("success"):
-                    return {
-                        "imported": "Full Profile",
-                        "facts_added": full_res.get("facts_added", 0),
-                        "source": "Lirox Export",
-                        "is_full": True
-                    }
-                else:
-                    return {"error": full_res.get("error", "Unknown internal import error")}
+                r = import_full_memory(str(path))
+                return {
+                    "success": bool(r.get("success")),
+                    "imported": "Full Profile",
+                    "facts_added": r.get("facts_added", 0),
+                    "source": "Lirox Export",
+                    "is_full": True,
+                    "error": r.get("error"),
+                }
 
             if ext == ".json":
                 if "conversations" in fname or "chatgpt" in fname:
                     return self._import_chatgpt(path)
-                elif "claude" in fname:
+                if "claude" in fname:
                     return self._import_claude(path)
-                else:
-                    return self._import_generic_json(path)
-            elif ext in (".md", ".txt"):
+                return self._import_generic_json(path)
+
+            if ext in (".md", ".txt"):
                 return self._import_text(path)
-            else:
-                return {"error": f"Unsupported format: {ext}"}
+
+            return {"error": f"Unsupported format: {ext}", "success": False}
         except Exception as e:
-            return {"error": str(e)}
+            return {"error": str(e), "success": False}
 
-    def _import_folder(self, path: Path) -> Dict[str, Any]:
-        """Scan folder for relevant AI exports."""
-        # Check for Gemini Takeout
-        gemini_files = list(path.glob("**/Gemini/**/*.json"))
-        if gemini_files:
-             return self._import_gemini(path)
-        
-        # Check for Claude/ChatGPT files in folder
-        json_files = list(path.glob("*.json"))
-        for jf in json_files:
-            if "conversations" in jf.name.lower() or "chatgpt" in jf.name.lower():
-                return self._import_chatgpt(jf)
-            if "claude" in jf.name.lower():
-                return self._import_claude(jf)
-                
-        return {"error": "No recognizable AI export files found in directory."}
+    # ── Core: apply a structured dict ────────────────────────────────
 
+    def _apply_structured(self, data: Dict[str, Any], source: str) -> Dict[str, Any]:
+        stats = {
+            "success": True,
+            "facts_added": 0,
+            "preferences_added": 0,
+            "projects_added": 0,
+            "topics_added": 0,
+            "dislikes_added": 0,
+            "profile_fields_updated": 0,
+        }
 
-    def _extract_text_samples(self, messages: List[str], max_chars: int = 8000) -> str:
-        """Get a representative sample of conversation text."""
-        combined = "\n---\n".join(messages[:30])
-        return combined[:max_chars]
+        # Facts
+        for fact in data.get("facts", []) or []:
+            if isinstance(fact, str) and len(fact) > 3:
+                self.learnings.add_fact(fact[:300], confidence=0.7, source=source)
+                stats["facts_added"] += 1
 
-    def _analyze_and_save(self, text_sample: str, source: str) -> Dict[str, Any]:
-        """Use LLM to analyze conversation and extract learnings."""
+        # Preferences
+        for cat, prefs in (data.get("preferences") or {}).items():
+            if not isinstance(prefs, list):
+                prefs = [prefs]
+            for p in prefs:
+                if isinstance(p, str) and p.strip():
+                    self.learnings.add_preference(cat, p.strip()[:200])
+                    stats["preferences_added"] += 1
+
+        # Dislikes
+        for d in data.get("dislikes", []) or []:
+            if isinstance(d, str) and d.strip():
+                self.learnings.add_dislike(d.strip()[:200])
+                stats["dislikes_added"] += 1
+
+        # Projects
+        for proj in data.get("projects", []) or []:
+            if isinstance(proj, dict) and proj.get("name"):
+                self.learnings.add_project(
+                    str(proj["name"])[:120],
+                    description=str(proj.get("description", ""))[:300],
+                )
+                stats["projects_added"] += 1
+
+        # Topics
+        for topic in data.get("topics", []) or []:
+            if isinstance(topic, str) and topic.strip():
+                self.learnings.bump_topic(topic.strip().lower()[:60])
+                stats["topics_added"] += 1
+
+        # Communication style
+        for k, v in (data.get("communication_style") or {}).items():
+            if isinstance(k, str) and isinstance(v, str):
+                self.learnings.update_communication_style(k, v)
+
+        # Profile update
+        prof_block = data.get("profile") or {}
+        if isinstance(prof_block, dict) and prof_block:
+            try:
+                from lirox.agent.profile import UserProfile
+                up = UserProfile()
+                for k in ("niche", "current_project", "profession"):
+                    v = prof_block.get(k, "")
+                    if isinstance(v, str):
+                        v = v.strip()
+                    else:
+                        v = ""
+                    if v:
+                        up.update(k, v)
+                        stats["profile_fields_updated"] += 1
+                # name is sensitive — only set if profile has no user_name
+                if not up.data.get("user_name") or up.data.get("user_name") in ("Operator", ""):
+                    name = prof_block.get("name", "")
+                    if isinstance(name, str):
+                        name = name.strip()
+                    else:
+                        name = ""
+                    if name:
+                        up.update("user_name", name)
+                        stats["profile_fields_updated"] += 1
+            except Exception:
+                pass  # profile update is best-effort — learnings still saved
+
+        self.learnings.flush()
+        return stats
+
+    # ── Core: LLM-assisted extraction from plain text ─────────────────
+
+    def _llm_extract_and_apply(self, text_sample: str, source: str) -> Dict[str, Any]:
         try:
             raw = generate_response(
                 _IMPORT_ANALYZE_PROMPT.format(conversations=text_sample),
                 provider="auto",
-                system_prompt="Extract user knowledge. Output only JSON.",
+                system_prompt="Extract user knowledge. Output only the JSON schema requested.",
             )
-            from lirox.utils.llm import strip_code_fences
-            raw = strip_code_fences(raw, lang="json")
-            
-            # Robust JSON extraction
-            try:
-                data = json.loads(raw)
-            except json.JSONDecodeError:
-                # Fallback: find the first { and last }
-                match = re.search(r"(\{.*\})", raw, re.DOTALL)
-                if match:
-                    data = json.loads(match.group(1))
-                else:
-                    raise ValueError("Could not parse JSON from LLM response")
-
-            return self._save_learned_data(data, source)
-
+            data = _extract_json_robust(raw)
+            if not isinstance(data, dict):
+                return {
+                    "success": False,
+                    "error": "Could not parse JSON from LLM response",
+                    "facts_added": 0,
+                }
+            return self._apply_structured(data, source=source)
         except Exception as e:
-            return {"error": str(e), "facts_added": 0, "topics_added": 0, "projects_added": 0}
+            return {"success": False, "error": str(e), "facts_added": 0}
 
-    def _save_learned_data(self, data: Dict[str, Any], source: str) -> Dict[str, Any]:
-        """Save extracted knowledge dictionary into the learnings store."""
-        results = {"facts_added": 0, "topics_added": 0, "projects_added": 0}
+    # ── File-format importers ────────────────────────────────────────
 
-        for fact in data.get("facts", []):
-            if isinstance(fact, str) and len(fact) > 5:
-                self.learnings.add_fact(fact, confidence=0.6, source=source)
-                results["facts_added"] += 1
+    def _import_folder(self, path: Path) -> Dict[str, Any]:
+        gemini = list(path.glob("**/Gemini/**/*.json"))
+        if gemini:
+            return self._import_gemini(path)
+        for jf in path.glob("*.json"):
+            n = jf.name.lower()
+            if "conversations" in n or "chatgpt" in n:
+                return self._import_chatgpt(jf)
+            if "claude" in n:
+                return self._import_claude(jf)
+        return {"error": "No recognizable AI export files in folder.", "success": False}
 
-        for cat, prefs in data.get("preferences", {}).items():
-            if not isinstance(prefs, list):
-                prefs = [prefs]
-            for p in (prefs or []):
-                if isinstance(p, str):
-                    self.learnings.add_preference(cat, p)
-
-        for proj in data.get("projects", []):
-            if isinstance(proj, dict) and proj.get("name"):
-                self.learnings.add_project(proj["name"], proj.get("description", ""))
-                results["projects_added"] += 1
-
-        for topic in data.get("topics", []):
-            if isinstance(topic, str):
-                self.learnings.bump_topic(topic)
-                results["topics_added"] += 1
-
-        for k, v in data.get("communication_style", {}).items():
-            if isinstance(k, str) and isinstance(v, str):
-                self.learnings.update_communication_style(k, v)
-
-        return results
+    def _sample(self, messages: List[str], max_chars: int = 8000) -> str:
+        return ("\n---\n".join(messages[:30]))[:max_chars]
 
     def _import_chatgpt(self, path: Path) -> Dict[str, Any]:
-        """Import ChatGPT conversations.json export."""
         data = json.loads(path.read_text())
         if not isinstance(data, list):
-            return {"error": "Unexpected ChatGPT format"}
-
-        messages = []
-        # Support scanning more conversations to get better coverage
-        for conv in data[:200]:  # Increased from 50
+            return {"error": "Unexpected ChatGPT format", "success": False}
+        msgs = []
+        for conv in data[:200]:
             for node in conv.get("mapping", {}).values():
-                msg = node.get("message")
-                if msg and msg.get("author", {}).get("role") == "user":
-                    content = msg.get("content", {})
-                    if isinstance(content, dict):
-                        for part in content.get("parts", []):
+                m = node.get("message") or {}
+                if m.get("author", {}).get("role") == "user":
+                    c = m.get("content", {})
+                    if isinstance(c, dict):
+                        for part in c.get("parts", []):
                             if isinstance(part, str) and part.strip():
-                                messages.append(part[:300])
-                    elif isinstance(content, str):
-                        messages.append(content[:300])
-
-        sample = self._extract_text_samples(messages)
-        result = self._analyze_and_save(sample, "chatgpt")
-        result["imported"] = len(messages)
+                                msgs.append(part[:300])
+                    elif isinstance(c, str):
+                        msgs.append(c[:300])
+        result = self._llm_extract_and_apply(self._sample(msgs), "chatgpt")
         result["source"] = "ChatGPT"
+        result["imported"] = len(msgs)
         return result
 
     def _import_claude(self, path: Path) -> Dict[str, Any]:
-        """Import Claude conversation export."""
         data = json.loads(path.read_text())
-        messages = []
-
-        # Claude exports vary — handle both formats
+        msgs = []
         if isinstance(data, list):
             for conv in data:
                 if isinstance(conv, dict):
                     for msg in conv.get("messages", conv.get("chat_messages", [])):
                         if msg.get("sender") == "human" or msg.get("role") == "user":
-                            text = msg.get("text", msg.get("content", ""))
-                            if isinstance(text, str) and text.strip():
-                                messages.append(text[:300])
+                            t = msg.get("text", msg.get("content", ""))
+                            if isinstance(t, str) and t.strip():
+                                msgs.append(t[:300])
         elif isinstance(data, dict):
             for msg in data.get("messages", []):
                 if msg.get("role") == "user":
-                    text = msg.get("content", "")
-                    if isinstance(text, str) and text.strip():
-                        messages.append(text[:300])
-
-        sample = self._extract_text_samples(messages)
-        result = self._analyze_and_save(sample, "claude")
-        result["imported"] = len(messages)
+                    t = msg.get("content", "")
+                    if isinstance(t, str) and t.strip():
+                        msgs.append(t[:300])
+        result = self._llm_extract_and_apply(self._sample(msgs), "claude")
         result["source"] = "Claude"
+        result["imported"] = len(msgs)
         return result
 
     def _import_generic_json(self, path: Path) -> Dict[str, Any]:
-        """Try to import any JSON file with messages."""
         data = json.loads(path.read_text())
-        messages = []
+        msgs: List[str] = []
 
-        def find_messages(obj, depth=0):
+        def _walk(obj, depth=0):
             if depth > 5:
                 return
             if isinstance(obj, list):
-                for item in obj:
-                    find_messages(item, depth + 1)
+                for it in obj:
+                    _walk(it, depth + 1)
             elif isinstance(obj, dict):
-                for key in ("content", "text", "message", "body"):
-                    val = obj.get(key)
-                    if isinstance(val, str) and len(val) > 10:
-                        messages.append(val[:300])
+                for k in ("content", "text", "message", "body"):
+                    v = obj.get(k)
+                    if isinstance(v, str) and len(v) > 10:
+                        msgs.append(v[:300])
                 for v in obj.values():
                     if isinstance(v, (dict, list)):
-                        find_messages(v, depth + 1)
+                        _walk(v, depth + 1)
 
-        find_messages(data)
-        sample = self._extract_text_samples(messages)
-        result = self._analyze_and_save(sample, "generic")
-        result["imported"] = len(messages)
+        _walk(data)
+        result = self._llm_extract_and_apply(self._sample(msgs), "generic")
         result["source"] = "Generic JSON"
+        result["imported"] = len(msgs)
         return result
 
     def _import_text(self, path: Path) -> Dict[str, Any]:
-        """Import plain text or markdown conversation."""
         text = path.read_text()[:12000]
-        result = self._analyze_and_save(text, "text_file")
-        result["imported"] = len(text.split("\n"))
+        result = self._llm_extract_and_apply(text, "text_file")
         result["source"] = path.name
+        result["imported"] = len(text.split("\n"))
         return result
+
     def _import_gemini(self, path: Path) -> Dict[str, Any]:
-        """Import Gemini Takeout export."""
-        messages = []
-        # Gemini JSON files often have a 'conversations' list with 'parts'
+        msgs = []
         for jf in path.glob("**/Gemini/**/*.json"):
             try:
                 data = json.loads(jf.read_text())
-                if isinstance(data, list):  # Format 1
+                if isinstance(data, list):
                     for conv in data:
                         for part in conv.get("parts", []):
                             if part.get("role") == "user":
-                                messages.append(part.get("text", "")[:300])
-                elif isinstance(data, dict):  # Format 2
+                                msgs.append(part.get("text", "")[:300])
+                elif isinstance(data, dict):
                     for entry in data.get("entries", []):
                         if entry.get("role") == "user":
-                            messages.append(entry.get("text", "")[:300])
+                            msgs.append(entry.get("text", "")[:300])
             except Exception:
                 continue
-
-        if not messages:
-            return {"error": "No Gemini messages found in takeout folder."}
-
-        sample = self._extract_text_samples(messages)
-        result = self._analyze_and_save(sample, "gemini")
-        result["imported"] = len(messages)
+        if not msgs:
+            return {"error": "No Gemini messages found in takeout folder.", "success": False}
+        result = self._llm_extract_and_apply(self._sample(msgs), "gemini")
         result["source"] = "Gemini Takeout"
+        result["imported"] = len(msgs)
         return result
