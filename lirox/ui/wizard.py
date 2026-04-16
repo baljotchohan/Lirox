@@ -1,192 +1,219 @@
-"""Lirox v0.5 — Mind Agent Setup Wizard"""
+"""Lirox v2.0 — Deep Setup Wizard.
+
+Step-by-step onboarding that produces a personalized first interaction:
+  1. Welcome + operator name
+  2. Agent name (choice or custom)
+  3. Niche (deep — with follow-up questions per niche)
+  4. Current project (+ stage + stack)
+  5. Goals (with follow-up categorization)
+  6. LLM setup (local + cloud)
+  7. One-paste memory import (optional)
+  8. Seed LearningsStore with everything captured
+  9. Personalized summary card
+"""
+from __future__ import annotations
+
 import os
-import json
+import sys
 from pathlib import Path
-from rich.panel import Panel
-from rich.box import ROUNDED, HEAVY
-from rich.text import Text
-from rich.table import Table
-from rich.markdown import Markdown
-from lirox.ui.display import console, CLR_LIROX, CLR_SUCCESS, CLR_DIM, CLR_ACCENT
-from rich.prompt import Prompt, Confirm
+
 from dotenv import set_key
+from rich.box import HEAVY, ROUNDED
+from rich.panel import Panel
+from rich.prompt import Confirm, Prompt
+from rich.table import Table
+
+from lirox.ui.display import console
+from lirox.onboarding.niche_profiles import get_niche_followups, all_niche_labels
+from lirox.onboarding.seed import seed_learnings_from_wizard
 
 _PROJECT_ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 _ENV_PATH = str(_PROJECT_ROOT_DIR / ".env")
 
 
-def run_setup_wizard(profile):
-    """Advanced first-run onboarding — warm, personal, thorough."""
+# ─────────────────────────────────────────────────────────────────────
+# Public entry point
+# ─────────────────────────────────────────────────────────────────────
+
+def run_setup_wizard(profile) -> None:
+    """Full wizard. Safe to re-run via /setup."""
     console.clear()
 
-    # ── Step 0: Warm Welcome ──────────────────────────────────────────────
+    # Step 0 — Welcome
     console.print()
     console.print(Panel(
-        "[bold #FFC107]👋 Hey there! Welcome to Lirox.[/]\n\n"
+        "[bold #FFC107]👋  Welcome to Lirox.[/]\n\n"
         "I'm your personal AI agent — I live in your terminal\n"
         "and I get smarter the more we work together.\n\n"
-        "[dim]Let me get to know you so I can be actually useful.[/]",
-        border_style="#FFC107", box=HEAVY, width=64,
-        title="[bold #FFD54F] ✦ FIRST RUN [/]"
+        "[dim]This quick setup lets me actually be useful from message #1.[/]",
+        border_style="#FFC107", box=HEAVY, width=66,
+        title="[bold #FFD54F] ✦ SETUP [/]"
     ))
 
-    # ── Step 1: Learn the user's name ─────────────────────────────────────
+    # Step 1 — User name
     console.print()
-    user_name = Prompt.ask("  [bold #FFC107]What should I call you?[/]")
-    if not user_name.strip():
-        user_name = "Boss"
-    profile.update("user_name", user_name.strip())
+    user_name = Prompt.ask("  [bold #FFC107]What should I call you?[/]",
+                            default=profile.data.get("user_name", "") or "Boss")
+    user_name = user_name.strip() or "Boss"
+    profile.update("user_name", user_name)
+    console.print(f"\n  [bold green]Nice to meet you, {user_name}. 🤝[/]\n")
 
-    console.print(f"\n  [bold green]Nice to meet you, {user_name}! 🤝[/]\n")
+    # Step 2 — Agent name
+    agent_name = _pick_agent_name(profile)
+    _sync_agent_name_to_soul(agent_name)
+    console.print(f"\n  [bold green]I'm {agent_name} now. Let's go.[/]\n")
 
-    # ── Step 2: Name the agent ────────────────────────────────────────────
-    console.print("  [dim]You can give me a custom name, or pick one:[/]")
-    agent_options = {"1": "Lirox", "2": "Atlas", "3": "Nova", "4": "Rex", "5": "Custom"}
-    for k, v in agent_options.items():
+    # Step 3 — Niche + deep follow-ups
+    niche = _pick_niche()
+    profile.update("niche", niche)
+    niche_details = _ask_niche_followups(niche)
+
+    # Step 4 — Current project
+    current_project = Prompt.ask(
+        "\n  [bold #FFC107]What's your current main project?[/] [dim](Enter to skip)[/]",
+        default=profile.data.get("current_project", "") or ""
+    ).strip()
+    if current_project:
+        profile.update("current_project", current_project)
+        console.print(f"  [dim]Got it — I'll keep '{current_project}' in mind.[/]")
+
+    # Step 5 — Goals
+    goals_raw = Prompt.ask(
+        f"\n  [bold #FFC107]What are you working on right now, {user_name}?[/] "
+        f"[dim](comma-separated, Enter to skip)[/]",
+        default=""
+    )
+    goals = [g.strip() for g in goals_raw.split(",") if g.strip()]
+    for g in goals:
+        profile.add_goal(g)
+
+    # Step 6 — LLM setup
+    _llm_setup_flow()
+
+    # Step 7 — Memory import (optional, one-paste)
+    if Confirm.ask(
+        "\n  [bold #FFC107]📋 Import memory from ChatGPT / Claude / Gemini?[/]",
+        default=False,
+    ):
+        _run_one_paste_import()
+
+    # Step 8 — Seed LearningsStore with everything captured
+    try:
+        stats = seed_learnings_from_wizard(profile.data, niche_details, goals)
+        console.print(
+            f"\n  [dim green]✓ Seeded {stats['facts']} facts, "
+            f"{stats['projects']} project(s), {stats['topics']} topics.[/]"
+        )
+    except Exception as e:
+        console.print(f"\n  [yellow]⚠ Seeding warning: {e}[/]")
+
+    # Store niche details on the profile too (so /profile shows them)
+    if niche_details:
+        prefs = dict(profile.data.get("preferences") or {})
+        prefs.setdefault("niche_details", {}).update(niche_details)
+        profile.data["preferences"] = prefs
+        profile.save()
+
+    # Step 9 — Summary card
+    _show_summary(profile, agent_name, user_name, niche)
+
+
+# ─────────────────────────────────────────────────────────────────────
+# Helper steps
+# ─────────────────────────────────────────────────────────────────────
+
+def _pick_agent_name(profile) -> str:
+    console.print("  [dim]Give me a name, or pick one:[/]")
+    opts = {"1": "Lirox", "2": "Atlas", "3": "Nova", "4": "Rex", "5": "Custom"}
+    for k, v in opts.items():
         emoji = {"1": "🦁", "2": "🌍", "3": "⭐", "4": "👑", "5": "✏️"}.get(k, "")
         console.print(f"    [{k}] {emoji} {v}")
-
     choice = Prompt.ask("\n  [bold #FFC107]Pick a name (1-5)[/]",
-                        choices=["1","2","3","4","5"], default="1")
+                        choices=list(opts.keys()), default="1")
     if choice == "5":
-        custom = Prompt.ask("  [bold #FFC107]Type your agent's name[/]")
-        agent_name = custom.strip() or "Lirox"
+        name = Prompt.ask("  [bold #FFC107]Type your agent's name[/]").strip() or "Lirox"
     else:
-        agent_name = agent_options[choice]
-    profile.update("agent_name", agent_name)
-    # Sync the chosen name to the living soul immediately
+        name = opts[choice]
+    profile.update("agent_name", name)
+    return name
+
+
+def _sync_agent_name_to_soul(name: str) -> None:
     try:
         from lirox.mind.agent import get_soul
         soul = get_soul()
-        soul.set_name(agent_name)
+        if soul.get_name() != name:
+            soul.set_name(name)
     except Exception:
-        pass  # best-effort — profile already saved
-    console.print(f"\n  [bold green]I'm {agent_name} now. Let's go. 🚀[/]\n")
+        pass
 
-    # ── Step 3: What do you do? ───────────────────────────────────────────
-    console.print("  [bold #FFC107]What's your primary work?[/]")
-    niche_options = {
-        "1": "Developer", "2": "Founder / CEO", "3": "Content Creator",
-        "4": "Researcher", "5": "Student", "6": "Data Scientist",
-        "7": "Designer", "8": "Trader / Finance", "9": "Writer", "10": "Other"
-    }
-    for k, v in niche_options.items():
-        console.print(f"    [{k}] {v}")
 
-    niche_choice = Prompt.ask("\n  Choose (1-10)", choices=[str(i) for i in range(1, 11)], default="1")
-    niche = niche_options[niche_choice]
-    profile.update("niche", niche)
-
-    # ── Step: Current main project ─────────────────────────────────────────
-    console.print()
-    current_project = Prompt.ask(
-        "  [bold #FFC107]What's your current main project?[/] [dim](Enter to skip)[/]",
-        default=""
+def _pick_niche() -> str:
+    console.print("\n  [bold #FFC107]What's your primary work?[/]")
+    labels = all_niche_labels()
+    for i, lbl in enumerate(labels, 1):
+        console.print(f"    [{i}] {lbl}")
+    choice = Prompt.ask(
+        f"\n  Choose (1-{len(labels)})",
+        choices=[str(i) for i in range(1, len(labels) + 1)],
+        default="1",
     )
-    if current_project.strip():
-        profile.update("current_project", current_project.strip())
-        console.print(f"  [dim]Got it — I'll keep {current_project.strip()} in mind.[/]\n")
+    return labels[int(choice) - 1]
 
-    # ── Step 4: What are your goals? ──────────────────────────────────────
-    console.print(f"\n  [bold #FFC107]What are you working on right now, {user_name}?[/]")
-    console.print("  [dim]Tell me your current focus — I'll remember and adapt. (or press Enter to skip)[/]")
-    goals_input = Prompt.ask("  ", default="")
-    if goals_input.strip():
-        for goal in goals_input.split(","):
-            g = goal.strip()
-            if g:
-                profile.add_goal(g)
 
-    # ── Step 5: LLM Setup ─────────────────────────────────────────────────
-    console.print()
+def _ask_niche_followups(niche: str) -> dict:
+    """Ask the niche-specific follow-ups; return a dict of captured answers."""
+    followups = get_niche_followups(niche)
+    if not followups:
+        return {}
+    console.print(
+        f"\n  [bold cyan]A few quick specifics about your {niche.lower()} work —[/]"
+        f" [dim](Enter to skip any)[/]\n"
+    )
+    captured = {}
+    for key, question, default in followups:
+        ans = Prompt.ask(f"  [bold #FFC107]{question}[/]", default=default or "")
+        ans = ans.strip()
+        if ans:
+            captured[key] = ans
+    return captured
+
+
+def _llm_setup_flow() -> None:
+    console.print("\n")
     console.print(Panel(
         "[bold #FFC107]🧠 Let's connect your brain.[/]\n\n"
-        "I need at least one LLM to think.\n"
-        "You have two options:\n\n"
+        "I need at least one LLM to think. Pick:\n\n"
         "  [bold cyan]☁️  Cloud LLM[/] — Groq, Gemini, OpenAI (free tiers available)\n"
         "  [bold green]🏠 Local LLM[/] — Ollama (runs on your machine, fully private)\n",
-        border_style="#FFC107", box=ROUNDED, width=64
+        border_style="#FFC107", box=ROUNDED, width=66
     ))
-
     llm_type = Prompt.ask("\n  [bold #FFC107]Which setup?[/]",
                           choices=["cloud", "local", "both", "skip"], default="cloud")
-
     if llm_type in ("local", "both"):
         _setup_ollama()
-
     if llm_type in ("cloud", "both"):
         _setup_cloud_keys()
-
     if llm_type == "skip":
-        console.print("  [dim]Skipped. You can add keys later with /setup[/]")
-
-    # ── Step 6: Memory Management ─────────────────────────────────────────
-    console.print()
-    
-    # If already setup, allow exporting current memory first
-    if profile.is_setup():
-        if Confirm.ask("  [bold #FFC107]📦 Already setup. Want to export your current memory first?[/]", default=False):
-            from lirox.utils.memory_utils import export_full_memory
-            with console.status("[bold cyan]Exporting...[/]"):
-                path = export_full_memory()
-            console.print(f"  [bold green]✓ Exported to: {path}[/]\n")
-
-    wants_import = Confirm.ask(
-        f"  [bold #FFC107]🧠 Want to import memory from ChatGPT / Claude / Gemini?[/]",
-        default=False
-    )
-
-    if wants_import:
-        _run_memory_import(profile)
-
-    # ── Step 7: Summary ───────────────────────────────────────────────────
-    console.clear()
-    providers = []
-    from lirox.utils.llm import available_providers
-    providers = available_providers()
-
-    summary = Table(box=None, padding=(0, 2), show_header=False)
-    summary.add_column("Key", style="dim")
-    summary.add_column("Value", style="bold white")
-    summary.add_row("🤖 Agent", agent_name)
-    summary.add_row("👤 Operator", user_name)
-    summary.add_row("💼 Niche", niche)
-    summary.add_row("🧠 LLMs", ", ".join(providers) if providers else "None yet")
-    summary.add_row("🎯 Goals", ", ".join(profile.data.get("goals", [])) or "Not set")
-
-    console.print(Panel(
-        summary,
-        border_style="green", box=HEAVY, width=64,
-        title=" [bold green]✦ SETUP COMPLETE [/] "
-    ))
-
-    console.print(f"\n  [bold green]{agent_name} is ready, {user_name}. Let's build something. 💪[/]\n")
-    console.print(f"  [dim]Type anything to start · /help for commands · /setup to reconfigure[/]\n")
+        console.print("  [dim]Skipped. Run /setup later to add keys.[/]")
 
 
-def _setup_ollama():
-    """Configure Ollama local LLM."""
+def _setup_ollama() -> None:
+    import requests
     console.print("\n  [bold green]🏠 Local LLM Setup (Ollama)[/]")
-    console.print("  [dim]Make sure Ollama is installed: https://ollama.ai[/]")
-    console.print("  [dim]And running: ollama serve[/]\n")
-
+    console.print("  [dim]Install: https://ollama.ai  ·  Start: ollama serve[/]\n")
     endpoint = Prompt.ask("  Ollama endpoint", default="http://localhost:11434")
-    model = Prompt.ask("  Model to use", default="gemma3")
-
-    # Test connection
-    console.print("  [dim]Testing connection...[/]")
+    model    = Prompt.ask("  Model", default="gemma3")
     try:
-        import requests
         r = requests.get(f"{endpoint}/api/tags", timeout=3)
         if r.status_code == 200:
             models = [m["name"] for m in r.json().get("models", [])]
-            console.print(f"  [bold green]✓ Connected! Available models: {', '.join(models[:5])}[/]")
+            console.print(f"  [bold green]✓ Connected. Found: {', '.join(models[:5]) or '(none)'}[/]")
         else:
-            console.print(f"  [yellow]⚠ Server responded but status {r.status_code}[/]")
+            console.print(f"  [yellow]⚠ Status {r.status_code} — check Ollama is running.[/]")
     except Exception:
-        console.print("  [yellow]⚠ Can't reach Ollama. Make sure it's running: ollama serve[/]")
+        console.print("  [yellow]⚠ Can't reach Ollama. Run: ollama serve[/]")
 
-    # Save to .env
     if not Path(_ENV_PATH).exists():
         Path(_ENV_PATH).write_text("# Lirox Configuration\n")
     set_key(_ENV_PATH, "LOCAL_LLM_ENABLED", "true")
@@ -194,197 +221,205 @@ def _setup_ollama():
     set_key(_ENV_PATH, "OLLAMA_MODEL", model)
     os.environ["LOCAL_LLM_ENABLED"] = "true"
     os.environ["OLLAMA_ENDPOINT"] = endpoint
-    os.environ["OLLAMA_MODEL"] = model
-    console.print(f"  [bold green]✓ Ollama configured: {model} @ {endpoint}[/]\n")
+    os.environ["OLLAMA_MODEL"]    = model
+    console.print(f"  [bold green]✓ Ollama configured: {model} @ {endpoint}[/]")
 
 
-def _verify_api_key(provider_name: str, api_key: str) -> bool:
-    """Verify if the provided API key is valid using the provider's REST API."""
+def _verify_api_key(provider: str, key: str) -> bool:
     import requests
-    console.print(f"  [dim]Verifying {provider_name} API key...[/]")
+    console.print(f"  [dim]Verifying {provider}…[/]")
     try:
-        if provider_name == "Groq":
-            r = requests.get("https://api.groq.com/openai/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
-        elif provider_name == "Gemini":
-            r = requests.get(f"https://generativelanguage.googleapis.com/v1beta/models?key={api_key}", timeout=5)
-        elif provider_name == "OpenRouter":
-            r = requests.get("https://openrouter.ai/api/v1/auth/key", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
-        elif provider_name == "OpenAI":
-            r = requests.get("https://api.openai.com/v1/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
-        elif provider_name == "Anthropic":
+        if provider == "Groq":
+            r = requests.get("https://api.groq.com/openai/v1/models",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=5)
+        elif provider == "Gemini":
             r = requests.get(
-                "https://api.anthropic.com/v1/models",
-                headers={"x-api-key": api_key, "anthropic-version": "2023-06-01"},
-                timeout=5,
-            )
-            # ONLY 401 means invalid key. 403 = valid key, wrong permissions.
-            if r.status_code == 401:
-                console.print("  [bold red]✖ Invalid API key. Verification failed.[/]")
-                return False
-            return True
-        elif provider_name == "DeepSeek":
-            r = requests.get("https://api.deepseek.com/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=5)
+                f"https://generativelanguage.googleapis.com/v1beta/models?key={key}", timeout=5)
+        elif provider == "OpenRouter":
+            r = requests.get("https://openrouter.ai/api/v1/auth/key",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=5)
+        elif provider == "OpenAI":
+            r = requests.get("https://api.openai.com/v1/models",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=5)
+        elif provider == "Anthropic":
+            r = requests.get("https://api.anthropic.com/v1/models",
+                             headers={"x-api-key": key,
+                                      "anthropic-version": "2023-06-01"}, timeout=5)
+            return r.status_code != 401
+        elif provider == "DeepSeek":
+            r = requests.get("https://api.deepseek.com/models",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=5)
         else:
             return True
-
         if r.status_code == 401:
-            console.print("  [bold red]✖ Invalid API key. Verification failed.[/]")
+            console.print("  [red]✖ Invalid API key.[/]")
             return False
-            
         return True
     except Exception:
-        console.print("  [yellow]⚠ Network error during verification, proceeding anyway.[/]")
+        console.print("  [yellow]⚠ Network error — proceeding anyway.[/]")
         return True
 
 
-def _setup_cloud_keys():
-    """Configure cloud LLM API keys."""
-    provider_options = {
-        "1": ("Groq", "GROQ_API_KEY", "console.groq.com", "Free, fastest"),
-        "2": ("Gemini", "GEMINI_API_KEY", "aistudio.google.com", "Free, versatile"),
-        "3": ("OpenRouter", "OPENROUTER_API_KEY", "openrouter.ai", "Free models available"),
-        "4": ("OpenAI", "OPENAI_API_KEY", "platform.openai.com", "Paid"),
-        "5": ("Anthropic", "ANTHROPIC_API_KEY", "console.anthropic.com", "Paid"),
-        "6": ("DeepSeek", "DEEPSEEK_API_KEY", "deepseek.com", "Cheap"),
+def _setup_cloud_keys() -> None:
+    providers = {
+        "1": ("Groq",       "GROQ_API_KEY",       "console.groq.com",     "Free, fastest"),
+        "2": ("Gemini",     "GEMINI_API_KEY",     "aistudio.google.com",  "Free, versatile"),
+        "3": ("OpenRouter", "OPENROUTER_API_KEY", "openrouter.ai",        "Free models"),
+        "4": ("OpenAI",     "OPENAI_API_KEY",     "platform.openai.com",  "Paid"),
+        "5": ("Anthropic",  "ANTHROPIC_API_KEY",  "console.anthropic.com","Paid"),
+        "6": ("DeepSeek",   "DEEPSEEK_API_KEY",   "deepseek.com",         "Cheap"),
     }
-
     console.print("\n  [bold cyan]☁️ Cloud LLM Setup[/]")
-    for k, (name, env_key, url, note) in provider_options.items():
-        status = "✅" if os.getenv(env_key) else "  "
-        console.print(f"    [{k}] {status} {name.ljust(12)} {url.ljust(25)} [dim]{note}[/]")
+    for k, (name, env, url, note) in providers.items():
+        tick = "✅" if os.getenv(env) else "  "
+        console.print(f"    [{k}] {tick} {name.ljust(11)} {url.ljust(25)} [dim]{note}[/]")
     console.print("    [7]    Done / Skip")
 
     while True:
-        choice = Prompt.ask("\n  Add a provider (1-7)", choices=["1","2","3","4","5","6","7"], default="7")
+        choice = Prompt.ask("\n  Add a provider (1-7)",
+                            choices=["1","2","3","4","5","6","7"], default="7")
         if choice == "7":
             break
-        name, env_key, url, _ = provider_options[choice]
-        key = Prompt.ask(f"  Paste {name} API key", password=True)
-        if key and key.strip():
-            if _verify_api_key(name, key.strip()):
-                if not Path(_ENV_PATH).exists():
-                    Path(_ENV_PATH).write_text("# Lirox Configuration\n")
-                set_key(_ENV_PATH, env_key, key.strip())
-                os.environ[env_key] = key.strip()
-                console.print(f"  [bold green]✓ {name} key saved[/]")
-            else:
-                console.print("  [dim]Key was not saved. Please try again.[/]")
-                continue
+        name, env, _, _ = providers[choice]
+        key = Prompt.ask(f"  Paste {name} API key", password=True).strip()
+        if not key:
+            continue
+        if not _verify_api_key(name, key):
+            console.print("  [dim]Key not saved. Try again.[/]")
+            continue
+        if not Path(_ENV_PATH).exists():
+            Path(_ENV_PATH).write_text("# Lirox Configuration\n")
+        set_key(_ENV_PATH, env, key)
+        os.environ[env] = key
+        console.print(f"  [bold green]✓ {name} key saved.[/]")
         if not Confirm.ask("  Add another?", default=False):
             break
 
 
-def _run_memory_import(profile):
-    """Interactively import memory from external sources."""
+def _run_one_paste_import() -> None:
+    """New one-paste flow. Shows the sync prompt; accepts file path OR pasted JSON."""
+    from lirox.memory.sync_prompt import MEMORY_SYNC_PROMPT
     console.print()
     console.print(Panel(
-        "I can learn from your history with other AIs. Here's how to\n"
-        "get your files:\n\n"
-        "  [bold]ChatGPT[/]: Settings → Data Controls → Export Data (you'll\n"
-        "get a .zip with [italic]conversations.json[/])\n"
-        "  [bold]Claude[/]: Settings → Account → Export Data (you'll get a\n"
-        "[italic]claude_conversations.json[/])\n"
-        "  [bold]Gemini[/]: takeout.google.com → Select 'Gemini' → Export\n"
-        "(provide the [italic]Takeout[/] folder path)\n\n"
-        "Supported: ChatGPT (JSON), Claude (JSON), or plain .txt/.md\n"
-        "files. You can also provide a previously exported Lirox Memory\n"
-        "file.",
-        title="[bold]📋 Memory Import[/]",
-        border_style="#FFC107", box=HEAVY, width=64
+        "[bold]Option A — One-paste Memory Sync[/]\n\n"
+        "1. Copy the prompt below.\n"
+        "2. Paste it into ChatGPT / Claude / Gemini.\n"
+        "3. Copy the ```json block they return.\n"
+        "4. Paste it here (any shape — fences optional).\n\n"
+        "[bold]Option B — File import[/]\n\n"
+        "Paste a file path instead (ChatGPT conversations.json, Claude export, "
+        "Gemini Takeout folder, Lirox export).\n",
+        title="[bold]📋 Memory Import[/]", border_style="#FFC107", box=HEAVY, width=76
     ))
 
-    console.print("\n  [bold #FFC107]⚡ Way 2: Quick Memory Sync Prompt[/]")
-    console.print("  [dim]Copy this prompt to ChatGPT/Claude and paste the result below:[/]\n")
-    
-    sync_prompt = (
-        "Analyze our conversation history. Extract key facts about me, my preferences, "
-        "my current projects, and my communication style. Format the output ONLY as a "
-        "JSON block with keys: 'facts' (list), 'preferences' (dict), 'projects' (list), "
-        "'topics' (list), and 'communication_style' (dict)."
+    console.print("\n  [bold #FFC107]━━━ COPY THIS PROMPT ━━━[/]\n")
+    console.print(Panel(MEMORY_SYNC_PROMPT, border_style="cyan",
+                         box=ROUNDED, padding=(1, 2), width=76))
+
+    console.print(
+        "\n  [bold #FFC107]Paste file path OR the JSON reply below.[/]\n"
+        "  [dim]For multi-line JSON: paste the whole thing, then press Enter twice "
+        "or type 'eof' and press Enter.[/]\n"
     )
-    console.print(Panel(sync_prompt, border_style="cyan", box=ROUNDED, padding=(1, 2), width=64))
-    
-    console.print("\n  [dim]TIP: Paste a [bold]file path[/] OR type '[bold]p[/]' to enter [bold]multi-line paste mode[/] for JSON.[/]\n")
+    buffer = _multiline_read()
+    if not buffer.strip():
+        console.print("  [dim]Skipped.[/]")
+        return
 
+    from lirox.memory.import_handler import MemoryImporter
+    from lirox.mind.agent import get_learnings
+    importer = MemoryImporter(get_learnings())
+
+    # Is it a file path?
+    candidate = buffer.strip().strip("'").strip('"')
+    try:
+        is_path = Path(candidate).expanduser().exists() and ("\n" not in candidate)
+    except OSError:
+        is_path = False
+
+    with console.status("[bold cyan]Importing…[/]", spinner="dots"):
+        if is_path:
+            result = importer.import_file(candidate)
+        else:
+            result = importer.import_raw_data(buffer, source="pasted")
+
+    _render_import_result(result)
+
+
+def _multiline_read() -> str:
+    """Accept multi-line paste, end on double-blank-line or 'eof'."""
+    lines: list = []
+    blank_count = 0
     while True:
-        user_input = Prompt.ask("  [bold #FFC107]Path or 'p' for paste[/] [dim](Enter to skip)[/]", default="")
-        if not user_input:
-            return
-
-        from lirox.memory.import_handler import MemoryImporter
-        from lirox.mind.agent import get_learnings
-        importer = MemoryImporter(get_learnings())
-        
-        input_str = user_input.strip()
-        
-        # Handle accidental direct paste of JSON instead of typing 'p'
-        if input_str.startswith("{") or input_str.startswith("["):
-            console.print("  [dim]Auto-detecting pasted JSON... (Press Enter on an empty line if it hangs)[/]")
-            lines = [input_str]
-            while True:
-                try:
-                    line = input()
-                    if not line.strip() and (lines[-1].strip().endswith("}") or lines[-1].strip().endswith("]")):
-                        break
-                    elif not line.strip() and not lines[-1].strip():
-                        break # two empty lines stop it
-                    lines.append(line)
-                except EOFError:
-                    break
-            input_str = "\n".join(lines)
-        elif input_str.lower() == 'p':
-            console.print("\n  [bold cyan]── MULTI-LINE PASTE MODE ──[/]")
-            console.print("  [dim]Step 1: Paste your JSON block below.[/]")
-            console.print("  [dim]Step 2: Press [bold]Enter[/] then [bold]CTRL-D[/] (Mac/Linux) or [bold]CTRL-Z[/] (Windows) to save.[/]\n")
-            import sys
-            input_str = sys.stdin.read().strip()
-            if not input_str:
-                console.print("  [yellow]⚠ No data received. Returning...[/]")
-                continue
-        else:
-            # Clean path (handle quotes if user pasted path with quotes)
-            input_str = input_str.strip("'").strip('"')
-        
-        # Check if it's a path or raw data
-        path = Path(input_str)
         try:
-            is_valid_path = path.exists()
-        except OSError:
-            is_valid_path = False
+            line = input("  ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        if line.strip().lower() == "eof":
+            break
+        if line == "":
+            blank_count += 1
+            # End on 2 blank lines in a row, or 1 blank after closing brace
+            if blank_count >= 2 or (
+                blank_count >= 1 and lines and
+                lines[-1].rstrip().endswith(("}", "]"))
+            ):
+                break
+            lines.append(line)
+            continue
+        blank_count = 0
+        lines.append(line)
+    return "\n".join(lines)
 
-        if is_valid_path:
-            with console.status("[bold cyan]Importing from file...[/]", spinner="dots"):
-                res = importer.import_file(input_str)
-        else:
-            # It might be a path that doesn't exist OR it might be the raw JSON
-            if "{" in input_str and "}" in input_str:
-                with console.status("[bold cyan]Analyzing sync data...[/]", spinner="dots"):
-                    res = importer.import_raw_data(input_str)
-            else:
-                console.print(f"  [bold red]✖ Input not recognized.[/] [dim]Path doesn't exist and doesn't look like JSON.[/]")
-                console.print("  [dim]Tip: Drag and drop the file into your terminal or paste the full JSON block.[/]\n")
-                if not Confirm.ask("  Try again?", default=True):
-                    return
-                continue
-        break
+
+def _render_import_result(result: dict) -> None:
+    if not result.get("success"):
+        console.print(f"\n  [red]✖ Import failed: {result.get('error', 'unknown')}[/]")
+        return
+    console.print("\n  [bold green]✓ Import complete[/]")
+    def _show(label, key):
+        v = result.get(key, 0)
+        if v:
+            console.print(f"    • {label}: {v}")
+    _show("Facts added",           "facts_added")
+    _show("Preferences added",     "preferences_added")
+    _show("Projects added",        "projects_added")
+    _show("Topics added",          "topics_added")
+    _show("Dislikes added",        "dislikes_added")
+    _show("Profile fields updated","profile_fields_updated")
+    src  = result.get("source", "unknown")
+    mode = result.get("mode", result.get("imported", ""))
+    console.print(f"    [dim]Source: {src}  ·  Mode: {mode}[/]")
 
 
-    # The result (res) is already calculated in the loop above
-    
-        
-    if "error" in res:
-        console.print(f"  [red]✖ Import failed: {res['error']}[/]")
-    else:
-        console.print(f"\n  [bold green]✓ Success![/]")
-        count = res.get('imported', 0)
-        source = res.get('source', 'unknown')
-        facts = res.get('facts_added', 0)
-        
-        if res.get("is_full"):
-             console.print(f"  [dim]Restored full Lirox profile and {facts} facts.[/]")
-        else:
-             console.print(f"  [dim]Imported {count} messages from {source}.[/]")
-             console.print(f"  [dim]Extracted {facts} facts and {res.get('topics_added', 0)} topics.[/]\n")
-        
-        console.print("  [dim]Identity synced. My understanding of you is now significantly deeper.[/]\n")
+def _show_summary(profile, agent_name: str, user_name: str, niche: str) -> None:
+    try:
+        from lirox.utils.llm import available_providers
+        providers = available_providers()
+    except Exception:
+        providers = []
 
+    console.clear()
+    t = Table(box=None, padding=(0, 2), show_header=False)
+    t.add_column("k", style="dim")
+    t.add_column("v", style="bold white")
+    t.add_row("🤖 Agent",    agent_name)
+    t.add_row("👤 Operator", user_name)
+    t.add_row("💼 Niche",    niche)
+    proj = profile.data.get("current_project", "")
+    if proj:
+        t.add_row("📦 Project", proj)
+    t.add_row("🧠 LLMs",     ", ".join(providers) if providers else "None yet")
+    goals = profile.data.get("goals", [])
+    if goals:
+        t.add_row("🎯 Goals", ", ".join(goals[:3]))
+
+    console.print(Panel(
+        t,
+        border_style="green", box=HEAVY, width=66,
+        title=" [bold green]✦ SETUP COMPLETE [/]"
+    ))
+    console.print(
+        f"\n  [bold green]{agent_name} is ready, {user_name}. Let's build. 💪[/]\n"
+        f"  [dim]Type anything to start  ·  /help for commands  ·  /recall to see what I know[/]\n"
+    )
