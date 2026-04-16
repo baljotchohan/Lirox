@@ -66,13 +66,15 @@ def _is_safe_path(path: str) -> Tuple[bool, str]:
     except (OSError, ValueError) as e:
         return False, f"Path resolution error: {e}"
 
-    for blocked in PROTECTED_PATHS:
-        if resolved.startswith(blocked):
-            return False, f"BLOCKED: {blocked} is a protected system path"
-
+    # Check SAFE_DIRS first — an explicitly whitelisted path (e.g. /private/tmp
+    # which is the macOS realpath of /tmp) must not be blocked by PROTECTED_PATHS.
     for safe in SAFE_DIRS_RESOLVED:
         if resolved.startswith(safe):
             return True, resolved
+
+    for blocked in PROTECTED_PATHS:
+        if resolved.startswith(blocked):
+            return False, f"BLOCKED: {blocked} is a protected system path"
 
     return False, (
         f"BLOCKED: Path '{resolved}' is outside permitted directories.\n"
