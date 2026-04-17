@@ -24,6 +24,22 @@ from lirox.verify import (
     verify_dir_exists,
     verify_file_deleted,
 )
+from lirox.config import is_self_modification
+
+
+def _self_mod_blocked(path: str) -> Optional[str]:
+    """Return an error string if writing to `path` would modify Lirox itself
+    AND the user hasn't opted in via LIROX_ALLOW_SELF_MOD=1. Else None.
+    """
+    try:
+        if is_self_modification(path) and os.getenv("LIROX_ALLOW_SELF_MOD") != "1":
+            return (
+                f"BLOCKED: '{path}' is inside the Lirox source tree. "
+                f"Set LIROX_ALLOW_SELF_MOD=1 to allow self-modification."
+            )
+    except Exception:
+        pass
+    return None
 
 
 # ── Safety ────────────────────────────────────────────────────────
@@ -90,6 +106,10 @@ def file_write_verified(path: str, content: str, mode: str = "w") -> FileReceipt
     ok, info = _is_safe_path(path)
     if not ok:
         r.error = info
+        return r
+    err = _self_mod_blocked(info)
+    if err:
+        r.error = err
         return r
     if mode not in ("w", "a", "x"):
         r.error = f"Invalid mode: '{mode}' (allowed: 'w', 'a', 'x')"
@@ -163,6 +183,10 @@ def file_delete_verified(path: str, confirm: bool = True) -> FileReceipt:
     if not ok:
         r.error = info
         return r
+    err = _self_mod_blocked(info)
+    if err:
+        r.error = err
+        return r
     try:
         if os.path.isdir(info):
             if confirm:
@@ -199,6 +223,10 @@ def file_append_verified(path: str, content: str) -> FileReceipt:
     if not ok:
         r.error = info
         return r
+    err = _self_mod_blocked(info)
+    if err:
+        r.error = err
+        return r
     try:
         before = os.path.getsize(info) if os.path.exists(info) else 0
         os.makedirs(os.path.dirname(info) or ".", exist_ok=True)
@@ -224,6 +252,10 @@ def file_patch_verified(path: str, old_text: str, new_text: str) -> FileReceipt:
     ok, info = _is_safe_path(path)
     if not ok:
         r.error = info
+        return r
+    err = _self_mod_blocked(info)
+    if err:
+        r.error = err
         return r
     try:
         with open(info, "r", encoding="utf-8", errors="replace") as f:
@@ -271,6 +303,10 @@ def create_directory_verified(path: str) -> FileReceipt:
     ok, info = _is_safe_path(path)
     if not ok:
         r.error = info
+        return r
+    err = _self_mod_blocked(info)
+    if err:
+        r.error = err
         return r
     try:
         os.makedirs(info, exist_ok=True)
