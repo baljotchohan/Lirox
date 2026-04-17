@@ -1,4 +1,4 @@
-"""Lirox v1.0.0 — Entry Point"""
+"""Lirox v1.1 — Entry Point"""
 import os
 import sys
 import time
@@ -144,8 +144,6 @@ def _try_import(m: str) -> bool:
         return False
 
 
-check_dependencies()
-
 from lirox.orchestrator.master import MasterOrchestrator
 from lirox.ui.display import (
     show_welcome, show_status_card, show_thinking, show_agent_event,
@@ -211,7 +209,7 @@ def main():
         "/add-agent", "/agents",
         "/improve", "/apply", "/pending", "/self-execute",
         "/soul", "/mind", "/restart",
-        "/backup", "/import-memory", "/export-profile",
+        "/backup", "/import-memory", "/export-memory",
         "/exec",
         "/uninstall", "/update", "/exit",
     ]
@@ -964,15 +962,18 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
                 else:
                     console.print(f"  [dim]Imported {res.get('imported', 0)} messages · {res.get('facts_added', 0)} facts[/]")
 
-    elif base in ("/export-memory", "/export-profile"):
+    elif base == "/export-memory":
         from lirox.utils.memory_utils import export_full_memory
         with console.status("[bold cyan]Exporting full memory...[/]", spinner="dots"):
             try:
                 out = export_full_memory()
-                success_message(f"Memory export complete.")
+                success_message("Memory export complete.")
                 console.print(f"  [dim]Saved to: {out}[/]")
             except Exception as e:
                 error_panel("EXPORT ERROR", str(e))
+
+    elif base == "/export-profile":
+        info_panel("`/export-profile` is deprecated — use `/export-memory` instead.")
 
     elif base in ("/uninstall", "/update", "/exec"):
         _legacy_commands(orch, profile, cmd, base)

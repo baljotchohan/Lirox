@@ -117,62 +117,91 @@ def _extract_json(text: str) -> dict:
     raise ValueError("No JSON object in LLM response")
 
 
-# ── Task classification (tightened v2) ───────────────────────────
+# Shell signals — must be unambiguous command-form phrases. Bare tool
+# names like "python " or "git " match too eagerly (e.g. "show me a git
+# tutorial" should not route to shell), so we require either a multi-word
+# command phrase or a word-boundary regex check.
+SHELL_SIGNALS = [
+    "run command", "execute command", "execute this", "in the terminal",
+    "in bash", "in shell", "run python", "run node", "run npm",
+    "git status", "git commit", "git push", "git pull", "git diff",
+    "git log", "git checkout", "git branch", "git merge", "git rebase",
+    "npm install", "npm run", "pip install", "pip3 install",
+    "python -c", "python -m", "python3 -c", "python3 -m",
+    "docker run", "docker build", "docker ps", "docker compose",
+    "start server", "check port", "build and run", "ls ", "pwd",
+    "make test", "make build", "pytest ", "cargo run", "cargo build",
+]
 
-# FILE_SIGNALS: only things that clearly indicate file I/O with path context
+# Word-boundary shell tokens — match only as standalone words.
+SHELL_WORD_TOKENS = {"git", "npm", "pip", "node", "docker", "yarn", "pytest"}
+
 FILE_SIGNALS = [
     "read file", "write file", "create file", "edit file", "delete file",
-    "list files", "search files", "save to", "open file", "file contents",
-    "in my ", "in the ", "folder", "directory",
+    "save to", "open file", "file contents", "in my ", "in the ",
+    "folder", "directory",
     ".py", ".js", ".md", ".txt", ".json", ".csv", ".pdf",
     "readme", "file in", "add to", "put in", "store in",
     "on my desktop", "in downloads", "in documents",
     "save as", "write to", "append to",
 ]
-# FILE_PATH_ANCHORS: additional check for file routing disambiguation
-_FILE_PATH_ANCHORS = [".", "/", "~", "desktop", "documents", "downloads", "folder", "file"]
 
-SHELL_SIGNALS = [
-    "run command", "execute", "terminal", "bash", "shell", "git",
-    "python script", "run python", "npm", "node", "docker", "pip install",
-    "run tests", "git status", "git commit", "git push", "git pull",
-    "start server", "check port", "ls ", "pwd", "build and run",
+# File intents that DO NOT need a path anchor to qualify. These are
+# explicit listing/searching phrases that are unambiguously file-oriented.
+FILE_INTENT_BYPASS = [
+    "list files", "show me files", "what files", "all files",
+    "list my files", "search files", "find files", "list of files",
+    "show files",
 ]
+
+# Path anchors used to disambiguate generic FILE_SIGNALS from CODE_SIGNALS.
+_FILE_PATH_ANCHORS = (
+    ".", "/", "\\", "~", "desktop", "documents", "downloads",
+    "folder", "directory",
+)
+
 WEB_SIGNALS = [
     "search for", "look up", "find information", "google", "fetch url",
     "browse to", "latest news", "wikipedia", "research", "find out about",
     "current price", "news about",
 ]
+
 CODE_SIGNALS = [
-    "write a function", "create a class", "build a script",
-    "code for", "function that", "class that", "script that",
-    "program that", "implement", "refactor", "fix the bug",
-    "debug", "add feature", "api that", "test for",
+    "write a function", "create a function", "create a class",
+    "build a script", "code for", "function that", "class that",
+    "script that", "program that", "implement", "refactor",
+    "fix the bug", "debug", "add feature", "api that", "test for",
     "algorithm", "data structure", "python code", "write code",
-    "write me a",
+    "create a python script", "create a script",
 ]
+
 SELF_SIGNALS = [
     "your code", "your source", "how do you work", "your architecture",
     "your files", "read your", "understand yourself", "lirox code",
     "improve yourself", "fix yourself",
 ]
+
 AUTONOMY_SIGNALS = [
     "analyze my code", "analyse my code", "fix bugs", "scan codebase",
     "improve your code", "audit code", "self-improve",
     "generate code for", "decompose", "break down", "step by step plan",
     "need permission", "ask permission",
 ]
+
 DEEP_THINK_SIGNALS = [
     "complex", "architecture", "design", "refactor", "best approach",
     "trade-off", "trade off", "pros and cons", "compare options",
     "which is better", "strategy",
 ]
+
 MEMORY_SIGNALS = [
     "last conversation", "previous conversation", "what did we discuss",
-    "what did we talk about", "what have you learned", "what do you know about me",
-    "our history", "remember when", "last time", "you told me", "i told you",
-    "what's my name", "who am i", "what are my", "tell me about yourself",
-    "who are you", "what are you", "introduce yourself",
+    "what did we talk about", "what have you learned",
+    "what do you know about me",
+    "our history", "remember when", "last time", "you told me",
+    "i told you", "what's my name", "who am i", "what are my",
+    "tell me about yourself", "who are you", "what are you",
+    "introduce yourself",
 ]
 
 
@@ -186,17 +215,46 @@ def requires_deep_thinking(q: str) -> bool:
     return any(s in q for s in DEEP_THINK_SIGNALS)
 
 
+def _matches_shell(q: str) -> bool:
+    """True if query is a shell-execution intent.
+
+    Checks two conditions:
+      1. Any SHELL_SIGNALS substring matches.
+      2. Any SHELL_WORD_TOKENS appears as a standalone word
+         AND the query has command-y verbs (run/execute/exec).
+    """
+    if any(s in q for s in SHELL_SIGNALS):
+        return True
+    has_command_verb = any(v in q for v in ("run ", "execute ", "exec "))
+    if has_command_verb:
+        for tok in SHELL_WORD_TOKENS:
+            if re.search(rf"\b{tok}\b", q):
+                return True
+    return False
+
+
 def classify_task(query: str) -> str:
     q = query.lower()
-    if any(s in q for s in SELF_SIGNALS):    return "self"
-    if any(s in q for s in MEMORY_SIGNALS):  return "memory"
-    # File: require a path anchor to avoid routing "create a function" → file
+    if any(s in q for s in SELF_SIGNALS):
+        return "self"
+    if any(s in q for s in MEMORY_SIGNALS):
+        return "memory"
+    # File intents that bypass the anchor requirement (B8 fix)
+    if any(s in q for s in FILE_INTENT_BYPASS):
+        return "file"
+    # File: explicit when there's a path anchor present (B7 disambiguation)
     if any(s in q for s in FILE_SIGNALS) and any(a in q for a in _FILE_PATH_ANCHORS):
         return "file"
-    if any(s in q for s in CODE_SIGNALS):    return "code"
-    if any(s in q for s in FILE_SIGNALS):    return "file"
-    if any(s in q for s in SHELL_SIGNALS):   return "shell"
-    if any(s in q for s in WEB_SIGNALS):     return "web"
+    # Code beats shell — "create a python script" is code, not shell (B7 fix)
+    if any(s in q for s in CODE_SIGNALS):
+        return "code"
+    if any(s in q for s in FILE_SIGNALS):
+        return "file"
+    # Shell now uses the stricter matcher (B19 fix)
+    if _matches_shell(q):
+        return "shell"
+    if any(s in q for s in WEB_SIGNALS):
+        return "web"
     return "chat"
 
 

@@ -63,24 +63,28 @@ class MasterOrchestrator:
             pass  # startup must never fail due to session restoration
 
     def _get_recent_context_summary(self, limit: int = 3) -> str:
-        """
-        Build a compact 1-3 exchange summary from the current session ONLY.
-        Used to give the agent awareness of what was just discussed without
-        contaminating fresh conversations.
-        Returns empty string for first message in a session.
+        """Return a compact summary of the LAST `limit` user/assistant pairs
+        from the current session, EXCLUDING the just-added user message.
+
+        Robust to:
+          * empty sessions
+          * sessions with only system messages
+          * the just-added user message at the tail
         """
         try:
             session = self.session_store.current()
-            # Only include entries from THIS session run (after startup)
-            recent = [e for e in session.entries if e.role in ("user", "assistant")]
-            # Don't include the just-added user message (last entry)
-            recent = recent[:-1]
-            if not recent:
+            entries = [e for e in session.entries if e.role in ("user", "assistant")]
+            if not entries:
                 return ""
-            # Take the last `limit` exchanges
-            pairs = recent[-(limit * 2):]
+            # The last entry is the user message we just added; drop it.
+            if entries[-1].role == "user":
+                entries = entries[:-1]
+            if not entries:
+                return ""
+            # Take the last `limit` user/assistant pairs (so up to 2*limit entries).
+            tail = entries[-(limit * 2):]
             lines = []
-            for e in pairs:
+            for e in tail:
                 label = "User" if e.role == "user" else "Assistant"
                 lines.append(f"{label}: {e.content[:300]}")
             return "\n".join(lines)

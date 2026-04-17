@@ -61,9 +61,16 @@ def get_sub_agents() -> SubAgentsRegistry:
 
 
 def get_trainer(memory: MemoryManager = None) -> TrainingEngine:
+    """Return the singleton TrainingEngine.
+
+    The `memory` arg is accepted for backwards compatibility with callers
+    in main.py (`get_trainer(orch.global_memory)`), but TrainingEngine
+    no longer takes memory in its constructor — it's passed to .train()
+    instead. We deliberately do NOT rebuild the singleton each call.
+    """
     global _trainer
     with _singleton_lock:
-        if _trainer is None or memory is not None:
+        if _trainer is None:
             _trainer = TrainingEngine(get_learnings())
     return _trainer
 
