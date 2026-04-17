@@ -1,251 +1,353 @@
 <div align="center">
 
+# 🦁 Lirox
 
+### **A personal AI agent that lives in your terminal — and actually remembers you.**
 
-# 🦁 LIROX: THE AUTONOMOUS AGENTIC OS
-
-**"Intelligence as an Operating System — Terminal-first. Local-first. Persistent."**
+*Local-first · Terminal-first · Persistent memory · Self-extending*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-007ACC.svg)](https://python.org)
-[![Runs Locally](https://img.shields.io/badge/runs-100%25%20locally-10b981.svg)](#local-first)
-[![Self-Improving](https://img.shields.io/badge/engine-self--improving-ff69b4.svg)](#self-improvement-engine)
-
----
-
-### ✦ The Vision
-Lirox is not just another LLM wrapper. It is a **Personal AI Agent Operating System** that lives in your terminal. While generic AI tools forget you the second you close the tab, Lirox builds a **recursive memory model** of your professional identity, projects, and working style. 
-
-It doesn't just "chat"—it **executes**. It reads your codebase, manages your filesystem, automates your shell, and researches for you, all while evolving into a digital mirror of your own expertise.
+[![Runs Locally](https://img.shields.io/badge/100%25-local%20friendly-10b981.svg)](#privacy--local-first)
+[![Status](https://img.shields.io/badge/status-active-success.svg)](#)
+[![Version](https://img.shields.io/badge/version-1.1-orange.svg)](CHANGELOG.md)
 
 </div>
 
 ---
 
-## 📐 System Architecture
+## What is Lirox?
 
-Lirox is built on a tripartite architecture that separates high-level cognitive planning from low-level system execution.
+Lirox is a CLI-first autonomous AI agent that does three things every other AI tool fails at:
+
+1. **It remembers you.** Across every session, restart, and reinstall — Lirox builds a structured memory of who you are, what you work on, how you talk, and what you care about. You can even import your existing history from ChatGPT, Claude, or Gemini.
+2. **It actually executes.** When you ask it to write a file, it writes the file — and verifies the bytes hit disk before claiming success. No more "I created the file at `~/Desktop/x.py`" only to find nothing there.
+3. **It extends itself.** Tell it "I need a tool that summarizes my git diffs" and it builds a Python skill, validates the contract, runs tests, and registers it. Same for sub-agents you can call by name.
+
+It is not a wrapper around someone else's chatbot. It runs in your terminal, stores everything on your machine, and works fully offline with Ollama if you want.
+
+---
+
+## ⚡ Quick start
+
+```bash
+# 1. Clone
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox
+
+# 2. Install (creates a venv automatically if you want)
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[full]"
+
+# 3. First run — wizard guides you through setup
+lirox
+```
+
+The first launch opens a deep onboarding wizard that asks about your work, your current project, your goals, and which LLM you want to use (cloud, local, or both). After ~90 seconds, the agent already knows enough about you to be genuinely helpful from message #1.
+
+---
+
+## What's new in v1.1
+
+| Area | Change |
+|------|--------|
+| **Verified execution** | Every file write/delete/patch is checked on disk before reporting success. Hallucinated success is structurally impossible. |
+| **Deep onboarding** | Niche-aware wizard with follow-ups (Developer → primary language? stack? scale?), then seeds the learnings store so `/recall` works immediately. |
+| **One-paste memory import** | Copy a prompt to ChatGPT/Claude/Gemini, paste the JSON back. Handles fenced JSON, preambles, malformed inputs gracefully. |
+| **Skill & agent contracts** | Skills are AST-validated at load time — wrong `run()` signature fails fast, not at first call. |
+| **Stricter sub-agent routing** | Removed the greedy `"name: anything"` regex that misrouted normal sentences. Only `@name`, `hey name,`, and `ask name to` trigger routing. |
+| **Self-modification gate** | Writes inside the Lirox source tree are blocked unless `LIROX_ALLOW_SELF_MOD=1` is set. |
+| **Cursor-based training** | `/train` reads from on-disk JSONL logs (not just the live buffer) and tracks a cursor so re-running doesn't reprocess everything. |
+| **Stop-word filtering** | Memory recall no longer matches on `"the"`, `"is"`, `"a"`, etc. |
+| **Robust `classify_task`** | `"create a python script"` → code (not shell). `"make a list of files"` → file (not chat). `"show me a git tutorial"` → chat (not shell). |
+
+Full bug list and root-cause analysis lives in [`CHANGELOG.md`](CHANGELOG.md).
+
+---
+
+## 🧠 How it remembers you
+
+Lirox uses a three-tier memory model:
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  LIVE BUFFER       (last ~100 messages, in-memory)         │
+│       ↓                                                     │
+│  DAILY JSONL LOGS  (every exchange, persisted to disk)     │
+│       ↓                                                     │
+│  LEARNINGS STORE   (crystallized facts, projects,          │
+│                     preferences, topics — survives forever) │
+└─────────────────────────────────────────────────────────────┘
+```
+
+- The **live buffer** powers same-session context.
+- **Daily JSONL** is the source of truth for `/train`.
+- The **learnings store** is what makes Lirox feel like *yours* — it accumulates facts about you (`"User uses FastAPI for backends"`, `"Currently shipping Lirox v1.1"`, `"Prefers concise replies"`) and injects them into every response's system prompt.
+
+**You can import existing history from other LLMs.** During setup, Lirox shows you a one-paste prompt to copy into ChatGPT / Claude / Gemini. Paste the JSON they return back into Lirox, and your facts/preferences/projects are merged in. Works with both raw JSON and fenced (```json ... ```) blocks.
+
+---
+
+## 🛠 Architecture
 
 ```mermaid
 graph TD
-    User([User Intent]) --> Orch[Orchestrator]
-    
-    subgraph "The Mind (Cognitive Layer)"
-        Orch --> Mind[Mind Agent]
-        Mind --> Soul[(Soul Store)]
-        Mind --> Learn[(Learnings Store)]
-        Mind --> Skills[Skill Registry]
-    end
-    
-    subgraph "The Body (Execution Layer)"
-        Orch --> PA[Personal Agent]
-        PA --> FS[[Filesystem]]
-        PA --> Shell[Shell/Terminal]
-        PA --> Web[Web Search]
-        PA --> Code[Python Interpreter]
-    end
-    
-    subgraph "Evolution Loop (Self-Growth)"
-        PA --> Logic[Self-Improver]
-        Logic --> Patches[Patch Generator]
-        Patches --> PA
+    User([User]) --> Main[main.py · CLI]
+    Main --> Orch[Orchestrator]
+
+    subgraph Cognitive["Cognitive layer"]
+        Orch --> Mind[MindAgent · advisor mode]
+        Mind --> Soul[(Soul · personality)]
+        Mind --> Learn[(Learnings · facts/projects/topics)]
     end
 
-    Soul <--> |Identity| PA
-    Learn <--> |Context| PA
+    subgraph Execution["Execution layer"]
+        Orch --> PA[PersonalAgent · doer mode]
+        PA --> Files[Verified file ops]
+        PA --> Shell[Verified shell]
+        PA --> Web[Web search]
+        PA --> Code[Code generator + executor]
+    end
+
+    subgraph Extension["Extension layer"]
+        PA --> Skills[Skills registry]
+        PA --> Subs[Sub-agents registry]
+        Skills --> Builder[5-phase AgentBuilder]
+        Subs --> Builder
+    end
+
+    subgraph Verify["Verification layer (new in v1.1)"]
+        Files --> Receipt[FileReceipt]
+        Shell --> ShellR[ShellReceipt]
+        Receipt --> Disk[Disk verification]
+        ShellR --> Disk
+    end
+```
+
+The cognitive layer (Mind / Soul / Learnings) handles personalization. The execution layer (PersonalAgent + tools) handles doing things. The verification layer (new in v1.1) is the safety net — every side effect is checked before being reported as successful.
+
+---
+
+## 📋 Command reference
+
+### Conversation & memory
+
+| Command | What it does |
+|---------|--------------|
+| `/help` | Show all commands |
+| `/profile` | Show your profile (name, niche, project, goals) |
+| `/recall` | Show what Lirox knows about you (facts, projects, topics) |
+| `/learnings` | Full dump of the learnings store |
+| `/memory` | Memory stats per agent |
+| `/history [n]` | Last N session names |
+| `/session` | Current session info |
+| `/reset` | Clear in-session memory (does NOT touch learnings) |
+
+### Training & import/export
+
+| Command | What it does |
+|---------|--------------|
+| `/train` | Crystallize recent conversations into permanent learnings (cursor-based — only processes new content) |
+| `/import-memory [path]` | Import from ChatGPT JSON / Claude JSON / Gemini Takeout / Lirox export / pasted JSON |
+| `/export-memory` | Export profile + learnings as a single JSON file |
+| `/backup` | Backup all data to `~/.lirox_backup/` |
+
+### Skills & sub-agents
+
+| Command | What it does |
+|---------|--------------|
+| `/add-skill <description>` | Build a new skill via the 5-phase builder (think → generate → validate → test → register) |
+| `/skills` | List loaded skills |
+| `/use-skill <name> [k=v ...]` | Invoke a skill |
+| `/add-agent <description>` | Build a new sub-agent the same way |
+| `/agents` | List sub-agents |
+| `@<name> <query>` · `hey <name>, <q>` · `ask <name> to <q>` | Route a query to a sub-agent |
+
+### Self-improvement
+
+| Command | What it does |
+|---------|--------------|
+| `/improve` | Audit the Lirox source tree, stage patches |
+| `/pending` | List staged patches |
+| `/apply` | Show diffs, approve, apply, restart |
+| `/self-execute [desc]` | Autonomous code scan or one-off generation |
+
+### Models & permissions
+
+| Command | What it does |
+|---------|--------------|
+| `/models` | List available LLM providers |
+| `/use-model <name>` | Pin a provider for this session (`groq`, `gemini`, `openai`, `anthropic`, `ollama`, `auto`) |
+| `/permissions` | Show current permission tiers |
+| `/ask-permission <0–5>` | Request a higher tier (file-write, code-exec, self-modify, etc.) |
+
+### System
+
+| Command | What it does |
+|---------|--------------|
+| `/setup` | Re-run the deep onboarding wizard |
+| `/test` | Run diagnostics |
+| `/restart` | Restart Lirox in place |
+| `/update` | Pull the latest version |
+| `/uninstall` | Wipe all Lirox data |
+| `/exit` | Quit |
+
+---
+
+## 🧪 Examples
+
+**Build a skill on the fly:**
+
+```
+> /add-skill extract all hashtags from a string
+
+🧠 Phase 1 — Analysing requirements (niche-aware)…
+✍️  Phase 2 — Generating skill code…
+🔎 Phase 3 — Validating code + contract…  ✓ Code is valid
+🧪 Phase 4 — Running auto-generated tests…  ✓ Tests passed (3)
+💾 Phase 5 — Registering skill…  ✅ Skill 'extract_hashtags' registered
+
+> /use-skill extract_hashtags input="checkout #lirox and #ai for the win"
+['#lirox', '#ai']
+```
+
+**Verified file write:**
+
+```
+> create a file at ~/Desktop/notes.md with three bullets summarizing my goals
+
+📁 write_file: /Users/baljot/Desktop/notes.md
+✅ Wrote 287 bytes to /Users/baljot/Desktop/notes.md (verified on disk)
+```
+
+If the disk write fails for any reason — permissions, missing parent directory, blocked path — you get an explicit `❌` with the actual error, never a fake confirmation.
+
+**One-paste memory import:**
+
+```
+> /import-memory
+
+📋 Memory Import
+1. Copy the prompt below into ChatGPT/Claude/Gemini.
+2. Copy their JSON reply back here.
+3. Type END on its own line to finish.
+
+[ prompt shown ]
+
+  ```json
+  {"facts": ["Uses FastAPI", "Based in NYC"], "projects": [...]}
+  ```
+  END
+
+✓ Import complete
+  • Facts added: 2
+  • Projects added: 1
+  • Topics added: 4
 ```
 
 ---
 
-## 💎 Core Components
+## 🔒 Privacy & local-first
 
-### 🧠 The Soul (Mind Agent)
-Unlike standard chat buffers, Lirox features a **Mind Agent** that continuously extracts facts, preferences, and project contexts. 
-- **Recursive Learning:** Silently analyzes interactions to update your "Soul" file.
-- **Knowledge Crystallization:** Use `/train` to synthesize messy sessions into permanent architectural knowledge.
-- **Zero-Latency Recall:** Automatically injects relevant past facts into new queries without you asking.
+- **Your data lives on your machine.** Profile, learnings, soul, sessions — all in `data/` and `profile.json` next to the source.
+- **No telemetry.** Lirox does not phone home.
+- **Local LLMs are first-class.** Ollama, llama.cpp endpoints, anything OpenAI-compatible. Set up via `/setup` or by editing `.env`:
 
-### 💻 The Executor (Personal Agent)
-The PersonalAgent handles the "heavy lifting" with **zero truncation** and **full system access**.
-- **System CRUD:** Create, read, patch, and delete files with natural language.
-- **Autonomous Terminal:** Run commands, manage git repos, and install dependencies.
-- **Verified Synthesis:** Writes and **immediately executes** code in a sandbox to verify correctness before delivering it to you.
-
-### 🛠 The Skill Engine
-Extend Lirox by simply describing what you need.
-- **Natural Language Extension:** Describe a workflow (e.g., "Monitor this log file and alert me on errors") and Lirox generates the Python logic.
-- **Reusable Tooling:** Skills are saved as permanent Python modules that any agent can call.
-
----
-
-## 🎮 Command Suite
-
-Lirox provides a high-density CLI for power users.
-
-### 🔍 Query & Reasoning
-| Command | Action | Deep Dive |
-| :--- | :--- | :--- |
-| `/think <q>` | **Deep Reason** | Activates an 8-phase reasoning engine for complex architecture. |
-| `/task <str>` | **Multi-Step** | Plans, asks for permission, and executes complex file/shell sequences. |
-| `/learnings` | **Memory View** | Peek inside Lirox's mental model of your expertise. |
-
-### 🤖 Agent & Skill Management
-| Command | Action | Description |
-| :--- | :--- | :--- |
-| `/add-agent` | **Summon** | Create a specialized sub-agent (e.g., `@Architect`, `@Reviewer`). |
-| `/add-skill` | **Teach** | Convert a natural language description into a reusable tool. |
-| `/agents` | **Roster** | List all built-in and custom cognitive entities. |
-| `@<agent>` | **Dispatch** | Route a specific query to a specialized personality. |
-
-### 🔋 System & Memory
-| Command | Action | Description |
-| :--- | :--- | :--- |
-| `/train` | **Crystallize** | Force a summary of recent sessions into the permanent Soul. |
-| `/soul` | **Identity** | View the current personality metrics and learned identity. |
-| `/improve` | **Self-Audit** | Trigger the self-improvement loop for the Lirox codebase. |
-| `/setup` | **Configure** | Interactive wizard for API providers (Gemini, Claude, Ollama). |
-
----
-
-## 🛠 Self-Improvement Workflow
-
-Lirox is designed to maintain and fix itself. This recursive loop ensures the OS stays performant and bug-free.
-
-1.  **Auditing**: `/improve` scans the `lirox/` directory for circular imports, dead code, or inefficient patterns.
-2.  **Staging**: Lirox generates unified diffs (patches) to fix identified issues.
-3.  **Applying**: Use `/apply` to approve. Lirox creates a backup, applies the fix, and hot-swaps the code via `/restart`.
-
----
-
-## 🚀 How It Works: The Execution Loop
-
-```mermaid
-sequenceDiagram
-    participant U as User
-    participant O as Orchestrator
-    participant M as Mind (Soul)
-    participant E as Executor (PersonalAgent)
-    participant S as System
-
-    U->>O: "Refactor my auth logic in auth.py"
-    O->>M: Fetch relevant user preferences...
-    M-->>O: "User prefers type hints and Pydantic"
-    O->>E: Execute refactor [Context: Pydantic]
-    E->>S: Read auth.py
-    S-->>E: [File Content]
-    E->>E: Generate Refactored Code
-    E->>S: Write auth.py
-    E->>S: Run pytest auth.py
-    S-->>E: Tests Passed
-    E-->>U: "Refactored auth.py and verified with tests."
-```
-
----
-
-## ⚡ Installation
-
-### 1. What's new in dependency setup
-
-- On startup, Lirox now checks required Python dependencies automatically.
-- If packages are missing, Lirox tries to install them automatically with `pip`.
-- If bulk installation fails, it retries package-by-package and reports exactly what failed.
-- Cross-platform fallback commands are shown for **macOS**, **Linux**, and **Windows**.
-
-### 2. Requirements
-
-- Python **3.9+**
-- `pip` (usually bundled with Python)
-- Optional: [Ollama](https://ollama.com) for 100% local execution
-
-### 3. Step-by-step setup (macOS / Linux)
-
-```bash
-# 1) Clone the repository
-git clone https://github.com/baljotchohan/lirox.git
-cd lirox
-
-# 2) (Recommended) Create and activate a virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# 3) Upgrade pip
-python3 -m pip install --upgrade pip
-
-# 4) Install Lirox
-python3 -m pip install -e ".[full]"
-
-# 5) First run (auto dependency check/install also runs here)
-lirox --setup
-lirox
-```
-
-### 4. Step-by-step setup (Windows PowerShell)
-
-```powershell
-# 1) Clone the repository
-git clone https://github.com/baljotchohan/lirox.git
-cd lirox
-
-# 2) (Recommended) Create and activate a virtual environment
-py -m venv .venv
-.venv\Scripts\Activate.ps1
-
-# 3) Upgrade pip
-py -m pip install --upgrade pip
-
-# 4) Install Lirox
-py -m pip install -e ".[full]"
-
-# 5) First run (auto dependency check/install also runs here)
-lirox --setup
-lirox
-```
-
-### 5. If your Python environment is missing dependencies
-
-Lirox auto-installs required packages at startup. If installation is partially blocked, use:
-
-```bash
-# macOS/Linux
-python3 -m pip install -r requirements.txt
-```
-
-```powershell
-# Windows
-py -m pip install -r requirements.txt
-```
-
-If `pip` is not available:
-
-```bash
-python -m ensurepip --upgrade
-```
-
-### 6. Local-First Configuration
-To run 100% locally with Ollama, update your `.env`:
 ```env
 LOCAL_LLM_ENABLED=true
+OLLAMA_ENDPOINT=http://localhost:11434
 OLLAMA_MODEL=llama3.1
 ```
 
+- **Cloud providers are opt-in.** Groq, Gemini, OpenAI, Anthropic, OpenRouter, DeepSeek — pick any combination. API keys live in your local `.env`, never sent anywhere except the provider you're calling.
+- **Self-modification is gated.** Lirox cannot overwrite its own source code unless you set `LIROX_ALLOW_SELF_MOD=1`.
+
 ---
 
-## 📂 Project Structure
+## 📦 Installation details
 
-```text
-lirox/
-├── agents/          # Cognitive entities (PersonalAgent, MindAgent)
-├── autonomy/        # Self-improvement & recursive loop logic
-├── memory/          # Soul, Learnings, and Session persistence
-├── mind/            # Personality engine and soul management
-├── skills/          # Dynamic natural language tools
-├── thinking/        # Chain-of-thought and reasoning engines
-└── tools/           # Low-level system interfaces (file, shell, web)
+### Requirements
+
+- Python **3.9+**
+- pip (bundled with Python)
+- Optional: [Ollama](https://ollama.com) for fully offline use
+
+### macOS / Linux
+
+```bash
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox
+python3 -m venv .venv && source .venv/bin/activate
+python3 -m pip install --upgrade pip
+python3 -m pip install -e ".[full]"
+lirox
 ```
+
+### Windows (PowerShell)
+
+```powershell
+git clone https://github.com/baljotchohan/lirox.git
+cd lirox
+py -m venv .venv
+.venv\Scripts\Activate.ps1
+py -m pip install --upgrade pip
+py -m pip install -e ".[full]"
+lirox
+```
+
+Lirox auto-detects missing dependencies at startup and installs them. If something blocks pip, you can install manually:
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+---
+
+## 🗂 Project structure
+
+```
+lirox/
+├── agent/              # User profile system
+├── agents/             # PersonalAgent + 5-phase AgentBuilder
+├── autonomy/           # Self-improver, code generator, code executor, permissions
+├── memory/             # MemoryManager, SessionStore, import handler, sync prompt
+├── mind/               # Soul, Learnings, Trainer, Skills, SubAgents
+├── onboarding/         # Niche profiles + wizard learnings seeding
+├── orchestrator/       # MasterOrchestrator (routes user queries)
+├── skills/             # Legacy JSON skill executor (kept for back-compat)
+├── thinking/           # Chain-of-thought + advanced reasoning engines
+├── tools/              # File ops, shell, browser, web search, code executor
+├── ui/                 # Display, wizard, permission UI, progress UI
+├── utils/              # LLM layer, logging, validation, rate limiting
+└── verify/             # Receipts + disk verification (the v1.1 safety layer)
+```
+
+---
+
+## 🤝 Contributing
+
+Lirox is built in the open. Contributions, bug reports, and feature ideas are welcome. See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the workflow.
+
+If you find a bug, the most useful thing you can do is open an issue with:
+- The exact command/query you ran
+- What you expected
+- What actually happened
+- Output from `/test` if it's a runtime issue
+
+---
+
+## 📜 License
+
+MIT. See [`LICENSE`](LICENSE).
 
 ---
 
 <div align="center">
-  <p><strong>Terminal-first. Local-first. Persistent.</strong></p>
-  <p><em>Built with ❤️ for the developers of tomorrow.</em></p>
+
+**Terminal-first · Local-first · Persistent**
+
+*Built for people who want their AI to actually know them.*
+
+[Documentation](USE_LIROX.md) · [Commands](COMMANDS.md) · [Advanced](ADVANCED.md) · [Changelog](CHANGELOG.md)
+
 </div>
