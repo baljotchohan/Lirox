@@ -41,25 +41,44 @@ class MemoryManager:
             from lirox.utils.structured_logger import get_logger
             get_logger("lirox.memory").warning(f"Daily write error: {e}")
 
+    # Stop-words filtered out before scoring relevance.
+    _CONTEXT_STOP_WORDS = {
+        'the', 'a', 'an', 'is', 'are', 'was', 'were', 'be', 'been',
+        'have', 'has', 'do', 'does', 'did', 'will', 'would', 'could',
+        'should', 'may', 'might', 'can', 'this', 'that', 'with', 'from',
+        'for', 'and', 'but', 'or', 'not', 'all', 'any', 'some', 'more',
+        'what', 'when', 'where', 'who', 'how', 'why', 'your', 'my', 'our',
+        'just', 'like', 'want', 'need', 'help', 'make', 'use', 'get',
+    }
+
     def get_relevant_context(self, query: str, max_items: int = 10) -> str:
-        """Return only relevant context — never dump all buffer on unrelated queries."""
+        """Return only context items that share >=2 meaningful words with
+        the query. Stop words are filtered out before scoring."""
         with self._lock:
             buffer_snapshot = list(self.conversation_buffer)
         if not buffer_snapshot:
             return ""
-        qw = set(query.lower().split())
+
+        qw = {w for w in query.lower().split()
+              if len(w) > 3 and w not in self._CONTEXT_STOP_WORDS}
+        if not qw:
+            return ""
+
         scored = []
+        ql = query.lower()
         for m in buffer_snapshot:
-            cw = set(m["content"].lower().split())
-            s  = len(qw & cw)
-            if query.lower() in m["content"].lower():
+            cl = m["content"].lower()
+            cw = {w for w in cl.split()
+                  if len(w) > 3 and w not in self._CONTEXT_STOP_WORDS}
+            s = len(qw & cw)
+            if ql in cl:
                 s += 5
-            if s > 0:
+            if s >= 2 or (s >= 1 and ql in cl):
                 scored.append((s, m))
         if not scored:
-            return ""  # FIX: don't dump unrelated context
+            return ""
         scored.sort(key=lambda x: x[0], reverse=True)
-        rel   = [m for _, m in scored[:max_items]]
+        rel = [m for _, m in scored[:max_items]]
         lines = ["--- Context ---"]
         for m in rel:
             label = "User" if m["role"] == "user" else "Assistant"
