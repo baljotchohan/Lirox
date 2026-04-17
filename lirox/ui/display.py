@@ -24,8 +24,10 @@ from lirox.config import APP_VERSION
 
 console = Console()
 
-# BUG-2 FIX: import render_progress_indicator at module level
-from rich.progress import Progress as render_progress_indicator
+# BUG-2 FIX: render_progress_indicator imported at module level (was previously imported
+# inside a function body, causing NameError on first call). Aliased here to match the
+# name used throughout the codebase.
+from rich.progress import Progress as render_progress_indicator  # noqa: F401
 
 # ── Color Palette ─────────────────────────────────────────────────────────────
 

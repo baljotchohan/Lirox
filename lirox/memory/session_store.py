@@ -74,12 +74,12 @@ class Session:
     def from_dict(d: dict) -> "Session":
         s = Session(d["session_id"], d["name"])
         s.created_at = d.get("created_at", "")
-        s.entries    = [SessionEntry.from_dict(e) for e in d.get("entries", [])]
+        s.entries = [SessionEntry.from_dict(e) for e in d.get("entries", [])]
         return s
 
     def summary(self) -> str:
         count = sum(1 for e in self.entries if e.role == "user")
-        name  = self.name or f"Session {self.session_id}"
+        name = self.name or f"Session {self.session_id}"
         ts    = self.created_at[:16].replace("T", " ")
         return f"{name}  [{count} msgs, {ts}]"
 

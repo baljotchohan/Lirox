@@ -124,7 +124,7 @@ class SubAgentsManager:
         Returns (agent_name, remaining_query) or None.
         """
         # Match @word at the very start, possibly followed by :, ,, or space
-        m = re.match(r"^@([\w\-]+)[:\s,]*(.*)$", text.strip(), re.DOTALL)
+        m = re.match(r"^@([\w-]+)[:\s,]*(.*)$", text.strip(), re.DOTALL)
         if m:
             agent_name = m.group(1).lower()
             query      = m.group(2).strip()
