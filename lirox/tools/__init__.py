@@ -1,1 +1,1 @@
-"""Lirox v2.0.0 — Tools package"""
+"""Lirox v1.1 Tools."""
