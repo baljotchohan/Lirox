@@ -1,4 +1,4 @@
-"""Lirox v1.0.0 — Central Configuration"""
+"""Lirox v1.1 — Central Configuration"""
 import os
 from pathlib import Path
 
