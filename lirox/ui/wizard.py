@@ -111,8 +111,7 @@ def run_setup_wizard(profile) -> None:
     if niche_details:
         prefs = dict(profile.data.get("preferences") or {})
         prefs.setdefault("niche_details", {}).update(niche_details)
-        profile.data["preferences"] = prefs
-        profile.save()
+        profile.update("preferences", prefs)
 
     # Step 9 — Summary card
     _show_summary(profile, agent_name, user_name, niche)
@@ -317,9 +316,8 @@ def _run_one_paste_import() -> None:
                          box=ROUNDED, padding=(1, 2), width=76))
 
     console.print(
-        "\n  [bold #FFC107]Paste file path OR the JSON reply below.[/]\n"
-        "  [dim]For multi-line JSON: paste the whole thing, then press Enter twice "
-        "or type 'eof' and press Enter.[/]\n"
+        "\n  [bold #FFC107]Paste a file path on one line, OR paste the full JSON.[/]\n"
+        "  [dim]When done, type [bold]END[/] on its own line and press Enter.[/]\n"
     )
     buffer = _multiline_read()
     if not buffer.strip():
@@ -347,27 +345,19 @@ def _run_one_paste_import() -> None:
 
 
 def _multiline_read() -> str:
-    """Accept multi-line paste, end on double-blank-line or 'eof'."""
-    lines: list = []
-    blank_count = 0
+    """Read a multi-line block. The user MUST type END on its own line to
+    finish — this is explicit and unambiguous, unlike heuristic blank-line
+    detection which truncated valid JSON paste in v1.0.
+    """
+    lines: list[str] = []
     while True:
         try:
             line = input("  ")
         except (EOFError, KeyboardInterrupt):
             break
-        if line.strip().lower() == "eof":
+        stripped = line.strip().lower()
+        if stripped in ("end", "eof"):
             break
-        if line == "":
-            blank_count += 1
-            # End on 2 blank lines in a row, or 1 blank after closing brace
-            if blank_count >= 2 or (
-                blank_count >= 1 and lines and
-                lines[-1].rstrip().endswith(("}", "]"))
-            ):
-                break
-            lines.append(line)
-            continue
-        blank_count = 0
         lines.append(line)
     return "\n".join(lines)
 

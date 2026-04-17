@@ -65,10 +65,22 @@ class LearningsStore:
     # ── Add learnings ─────────────────────────────────────────────────────────
 
     def add_fact(self, fact: str, confidence: float = 1.0, source: str = "interaction") -> None:
-        """Add a fact about the user."""
-        # Avoid duplicates
-        existing = [f["fact"].lower() for f in self.data["user_facts"]]
-        if fact.lower() in existing:
+        """Add a fact about the user. Deduplicates via punctuation-stripped normalization."""
+        import string as _string
+
+        def _norm(s: str) -> str:
+            s = s.lower().strip()
+            s = s.translate(str.maketrans("", "", _string.punctuation))
+            return " ".join(sorted(s.split()))
+
+        fact_norm = _norm(fact)
+        existing_norms = set()
+        for f in self.data["user_facts"]:
+            text = f.get("fact") if isinstance(f, dict) else f
+            if isinstance(text, str):
+                existing_norms.add(_norm(text))
+
+        if fact_norm in existing_norms:
             return
         self.data["user_facts"].append({
             "fact": fact,
