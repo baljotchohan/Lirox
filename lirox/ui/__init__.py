@@ -1,1 +1,1 @@
-"""Lirox v2.0.0 — UI package"""
+# Lirox UI Components

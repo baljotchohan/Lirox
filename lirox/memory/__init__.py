@@ -1,1 +1,3 @@
-"""Lirox v2.0.0 — Memory package"""
+from lirox.memory.manager import MemoryManager
+
+__all__ = ["MemoryManager"]
