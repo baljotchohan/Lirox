@@ -1,5 +1,6 @@
-"""Lirox v1.1 — Streaming Response Engine"""
+"""Lirox v2.0.0 — Streaming Response Engine"""
 from __future__ import annotations
+
 import re
 import time
 from typing import Generator
@@ -26,7 +27,7 @@ class StreamingResponse:
                 paragraphs = part.split("\n\n")
                 for idx, para in enumerate(paragraphs):
                     if not para.strip():
-                        continue  # skip empty / whitespace-only paragraphs
+                        continue
                     suffix = "\n\n" if idx < len(paragraphs) - 1 else ""
                     yield para + suffix
                     if delay > 0 and para.strip():
