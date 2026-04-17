@@ -1,4 +1,4 @@
-"""Lirox v1.0.0 — LLM Utility Layer"""
+"""Lirox v1.1 — LLM Utility Layer"""
 import atexit
 import os
 import hashlib

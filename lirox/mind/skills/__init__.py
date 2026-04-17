@@ -1,1 +1,1 @@
-"""Lirox v0.5 — Skills Package"""
+"""Lirox v1.1 — Skills Package"""

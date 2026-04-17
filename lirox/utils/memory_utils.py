@@ -1,5 +1,5 @@
 """
-Lirox v1.0 — Memory Utilities
+Lirox v1.1 — Memory Utilities
 Handles high-level import/export for Lirox profile and learnings.
 """
 import json

@@ -1,4 +1,4 @@
-"""Lirox v2.0 — Deep Setup Wizard.
+"""Lirox v1.1 — Deep Setup Wizard.
 
 Step-by-step onboarding that produces a personalized first interaction:
   1. Welcome + operator name

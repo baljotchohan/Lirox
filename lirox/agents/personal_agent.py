@@ -1,4 +1,4 @@
-"""Lirox v2.0 — PersonalAgent with verified execution.
+"""Lirox v1.1 — PersonalAgent with verified execution.
 
 Key v2 changes vs v1:
   - All file ops go through FileReceipt and are disk-verified.

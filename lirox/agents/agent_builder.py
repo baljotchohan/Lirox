@@ -1,4 +1,4 @@
-"""Lirox v2.0 — Advanced Agent / Skill Builder.
+"""Lirox v1.1 — Advanced Agent / Skill Builder.
 
 Multi-phase builder with v2 upgrades:
   - Phase 1 (Think) is niche-aware — reads user profile + existing

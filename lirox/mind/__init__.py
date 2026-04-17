@@ -1,1 +1,1 @@
-"""Lirox v0.5 — Mind Agent Package"""
+"""Lirox v1.1 — Mind Agent Package"""

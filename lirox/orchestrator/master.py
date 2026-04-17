@@ -1,4 +1,4 @@
-"""Lirox v1.0.0 — Master Orchestrator"""
+"""Lirox v1.1 — Master Orchestrator"""
 from __future__ import annotations
 import time
 from dataclasses import dataclass, field

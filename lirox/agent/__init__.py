@@ -1,1 +1,1 @@
-"""Lirox v2.0 — Agent Components (Profile, Policy, Tier, Learning)"""
+"""Lirox v1.1 — Agent Components (Profile, Policy, Tier, Learning)"""

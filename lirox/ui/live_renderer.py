@@ -1,4 +1,4 @@
-"""Lirox v1.0.0 — Live Renderer: smooth character-by-character terminal output"""
+"""Lirox v1.1 — Live Renderer: smooth character-by-character terminal output"""
 from __future__ import annotations
 import sys
 import time

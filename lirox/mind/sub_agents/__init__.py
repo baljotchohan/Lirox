@@ -1,1 +1,1 @@
-"""Lirox v0.5 — Sub-Agents Package"""
+"""Lirox v1.1 — Sub-Agents Package"""

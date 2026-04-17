@@ -1,5 +1,5 @@
 """
-Lirox v1.0.0 — Session Manager
+Lirox v1.1 — Session Manager
 
 High-level manager for chat sessions that wraps ``SessionStore`` with
 convenience methods for creating, switching, and summarising sessions.

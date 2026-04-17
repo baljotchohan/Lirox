@@ -1,5 +1,5 @@
 """
-Lirox v1.0.0 — Skill Manager
+Lirox v1.1 — Skill Manager
 Discovers, loads, and manages reusable skills saved to /lirox/skills/.
 """
 from __future__ import annotations

@@ -1,4 +1,4 @@
-"""Lirox v1.0.0 — MindAgent — personal advisor with deep user knowledge"""
+"""Lirox v1.1 — MindAgent — personal advisor with deep user knowledge"""
 from __future__ import annotations
 import re
 import threading

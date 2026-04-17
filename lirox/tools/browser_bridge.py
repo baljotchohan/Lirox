@@ -1,5 +1,5 @@
 """
-Lirox v2.0 — Browser CDP Bridge
+Lirox v1.1 — Browser CDP Bridge
 
 Chrome DevTools Protocol (CDP) communication primitives.
 """

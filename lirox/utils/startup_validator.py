@@ -1,5 +1,5 @@
 """
-Lirox v2.0 — Startup Validation
+Lirox v1.1 — Startup Validation
 
 Validates system state before agent starts.
 Checks: directories, API keys, Python version, dependencies.

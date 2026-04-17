@@ -1,5 +1,5 @@
 """
-Lirox v1.0.0 — Skill Executor
+Lirox v1.1 — Skill Executor
 Runs a saved skill inside the agent context, injecting its parameters
 into an LLM prompt and returning the result.
 """

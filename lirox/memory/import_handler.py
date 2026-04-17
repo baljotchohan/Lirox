@@ -1,4 +1,4 @@
-"""Lirox v2.0 — Memory Import Handler.
+"""Lirox v1.1 — Memory Import Handler.
 
 Robust, one-paste import of user knowledge from any LLM or
 Lirox's own exports. Fixes every issue from v1:

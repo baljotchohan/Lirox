@@ -1,5 +1,5 @@
 """
-Lirox v2.0 — Error Handling & Recovery Framework
+Lirox v1.1 — Error Handling & Recovery Framework
 
 Provides base exceptions, retryable error detection, and retry utilities
 used across all agent components (executor, browser, file_io, etc.).

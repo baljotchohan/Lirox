@@ -1,5 +1,5 @@
 """
-Lirox v2.0 — User Profile System (CLI-First)
+Lirox v1.1 — User Profile System (CLI-First)
 
 Storage anchored to PROJECT_ROOT (not CWD).
 v2.0: Advanced prompt system with learning context boost integration.

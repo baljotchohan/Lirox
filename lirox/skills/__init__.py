@@ -1,5 +1,5 @@
 """
-Lirox v1.0.0 — Skills Package
+Lirox v1.1 — Skills Package
 
 Skills are Python modules in data/mind/skills/ managed by SkillsRegistry.
 Use /add-skill to create skills, /skills to list them.

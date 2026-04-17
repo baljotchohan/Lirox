@@ -1,5 +1,5 @@
 """
-Lirox v2.0 — Browser Security
+Lirox v1.1 — Browser Security
 
 Multi-layer URL and request validation:
 - SSRF protection (private IPs, cloud metadata endpoints)

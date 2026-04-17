@@ -1,4 +1,4 @@
-"""Lirox v2.0 — Deep onboarding: niche-aware setup + learnings seeding."""
+"""Lirox v1.1 — Deep onboarding: niche-aware setup + learnings seeding."""
 from lirox.onboarding.niche_profiles import (
     NICHE_QUESTIONS, get_niche_followups, all_niche_labels,
 )

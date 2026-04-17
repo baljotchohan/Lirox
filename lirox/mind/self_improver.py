@@ -1,5 +1,5 @@
 """
-Lirox v1.0.0 — Self-Improvement Engine
+Lirox v1.1 — Self-Improvement Engine
 Patches staged to data/pending_patches/ — never auto-applied.
 User reviews with /pending then commits with /apply.
 """

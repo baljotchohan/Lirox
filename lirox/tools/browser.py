@@ -1,5 +1,5 @@
 """
-Lirox v2.0 — Browser Tool
+Lirox v1.1 — Browser Tool
 
 Safe web browsing with:
 - URL safety validation (blocks localhost, private IPs, non-HTTP)
