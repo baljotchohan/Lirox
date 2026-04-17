@@ -117,3 +117,31 @@ for _d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, SESSIONS_DIR,
            str(Path(MEMORY_DIR) / "daily"),
            MIND_DIR, MIND_SKILLS_DIR, MIND_AGENTS_DIR, PATCHES_DIR]:
     os.makedirs(_d, exist_ok=True)
+
+# ── v1.1 additions ──────────────────────────────────────────────────────
+
+# Directories where writes are considered "self-modification".
+# Writes inside these roots require LIROX_ALLOW_SELF_MOD=1 to proceed.
+SELF_MOD_ROOTS = [
+    PROJECT_ROOT,
+]
+
+
+def is_self_modification(path: str) -> bool:
+    """True if `path` resolves to a location inside the Lirox source tree.
+
+    Used by the verified file layer to gate writes/deletes/patches that
+    would modify Lirox itself. Reads are always allowed.
+    """
+    try:
+        resolved = str(Path(path).expanduser().resolve())
+    except Exception:
+        return False
+    for root in SELF_MOD_ROOTS:
+        try:
+            root_r = str(Path(root).resolve())
+        except Exception:
+            continue
+        if resolved == root_r or resolved.startswith(root_r + os.sep):
+            return True
+    return False
