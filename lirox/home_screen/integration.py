@@ -228,7 +228,7 @@ def _shortcut_windows() -> bool:
             import win32com.client  # type: ignore
             shell = win32com.client.Dispatch("WScript.Shell")
             sc = shell.CreateShortCut(str(shortcut_path))
-            sc.Targetpath  = str(HOME_LIROX_DIR)
+            sc.TargetPath  = str(HOME_LIROX_DIR)
             sc.Description = "Lirox AI Agent workspace"
             sc.save()
             return True
