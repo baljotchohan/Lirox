@@ -10,20 +10,30 @@ Safe command execution with:
 
 import subprocess
 import os
-import re
 import sys
 import shlex
+import re
 from lirox.config import ALLOWED_COMMANDS, BLOCK_PATTERNS
+from lirox.utils.regex_cache import SHELL_VAR_ASSIGN, SHELL_CHAIN
 
 # Dangerous injection patterns — only truly dangerous ones
 # We now allow safe chaining like "&&" and ";" for multi-step commands,
 # but block patterns that could be used for data exfiltration or code injection
 INJECTION_PATTERNS = [
-    "$(", "`",          # Command substitution (arbitrary code execution)
-    "eval ", "exec(",   # Code injection
-    " > /dev",          # Device writes
-    "| base64",         # Exfiltration
-    "| curl",           # Exfiltration
+    "$(", "`",           # Command substitution (arbitrary code execution)
+    "eval ", "exec(",    # Code injection
+    " > /dev",           # Device writes
+    ">/dev",             # Device writes (no space)
+    "| base64",          # Exfiltration
+    "| curl",            # Exfiltration
+    "|curl",             # Exfiltration (no space)
+    "| wget",            # Exfiltration
+    "|wget",             # Exfiltration (no space)
+    "2>&1",              # Stderr redirect (can hide errors during injection)
+    "&>/",               # Combined stdout/stderr redirect to file
+    "tee /",             # Writing to arbitrary paths via tee
+    "/dev/tcp/",         # Bash TCP redirection (reverse shells)
+    "/dev/udp/",         # Bash UDP redirection (reverse shells)
 ]
 
 
@@ -48,8 +58,7 @@ def is_safe(cmd):
     # 3. Comprehensive Chain/Pipe Parsing
     # We split by all shell delimiters to ensure NO command escapes validation
     # Split by: &&, ||, ;, | (with optional surrounding whitespace)
-    delimiters = r'\s*&&\s*|\s*\|\|\s*|\s*;\s*|\s*\|\s*'
-    sub_commands = re.split(delimiters, cmd)
+    sub_commands = SHELL_CHAIN.split(cmd)
 
     for sub_cmd in sub_commands:
         sub_cmd = sub_cmd.strip()
@@ -65,7 +74,7 @@ def is_safe(cmd):
             potential_cmd = []
             for p in parts:
                 # Match shell variable assignment: IDENTIFIER=...
-                if re.match(r'^[A-Za-z_][A-Za-z0-9_]*=', p):
+                if SHELL_VAR_ASSIGN.match(p):
                     continue  # skip — this is an assignment, not a command
                 potential_cmd.append(p)
             base_cmd = potential_cmd[0] if potential_cmd else ""
@@ -103,6 +112,7 @@ def run_command(cmd: str) -> str:
     [FIX #1] Prevents shell injection by using subprocess array form.
     [FIX #2] Uses sys.executable for python3 commands to avoid Xcode resolver.
     """
+    from lirox.config import SHELL_TIMEOUT
     safe, reason = is_safe(cmd)
     if not safe:
         return f"[Blocked] {reason}"
@@ -119,7 +129,7 @@ def run_command(cmd: str) -> str:
             parsed_args,
             capture_output=True,
             text=True,
-            timeout=60
+            timeout=SHELL_TIMEOUT
         )
         output = result.stdout if result.returncode == 0 else result.stderr
         return output.strip() if output.strip() else "[Command completed with no output]"

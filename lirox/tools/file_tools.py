@@ -80,21 +80,18 @@ def _normalize_and_expand(path: str) -> str:
 
 
 def _is_safe_path(path: str) -> Tuple[bool, str]:
-    """Returns (ok, resolved_or_reason)."""
+    """Returns (ok, resolved_or_reason).
+
+    Uses os.path.realpath to fully resolve all symlink chains, preventing
+    path-traversal attacks via symlinks pointing outside the sandbox.
+    """
     from lirox.config import SAFE_DIRS_RESOLVED, PROTECTED_PATHS
     if not path:
         return False, "Empty path"
     try:
-        if os.path.islink(path):
-            target = _readlink_or_none(path)
-            if target is None:
-                return False, f"Symlink resolution error: unreadable link at {path}"
-            try:
-                resolved = str(Path(target).resolve())
-            except (OSError, ValueError) as e:
-                return False, f"Symlink resolution error: {e}"
-        else:
-            resolved = str(Path(_normalize_and_expand(path)).resolve())
+        # os.path.realpath resolves the complete symlink chain (including
+        # intermediate symlinks), unlike Path.resolve() on the raw target.
+        resolved = os.path.realpath(_normalize_and_expand(path))
     except (OSError, ValueError) as e:
         return False, f"Path resolution error: {e}"
 

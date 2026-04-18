@@ -1,5 +1,4 @@
 """Lirox v3.0 — LLM Utility Layer"""
-import atexit
 import os
 import hashlib
 import time
@@ -7,8 +6,7 @@ import requests
 import concurrent.futures
 from typing import List, Dict, Optional, Generator
 
-_FALLBACK_POOL = concurrent.futures.ThreadPoolExecutor(max_workers=5)
-atexit.register(_FALLBACK_POOL.shutdown, wait=False)
+from lirox.utils.managed_pool import get_default_pool as _get_pool
 
 _OLLAMA_OPTIONS = {
     "num_ctx": 8192, "num_thread": 4, "num_batch": 512,
@@ -365,7 +363,7 @@ def generate_response(prompt: str, provider: str = "auto",
             checker = _is_ollama_available if local == "ollama" else _is_hf_bnb_available
             if checker():
                 try:
-                    future = _FALLBACK_POOL.submit(_call_provider, local, prompt, system_prompt)
+                    future = _get_pool().submit(_call_provider, local, prompt, system_prompt)
                     resp   = future.result(timeout=timeout)
                     if not is_error_response(resp):
                         return resp
@@ -394,10 +392,12 @@ def generate_response(prompt: str, provider: str = "auto",
 
     response = None
     try:
-        future   = _FALLBACK_POOL.submit(_call_provider, provider, prompt, system_prompt)
+        future   = _get_pool().submit(_call_provider, provider, prompt, system_prompt)
         response = future.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
         return f"Error: LLM API timed out after {timeout}s"
+    except (SystemExit, KeyboardInterrupt):
+        raise
     except Exception as e:
         response = f"Error: {e}"
 
@@ -413,11 +413,13 @@ def generate_response(prompt: str, provider: str = "auto",
                 if not api_limiter.is_allowed(fb):
                     attempt += 1
                     continue  # skip rate-limited provider
-                future = _FALLBACK_POOL.submit(_call_provider, fb, prompt, system_prompt)
+                future = _get_pool().submit(_call_provider, fb, prompt, system_prompt)
                 retry  = future.result(timeout=timeout)
                 attempt += 1
                 if not is_error_response(retry):
                     return retry
+            except (SystemExit, KeyboardInterrupt):
+                raise
             except Exception:
                 attempt += 1
                 continue

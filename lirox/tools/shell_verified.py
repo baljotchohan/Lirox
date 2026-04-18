@@ -17,7 +17,10 @@ from lirox.tools.terminal import is_safe
 from lirox.verify import ShellReceipt
 
 
-def shell_run_verified(command: str, cwd: str = "", timeout: int = 60) -> ShellReceipt:
+def shell_run_verified(command: str, cwd: str = "", timeout: int = None) -> ShellReceipt:
+    if timeout is None:
+        from lirox.config import SHELL_TIMEOUT
+        timeout = SHELL_TIMEOUT
     r = ShellReceipt(tool="shell", command=command)
 
     # Safety

@@ -64,10 +64,13 @@ def _get_sys(profile_data: dict = None) -> str:
 
 def _extract_json(text: str) -> dict:
     text = (text or "").strip()
-    m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
+    from lirox.utils.regex_cache import JSON_FENCE
+    m = JSON_FENCE.search(text)
     if m:
-        try: return _json.loads(m.group(1))
-        except Exception: pass
+        try:
+            return _json.loads(m.group(1))
+        except _json.JSONDecodeError:
+            pass
     depth = 0; start = None
     for i, ch in enumerate(text):
         if ch == "{":
@@ -76,24 +79,30 @@ def _extract_json(text: str) -> dict:
         elif ch == "}":
             depth -= 1
             if depth == 0 and start is not None:
-                try: return _json.loads(text[start:i + 1])
-                except: start = None; depth = 0
+                try:
+                    return _json.loads(text[start:i + 1])
+                except _json.JSONDecodeError:
+                    start = None; depth = 0
     raise ValueError("No JSON in LLM response")
 
 
 def _resolve_path(raw: str, query: str) -> str:
     if not raw: return ""
     from lirox.config import WORKSPACE_DIR
+    from lirox.utils.input_sanitizer import sanitize_path
+    raw = sanitize_path(raw)
     p = os.path.expandvars(os.path.expanduser(raw))
-    if os.path.isabs(p): return p
-    if "/" in p or "\\" in p: return os.path.abspath(p)
+    if os.path.isabs(p):
+        return os.path.realpath(p)
+    if "/" in p or "\\" in p:
+        return os.path.realpath(os.path.abspath(p))
     # Bare filename → use workspace dir
     q = (query or "").lower()
     if "downloads" in q:   folder = "~/Downloads"
     elif "documents" in q: folder = "~/Documents"
     elif "desktop" in q:   folder = "~/Desktop"
     else:                  folder = WORKSPACE_DIR
-    return os.path.abspath(os.path.expanduser(os.path.join(folder, p)))
+    return os.path.realpath(os.path.abspath(os.path.expanduser(os.path.join(folder, p))))
 
 
 # ── Signal detection ──
@@ -147,6 +156,8 @@ class PersonalAgent(BaseAgent):
 
     def run(self, query: str, system_prompt: str = "",
             context: str = "", mode: str = "auto") -> Generator[AgentEvent, None, None]:
+        from lirox.utils.input_sanitizer import sanitize
+        query = sanitize(query)
         task = _classify(query)
         dispatch = {
             "self":   self._self,
