@@ -10,11 +10,7 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-try:
-    from importlib.metadata import version as _pkg_version
-    APP_VERSION = _pkg_version("lirox")
-except Exception:
-    APP_VERSION = "3.0.0"
+APP_VERSION = "3.0.0"  # Unified to v3.0 Master Rebuild
 
 _REPO_ROOT   = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
