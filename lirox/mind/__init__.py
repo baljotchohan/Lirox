@@ -1,1 +1,1 @@
-"""Lirox v1.1 — Mind Agent Package"""
+"""Mind module — soul, learnings, training."""

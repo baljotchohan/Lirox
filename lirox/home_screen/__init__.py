@@ -1,1 +1,0 @@
-"""Lirox Home Screen Integration."""
