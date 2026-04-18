@@ -1,5 +1,5 @@
 """
-Lirox v1.1 — Terminal Tool (hardened)
+Lirox v3.0 — Terminal Tool (hardened)
 
 Safe command execution with:
 - Expanded allowlist for common dev/system tools

@@ -1,5 +1,5 @@
 """
-Lirox v1.1 — Permanent Learnings Store
+Lirox v3.0 — Permanent Learnings Store
 
 This is the Mind Agent's long-term knowledge base.
 Every /train call crystallizes session patterns into permanent learnings.

@@ -1,5 +1,5 @@
 """
-Lirox v1.1 — Input Validation [FIX #5]
+Lirox v3.0 — Input Validation [FIX #5]
 
 Validates all user input for safety and sanity.
 Blocks XSS, SQL injection, path traversal, etc.

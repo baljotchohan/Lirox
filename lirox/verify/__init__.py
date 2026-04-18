@@ -1,4 +1,4 @@
-"""Lirox v1.1 — Verify layer: structured receipts + disk verification."""
+"""Lirox v3.0 — Verify layer: structured receipts + disk verification."""
 from lirox.verify.receipt import (
     ExecutionReceipt,
     FileReceipt,

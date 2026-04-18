@@ -1,5 +1,5 @@
 """
-Lirox v1.1 — Session Store
+Lirox v3.0 — Session Store
 Auto-names sessions, persists history, supports /history command.
 """
 from __future__ import annotations

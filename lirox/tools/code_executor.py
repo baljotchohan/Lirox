@@ -1,5 +1,5 @@
 """
-Lirox v1.1 — Code Executor Tool
+Lirox v3.0 — Code Executor Tool
 
 Safe code execution for testing and validation. Runs Python code in an
 isolated subprocess with a hard timeout and caps output to

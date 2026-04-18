@@ -1,8 +1,8 @@
 """
-Lirox v1.1 — User Profile System (CLI-First)
+Lirox v3.0 — User Profile System (CLI-First)
 
 Storage anchored to PROJECT_ROOT (not CWD).
-v2.0: Advanced prompt system with learning context boost integration.
+v3.0: Advanced prompt system with learning context boost integration.
 """
 
 import json

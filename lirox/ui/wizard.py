@@ -1,4 +1,4 @@
-"""Lirox v2.0 — Deep Setup Wizard.
+"""Lirox v3.0 — Deep Setup Wizard.
 
 Step-by-step onboarding that produces a personalized first interaction:
   1. Welcome + operator name
@@ -455,7 +455,7 @@ def _run_one_paste_import() -> None:
 def _multiline_read() -> str:
     """Read a multi-line block. The user MUST type END on its own line to
     finish — this is explicit and unambiguous, unlike heuristic blank-line
-    detection which truncated valid JSON paste in v1.0.
+    detection which truncated valid JSON paste in v2.x.
     """
     lines: list[str] = []
     while True:

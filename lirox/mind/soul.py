@@ -1,5 +1,5 @@
 """
-Lirox v1.1 — Living Soul Engine
+Lirox v3.0 — Living Soul Engine
 
 The soul is a dynamic document that evolves with the user.
 It's not a fixed config — it grows, changes personality, learns quirks,

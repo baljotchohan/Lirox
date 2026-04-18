@@ -1,4 +1,4 @@
-"""Lirox v1.0 — File Operations (verified, structured receipts, audit logging).
+"""Lirox v3.0 — File Operations (verified, structured receipts, audit logging).
 
 Every write/read/delete/patch now returns a FileReceipt with explicit
 disk-verification. The agent can no longer report success unless
