@@ -5,20 +5,16 @@ memory.json
 profile.json
 .lirox_history
 
-# Personal agent data (soul, learnings — user-specific)
-data/mind/soul.json
-data/mind/learnings.json
-data/mind/skills/
-data/mind/agents/
-data/memory/
-data/sessions/
-data/pending_patches/
+# Personal agent data (soul, learnings, sessions, etc.)
+data/
+outputs/
+!data/.gitkeep
+!outputs/.gitkeep
 
 # Temporary / Export files
 lirox_memory_export_*.json
 test_export.json
 scratch/
-outputs/
 *.bak
 *.tmp
 
@@ -75,21 +71,11 @@ venv.bak/
 Thumbs.db
 
 # Lirox Artifacts
-outputs/
 scheduled_tasks.json
 test_tasks.json
 
-# Browser data (v0.7)
-data/browser_cookies/
-data/browser_sessions.json
-lightpanda
-
 # Runtime Data & Logs
-data/agent.log
-data/memory/
-data/sessions/
-data/pending_patches/
+# (Handled by ignoring data/ above)
 
 # Backup files (created by /apply)
 *.bak
-data/improvements.log
