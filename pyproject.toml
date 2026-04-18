@@ -27,11 +27,6 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 
-[project.urls]
-Homepage = "https://github.com/baljotsingh/lirox"
-Repository = "https://github.com/baljotsingh/lirox"
-Issues = "https://github.com/baljotsingh/lirox/issues"
-
 dependencies = [
     "rich>=13.0.0",
     "prompt-toolkit>=3.0.0",
@@ -43,6 +38,11 @@ dependencies = [
     "beautifulsoup4>=4.12.0",
     "lxml>=4.9.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/baljotsingh/lirox"
+Repository = "https://github.com/baljotsingh/lirox"
+Issues = "https://github.com/baljotsingh/lirox/issues"
 
 [project.optional-dependencies]
 full = ["openai>=1.0.0", "anthropic>=0.7.0"]

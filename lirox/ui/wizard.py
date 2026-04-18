@@ -132,10 +132,17 @@ def run_setup_wizard(profile) -> None:
     # Step 7 — LLM setup
     _llm_setup_flow()
 
+    # Step 8 — Memory import (optional, one-paste)
+    if Confirm.ask(
+        "\n  [bold #FFC107]📋 Import memory from ChatGPT / Claude / Gemini?[/]",
+        default=False,
+    ):
+        _run_one_paste_import()
+
     # Verify profile saved
     _verify_profile_saved(profile)
 
-    # Step 8 — Summary card
+    # Step 9 — Summary card
     _show_summary(profile, agent_name, user_name, niche)
 
 
@@ -312,6 +319,93 @@ def _setup_cloud_keys() -> None:
         console.print(f"  [bold green]✓ {name} key saved.[/]")
         if not Confirm.ask("  Add another?", default=False):
             break
+
+
+def _run_one_paste_import() -> None:
+    """New one-paste flow. Shows the sync prompt; accepts file path OR pasted JSON."""
+    from lirox.memory.sync_prompt import MEMORY_SYNC_PROMPT
+    console.print()
+    console.print(Panel(
+        "[bold]Option A — One-paste Memory Sync[/]\n\n"
+        "1. Copy the prompt below.\n"
+        "2. Paste it into ChatGPT / Claude / Gemini.\n"
+        "3. Copy the ```json block they return.\n"
+        "4. Paste it here (any shape — fences optional).\n\n"
+        "[bold]Option B — File import[/]\n\n"
+        "Paste a file path instead (ChatGPT conversations.json, Claude export, "
+        "Gemini Takeout folder, Lirox export).\n",
+        title="[bold]📋 Memory Import[/]", border_style="#FFC107", box=HEAVY, width=76
+    ))
+
+    console.print("\n  [bold #FFC107]━━━ COPY THIS PROMPT ━━━[/]\n")
+    console.print(Panel(MEMORY_SYNC_PROMPT, border_style="cyan",
+                         box=ROUNDED, padding=(1, 2), width=76))
+
+    console.print(
+        "\n  [bold #FFC107]Paste a file path on one line, OR paste the full JSON.[/]\n"
+        "  [dim]When done, type [bold]END[/] on its own line and press Enter.[/]\n"
+    )
+    buffer = _multiline_read()
+    if not buffer.strip():
+        console.print("  [dim]Skipped.[/]")
+        return
+
+    from lirox.memory.import_handler import MemoryImporter
+    from lirox.mind.agent import get_learnings
+    importer = MemoryImporter(get_learnings())
+
+    # Is it a file path?
+    candidate = buffer.strip().strip("'").strip('"')
+    try:
+        is_path = Path(candidate).expanduser().exists() and ("\n" not in candidate)
+    except OSError:
+        is_path = False
+
+    with console.status("[bold cyan]Importing…[/]", spinner="dots"):
+        if is_path:
+            result = importer.import_file(candidate)
+        else:
+            result = importer.import_raw_data(buffer, source="pasted")
+
+    _render_import_result(result)
+
+
+def _multiline_read() -> str:
+    """Read a multi-line block. The user MUST type END on its own line to
+    finish — this is explicit and unambiguous, unlike heuristic blank-line
+    detection which truncated valid JSON paste in v2.x.
+    """
+    lines: list[str] = []
+    while True:
+        try:
+            line = input("  ")
+        except (EOFError, KeyboardInterrupt):
+            break
+        stripped = line.strip().lower()
+        if stripped in ("end", "eof"):
+            break
+        lines.append(line)
+    return "\n".join(lines)
+
+
+def _render_import_result(result: dict) -> None:
+    if not result.get("success"):
+        console.print(f"\n  [red]✖ Import failed: {result.get('error', 'unknown')}[/]")
+        return
+    console.print("\n  [bold green]✓ Import complete[/]")
+    def _show(label, key):
+        v = result.get(key, 0)
+        if v:
+            console.print(f"    • {label}: {v}")
+    _show("Facts added",           "facts_added")
+    _show("Preferences added",     "preferences_added")
+    _show("Projects added",        "projects_added")
+    _show("Topics added",          "topics_added")
+    _show("Dislikes added",        "dislikes_added")
+    _show("Profile fields updated","profile_fields_updated")
+    src  = result.get("source", "unknown")
+    mode = result.get("mode", result.get("imported", ""))
+    console.print(f"    [dim]Source: {src}  ·  Mode: {mode}[/]")
 
 
 def _show_summary(profile, agent_name: str, user_name: str, niche: str) -> None:
