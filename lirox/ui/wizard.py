@@ -1,4 +1,4 @@
-"""Lirox v1.0 — Deep Setup Wizard.
+"""Lirox v2.0 — Deep Setup Wizard.
 
 Step-by-step onboarding that produces a personalized first interaction:
   1. Welcome + operator name
@@ -59,6 +59,73 @@ def _validate_write_access(directory: Path) -> tuple[bool, str]:
 # ─────────────────────────────────────────────────────────────────────
 # Public entry point
 # ─────────────────────────────────────────────────────────────────────
+
+def _create_launch_shortcut() -> None:
+    """Create a one-click launcher in ~/Lirox/ for easy access."""
+    import sys
+    import stat as _stat
+    lirox_dir = Path.home() / "Lirox"
+    lirox_dir.mkdir(exist_ok=True)
+
+    # Detect the lirox executable path
+    import shutil
+    lirox_bin = shutil.which("lirox") or f"{sys.executable} -m lirox"
+
+    if sys.platform == "darwin":
+        # macOS .command file — double-clickable in Finder
+        shortcut = lirox_dir / "Launch Lirox.command"
+        shortcut.write_text(
+            f"#!/bin/bash\n"
+            f"# Lirox Launcher — double-click to start\n"
+            f"clear\n"
+            f"{lirox_bin}\n",
+            encoding="utf-8"
+        )
+        shortcut.chmod(shortcut.stat().st_mode | _stat.S_IEXEC)
+
+    elif sys.platform == "win32":
+        # Windows .bat file
+        shortcut = lirox_dir / "Launch Lirox.bat"
+        shortcut.write_text(
+            f"@echo off\ncls\n{lirox_bin}\npause\n",
+            encoding="utf-8"
+        )
+    else:
+        # Linux .sh file
+        shortcut = lirox_dir / "launch_lirox.sh"
+        shortcut.write_text(
+            f"#!/bin/bash\nclear\n{lirox_bin}\n",
+            encoding="utf-8"
+        )
+        shortcut.chmod(shortcut.stat().st_mode | _stat.S_IEXEC)
+
+    # Create a quick-reference command card
+    cmd_card = lirox_dir / "COMMANDS.md"
+    cmd_card.write_text(
+        "# Lirox Quick Commands\n\n"
+        "| Command | What it does |\n"
+        "|---|---|\n"
+        "| `/train` | Learn from your conversations — run this daily |\n"
+        "| `/recall` | See everything the agent knows about you |\n"
+        "| `/setup` | Re-run setup, change API keys or preferences |\n"
+        "| `/memory` | View memory stats |\n"
+        "| `/add-skill name` | Create a new custom skill |\n"
+        "| `/add-agent name` | Create a new custom sub-agent |\n"
+        "| `/backup` | Save all data |\n"
+        "| `/improve` | Scan codebase for issues |\n"
+        "| `/apply` | Apply staged improvements (review carefully!) |\n"
+        "| `/soul` | View agent personality |\n"
+        "| `/help` | Full command list |\n",
+        encoding="utf-8"
+    )
+
+    try:
+        console.print(
+            f"  [dim #10b981]✓ Launch shortcut created: {shortcut}[/]"
+        )
+    except Exception:
+        pass
+
 
 def run_setup_wizard(profile) -> None:
     """Full wizard. Safe to re-run via /setup."""
@@ -124,6 +191,9 @@ def run_setup_wizard(profile) -> None:
 
     # Step 7 — BUG-2 FIX: Home Screen folder integration
     _setup_home_folder_step()
+
+    # Step 7b — Create platform-specific launch shortcut in ~/Lirox/
+    _create_launch_shortcut()
 
     # Step 8 — Memory import (optional, one-paste)
     if Confirm.ask(

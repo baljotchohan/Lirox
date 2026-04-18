@@ -1,4 +1,4 @@
-"""Lirox v1.1 — Entry Point"""
+"""Lirox v2.0 — Entry Point"""
 import os
 import sys
 import time
@@ -147,8 +147,8 @@ def _try_import(m: str) -> bool:
 from lirox.orchestrator.master import MasterOrchestrator
 from lirox.ui.display import (
     show_welcome, show_status_card, show_thinking, show_agent_event,
-    show_answer, render_streaming_chunk, error_panel, info_panel,
-    success_message, confirm_prompt, console,
+    show_answer, render_streaming_chunk, render_progress_indicator,
+    error_panel, info_panel, success_message, confirm_prompt, console,
 )
 from lirox.utils.llm import available_providers
 from lirox.config import APP_VERSION
@@ -467,6 +467,15 @@ def _show_pending_diffs(imp) -> None:
 def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = False):
     parts = cmd.strip().split()
     base  = parts[0].lower()
+    try:
+        _handle_command_inner(orch, profile, cmd, base, parts, verbose)
+    except KeyboardInterrupt:
+        console.print("\n  [dim]Interrupted.[/]")
+    except Exception as _cmd_err:
+        error_panel("COMMAND ERROR", str(_cmd_err))
+
+
+def _handle_command_inner(orch, profile, cmd, base, parts, verbose):
 
     if base == "/help":
         from rich.table import Table as _T
@@ -647,24 +656,28 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
                 stats = get_trainer(orch.global_memory).train(
                     orch.global_memory, orch.session_store
                 )
-
-            if all(stats.get(k, 0) == 0 for k in ["facts_added", "topics_bumped", "preferences_added"]):
-                info_panel(
-                    "🧠 Training complete — nothing new to learn yet.\n\n"
-                    "Chat more first! The more you talk, the more I learn about you.\n"
-                    "Then run /train again."
-                )
-            else:
-                success_message(
-                    f"Training complete! I learned:\n"
-                    f"  ✓ Facts         : {stats.get('facts_added', 0)} new\n"
-                    f"  ✓ Topics        : {stats.get('topics_bumped', 0)} updated\n"
-                    f"  ✓ Preferences   : {stats.get('preferences_added', 0)} captured\n"
-                    f"  ✓ Projects      : {stats.get('projects_found', 0)} found\n\n"
-                    f"  Run /recall to see everything I know about you."
-                )
+        except KeyboardInterrupt:
+            console.print("\n  [dim]Training interrupted. Partial results saved.[/]")
+            return
         except Exception as e:
             error_panel("TRAINING ERROR", str(e))
+            return
+
+        if all(stats.get(k, 0) == 0 for k in ["facts_added", "topics_bumped", "preferences_added"]):
+            info_panel(
+                "🧠 Training complete — nothing new to learn yet.\n\n"
+                "Chat more first! The more you talk, the more I learn about you.\n"
+                "Then run /train again."
+            )
+        else:
+            success_message(
+                f"Training complete! I learned:\n"
+                f"  ✓ Facts         : {stats.get('facts_added', 0)} new\n"
+                f"  ✓ Topics        : {stats.get('topics_bumped', 0)} updated\n"
+                f"  ✓ Preferences   : {stats.get('preferences_added', 0)} captured\n"
+                f"  ✓ Projects      : {stats.get('projects_found', 0)} found\n\n"
+                f"  Run /recall to see everything I know about you."
+            )
 
     elif base == "/learnings":
         from lirox.mind.agent import get_learnings

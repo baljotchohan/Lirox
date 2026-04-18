@@ -1,4 +1,4 @@
-"""Lirox v1.1 — Training Engine.
+"""Lirox v2.0 — Training Engine.
 
 v2 root-cause fixes:
   - Reads from disk JSONL logs + session store (not just the 100-msg

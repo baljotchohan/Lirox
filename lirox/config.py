@@ -14,7 +14,7 @@ try:
     from importlib.metadata import version as _pkg_version
     APP_VERSION = _pkg_version("lirox")
 except Exception:
-    APP_VERSION = "1.0.0"  # fallback when running from source without install
+    APP_VERSION = "2.0.0"  # fallback when running from source without install
 _REPO_ROOT   = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
 DATA_DIR     = str(_REPO_ROOT / "data")

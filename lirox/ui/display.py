@@ -1,4 +1,4 @@
-"""Lirox v1.1 — Terminal UI"""
+"""Lirox v2.0 — Terminal UI"""
 import re
 from rich.console import Console
 from rich.panel import Panel
@@ -12,25 +12,17 @@ console = Console()
 
 def _strip_md(text: str) -> str:
     """Convert common markdown symbols to clean plain text for terminal streaming."""
-    # Remove code fences
     text = re.sub(r'```[\w]*\n?', '', text)
-    # Headers: ## Heading → HEADING  (keep caps for visual weight)
     text = re.sub(r'^#{1,6}\s+', '', text, flags=re.MULTILINE)
-    # Bold+italic ***text***
     text = re.sub(r'\*{3}(.+?)\*{3}', r'\1', text)
-    # Bold **text**
     text = re.sub(r'\*{2}(.+?)\*{2}', r'\1', text)
-    # Italic *text* or _text_
     text = re.sub(r'\*(.+?)\*', r'\1', text)
     text = re.sub(r'_(.+?)_', r'\1', text)
-    # Unordered bullets: '* item' or '- item' → '• item'
     text = re.sub(r'^[\*\-]\s+', '• ', text, flags=re.MULTILINE)
-    # Numbered lists stay as-is
-    # Inline code `code` → code
     text = re.sub(r'`([^`]+)`', r'\1', text)
-    # Horizontal rules
     text = re.sub(r'^[-\*]{3,}\s*$', '', text, flags=re.MULTILINE)
     return text
+
 
 CLR_LIROX    = "bold #FFC107"
 CLR_ACCENT   = "bold #FFD54F"
@@ -45,22 +37,27 @@ CLR_PERM     = "bold #f59e0b"
 AGENT_COLORS = {"personal": CLR_PERSONAL, "mind": CLR_ACCENT, "skill": "bold #34d399"}
 AGENT_ICONS  = {"personal": "⚡", "mind": "🧠", "skill": "🔧"}
 
+# ── NEW 3D GRADIENT LOGO ─────────────────────────────────────────────────────
+# Dark amber (#FF8C00) → warm gold (#FFC107) → light gold (#FFE66D)
+# Shadow row beneath each block row creates 3D depth illusion.
 LOGO = """
-  [bold #FFB800]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]
-  [bold #FFBE00]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]
-  [bold #FFC700]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]
-  [bold #FFD000]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]
-  [bold #FFDA00]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]
-  [bold #FFE54C]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]
-  [bold #FFE54C]▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀▀[/]
-  [dim #FFD700]✦  Intelligence as an Operating System  ✦  v{v}[/]
+  [bold #FF8C00]╔═══════════════════════════════════════╗[/]
+  [bold #FF8C00]║[/]  [bold #FF9500]██╗     ██╗██████╗  ██████╗ ██╗  ██╗[/]  [bold #FF8C00]║[/]
+  [bold #FF9500]║[/]  [bold #FFA500]██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝[/]  [bold #FF9500]║[/]
+  [bold #FFA500]║[/]  [bold #FFB300]██║     ██║██████╔╝██║   ██║ ╚███╔╝ [/]  [bold #FFA500]║[/]
+  [bold #FFB300]║[/]  [bold #FFC107]██║     ██║██╔══██╗██║   ██║ ██╔██╗ [/]  [bold #FFB300]║[/]
+  [bold #FFC107]║[/]  [bold #FFD54F]███████╗██║██║  ██║╚██████╔╝██╔╝ ██╗[/]  [bold #FFC107]║[/]
+  [bold #FFD54F]║[/]  [bold #FFE066]╚══════╝╚═╝╚═╝  ╚═╝ ╚═════╝ ╚═╝  ╚═╝[/]  [bold #FFD54F]║[/]
+  [bold #FFE066]╠═══════════════════════════════════════╣[/]
+  [bold #FFE066]║[/]  [dim #FFD700]✦  Intelligence as an Operating System  ✦  v{v}[/]  [bold #FFE066]║[/]
+  [bold #FFE066]╚═══════════════════════════════════════╝[/]
 """.format(v=APP_VERSION)
 
 
 def show_welcome():
     console.print(LOGO)
-    console.print(f"  [{CLR_DIM}]Files · Web · Memory · Self-Learning[/]")
-    console.print(f"  [{CLR_DIM}]Type /help for commands[/]\n")
+    console.print(f"  [{CLR_DIM}]Memory · Skills · Self-Learning · Always Growing[/]")
+    console.print(f"  [{CLR_DIM}]Type /help for commands · /setup to configure[/]\n")
     from lirox.agent.profile import UserProfile
     p = UserProfile()
     if p.is_setup():
@@ -76,7 +73,7 @@ def show_thinking(msg: str):
     console.print(Panel(
         f"[{CLR_THINK}]{escape(msg)}[/]",
         title=f"[{CLR_THINK}]🧠 THINKING[/]",
-        border_style="#a78bfa", padding=(0,1)))
+        border_style="#a78bfa", padding=(0, 1)))
 
 
 def show_agent_event(agent: str, etype: str, msg: str):
@@ -84,7 +81,7 @@ def show_agent_event(agent: str, etype: str, msg: str):
     color = AGENT_COLORS.get(agent, CLR_ACCENT)
 
     if etype == "agent_start":
-        return  # FIX: suppress "LIROX AGENT activated" spam — completely silent
+        return  # suppress spam
 
     elif etype == "tool_call":
         console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(msg)}[/]")
@@ -120,7 +117,6 @@ def render_deep_thinking(message: str) -> None:
 
 
 def render_permission_request(event_data: dict) -> None:
-    """Render a `permission_request` event as a compact panel."""
     try:
         from lirox.ui.permission_ui import render_permission_request as _render
         _render(event_data)
@@ -129,7 +125,6 @@ def render_permission_request(event_data: dict) -> None:
 
 
 def render_permission_grant(event_data: dict) -> None:
-    """Render a `permission_grant` event."""
     try:
         from lirox.ui.permission_ui import render_permission_grant as _render
         _render(event_data)
@@ -138,7 +133,6 @@ def render_permission_grant(event_data: dict) -> None:
 
 
 def render_permission_deny(event_data: dict) -> None:
-    """Render a `permission_deny` event."""
     try:
         from lirox.ui.permission_ui import render_permission_deny as _render
         _render(event_data)
@@ -156,6 +150,7 @@ def render_progress_indicator(event_type: str, message: str) -> None:
         "self_improvement": "🔬",
         "step_execution":   "▶️ ",
         "fallback":         "⚡",
+        "agent_progress":   "•",
     }
     icon = _ICONS.get(event_type, "•")
     if message and message.strip():
@@ -163,14 +158,9 @@ def render_progress_indicator(event_type: str, message: str) -> None:
 
 
 def render_streaming_chunk(chunk: str) -> None:
-    """Print a streaming chunk with live character-by-character animation.
-
-    Markdown symbols (#, *, **) are stripped before output so they never
-    appear as raw characters in the terminal stream.
-    """
+    """Print a streaming chunk with live character-by-character animation."""
     if not chunk:
         return
-    # Code blocks are rendered via Rich Markdown — no stripping needed
     if chunk.strip().startswith("```"):
         try:
             console.print(Markdown(chunk))
@@ -187,7 +177,7 @@ def render_streaming_chunk(chunk: str) -> None:
 
 
 def show_status_card(profile_data: dict, providers: list):
-    t = Table(box=None, padding=(0,2), show_header=False)
+    t = Table(box=None, padding=(0, 2), show_header=False)
     t.add_column("Key",   style=CLR_DIM)
     t.add_column("Value", style="white")
     t.add_row("Operator",  profile_data.get("user_name", "Operator"))
@@ -196,18 +186,20 @@ def show_status_card(profile_data: dict, providers: list):
     t.add_row("Providers", ", ".join(providers) if providers else "None — run /setup")
     t.add_row("Mode",      "Personal AI OS")
     console.print(Panel(t, title=f"[{CLR_LIROX}]✦ LIROX v{APP_VERSION} — SYSTEM STATUS[/]",
-                         border_style="#FFC107", padding=(0,1)))
+                         border_style="#FFC107", padding=(0, 1)))
     console.print()
 
 
 def error_panel(title: str, msg: str):
-    console.print(Panel(f"[{CLR_ERROR}]{escape(msg)}[/]",
-                         title=f"[{CLR_ERROR}]{escape(title)}[/]",
-                         border_style="#ef4444"))
+    hint = "\n  [dim]Try /help or /restart if this persists.[/]"
+    console.print(Panel(
+        f"[{CLR_ERROR}]{escape(msg)}[/]{hint}",
+        title=f"[{CLR_ERROR}]{escape(title)}[/]",
+        border_style="#ef4444"))
 
 
 def info_panel(msg: str):
-    console.print(Panel(f"[white]{escape(msg)}[/]", border_style="#94a3b8", padding=(0,1)))
+    console.print(Panel(f"[white]{escape(msg)}[/]", border_style="#94a3b8", padding=(0, 1)))
 
 
 def success_message(msg: str):
@@ -221,9 +213,8 @@ def confirm_prompt(msg: str) -> bool:
 
 def show_context_status(buffer_msgs: int, facts_count: int, provider: str = "") -> None:
     """Show a compact status line — memory usage + provider."""
-    # Estimate tokens (rough: 4 chars/token, avg 100 chars/message)
     est_tokens = buffer_msgs * 100 // 4
-    ctx_limit  = 8192  # conservative estimate
+    ctx_limit  = 8192
     pct = min(100, (est_tokens * 100) // ctx_limit) if ctx_limit > 0 else 0
 
     filled = pct // 10

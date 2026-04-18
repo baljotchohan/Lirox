@@ -92,3 +92,4 @@ data/pending_patches/
 
 # Backup files (created by /apply)
 *.bak
+data/improvements.log

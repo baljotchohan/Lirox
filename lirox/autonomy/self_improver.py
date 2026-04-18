@@ -1,4 +1,4 @@
-"""Lirox Autonomy — Self Improver (AI Refactor Engine)"""
+"""Lirox v2.0 Autonomy — Self Improver (AI Refactor Engine)"""
 
 from __future__ import annotations
 
@@ -102,12 +102,6 @@ class SelfImprover:
                 issues.append(Issue(path, node.lineno, "bare_except",
                     "Use specific exceptions instead of bare except", "medium"))
 
-            # Missing return type
-            if isinstance(node, ast.FunctionDef):
-                if node.returns is None and not node.name.startswith("_"):
-                    issues.append(Issue(path, node.lineno, "type_safety",
-                        f"{node.name} missing return type", "low"))
-
         return issues
 
     def _line_checks(self, path: str, source: str) -> List[Issue]:
@@ -136,26 +130,42 @@ class SelfImprover:
             original = path.read_text(errors="replace")
 
             prompt = f"""
-Fix this issue in Python code:
+You are fixing a SPECIFIC issue in a Python file. Make the MINIMUM change needed.
+Do NOT restructure or simplify the file. Do NOT remove any existing code.
+Keep all imports, classes, methods, and docstrings intact.
 
 File: {issue.file}
-Issue: {issue.message}
+Issue to fix: {issue.message}
+Severity: {issue.severity}
 
-Code:
-{original[:3000]}
+CURRENT CODE (full file — preserve all of it except the specific fix):
+{original[:4000]}
 
-Return only fixed code.
+OUTPUT: Return the COMPLETE file content with ONLY the specific fix applied.
+The output must be at least as long as the input.
 """
 
             try:
-                patched = generate_response(prompt)
+                patched = generate_response(
+                    prompt, provider="auto",
+                    system_prompt="Fix the code issue. Return only valid Python.",
+                )
+
+                # SAFETY: reject if patched is <40% of original — LLM replaced whole file
+                if len(patched.strip()) < len(original.strip()) * 0.40:
+                    continue  # skip destructive patch
+
+                # SAFETY: reject if patched has fewer than 5 lines — probably truncated
+                if patched.count("\n") < 5:
+                    continue
+
                 diff = make_diff(original, patched, issue.file)
 
                 if diff:
                     self.patches.append(
                         Patch(issue, original, patched, diff)
                     )
-            except:
+            except Exception:
                 pass
 
         return self.patches
