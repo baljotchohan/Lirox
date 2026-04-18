@@ -108,8 +108,10 @@ class AutoLearner:
         """Execute training and call the callback if set."""
         stats: dict = {}
         try:
-            from lirox.mind.agent import get_trainer
-            trainer = get_trainer()
+            from lirox.mind.trainer import TrainingEngine
+            from lirox.mind.learnings import LearningsStore
+            learnings = LearningsStore()
+            trainer = TrainingEngine(learnings)
             stats   = trainer.train(self._memory, self._sessions)
             self._last_trained_count = self._last_message_count
 

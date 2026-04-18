@@ -31,13 +31,8 @@ from lirox.config import is_self_modification
 
 
 def _audit(event_name: str, path: str = "", message: str = "", **kwargs) -> None:
-    """Non-blocking audit log call — silently ignores all errors."""
-    try:
-        from lirox.audit.logger import audit_log, AuditEvent
-        evt = AuditEvent(event_name)
-        audit_log(evt, path=path, message=message, extra=kwargs if kwargs else None)
-    except Exception:
-        pass
+    """Audit logging placeholder — audit module removed in v3.0."""
+    pass
 
 
 def _self_mod_blocked(path: str) -> Optional[str]:

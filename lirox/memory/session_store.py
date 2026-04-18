@@ -160,8 +160,8 @@ class SessionStore:
         except Exception as e:
             # BUG-8 FIX: log instead of silently swallowing
             try:
-                from lirox.utils.structured_logger import get_logger
-                get_logger("lirox.sessions").error(
+                import logging
+                logging.getLogger("lirox.sessions").error(
                     f"Session save failed [{self._current.session_id}]: {e}")
             except Exception:
                 pass  # if logger itself fails, don't crash the agent

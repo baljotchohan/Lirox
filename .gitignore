@@ -1,81 +1,25 @@
-# Sensitive Files
-.env
-.env.local
-memory.json
-profile.json
-.lirox_history
-
-# Personal agent data (soul, learnings, sessions, etc.)
-data/
-outputs/
-!data/.gitkeep
-!outputs/.gitkeep
-
-# Temporary / Export files
-lirox_memory_export_*.json
-test_export.json
-scratch/
-*.bak
-*.tmp
-
-# Testing / Debug Scripts
-test_*.py
-!tests/test_*.py
-debug_*.py
-list_*.py
-testinglirox
-
 # Python
 __pycache__/
 *.py[cod]
 *$py.class
-venv/
-.venv/
-.Python
-env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-share/python-wheels/
 *.egg-info/
-.installed.cfg
+dist/
+build/
 *.egg
-MANIFEST
 
-# Environments
+# Lirox data (user-specific, never commit)
+data/
+outputs/
+profile.json
 .env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
-
-# IDEs
-.vscode/
-.idea/
-*.swp
-*.swo
+.env.local
 
 # OS
 .DS_Store
 Thumbs.db
 
-# Lirox Artifacts
-scheduled_tasks.json
-test_tasks.json
-
-# Runtime Data & Logs
-# (Handled by ignoring data/ above)
-
-# Backup files (created by /apply)
-*.bak
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo

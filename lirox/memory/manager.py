@@ -38,8 +38,8 @@ class MemoryManager:
                     "ts":        ts
                 }) + "\n")
         except Exception as e:
-            from lirox.utils.structured_logger import get_logger
-            get_logger("lirox.memory").warning(f"Daily write error: {e}")
+            import logging
+            logging.getLogger("lirox.memory").warning(f"Daily write error: {e}")
 
     # Stop-words filtered out before scoring relevance.
     _CONTEXT_STOP_WORDS = {
@@ -163,8 +163,8 @@ class MemoryManager:
             with open(path, "w") as f:
                 json.dump(data, f, indent=2)
         except IOError as e:
-            from lirox.utils.structured_logger import get_logger
-            get_logger("lirox.memory").error(f"Memory save failed: {path} — {e}")
+            import logging
+            logging.getLogger("lirox.memory").error(f"Memory save failed: {path} — {e}")
         except Exception as e:
-            from lirox.utils.structured_logger import get_logger
-            get_logger("lirox.memory").error(f"Unexpected memory save error: {e}")
+            import logging
+            logging.getLogger("lirox.memory").error(f"Unexpected memory save error: {e}")

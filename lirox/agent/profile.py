@@ -45,8 +45,8 @@ class UserProfile:
                         merged.update(data)
                         return merged
                 except (json.JSONDecodeError, IOError) as e:
-                    from lirox.utils.structured_logger import get_logger
-                    get_logger("lirox.profile").warning(f"Non-critical error: {e}")
+                    import logging
+                    logging.getLogger("lirox.profile").warning(f"Non-critical: {e}")
             
             profile = dict(self.DEFAULT)
             profile["created_at"] = datetime.now().isoformat()
@@ -63,13 +63,13 @@ class UserProfile:
                 # [FIX #2] Atomic file replacement
                 os.replace(temp_file, self.storage_file)
             except Exception as e:
-                from lirox.utils.structured_logger import get_logger
-                get_logger("lirox.profile").warning(f"Non-critical error saving profile: {e}")
+                import logging
+                logging.getLogger("lirox.profile").warning(f"Non-critical: {e}")
                 if os.path.exists(temp_file):
                     try:
                         os.remove(temp_file)
                     except OSError as e2:
-                        get_logger("lirox.profile").warning(f"Non-critical error removing temp file: {e2}")
+                        logging.getLogger("lirox.profile").warning(f"Non-critical error removing temp file: {e2}")
 
     def update(self, key: str, value):
         with self._lock:
