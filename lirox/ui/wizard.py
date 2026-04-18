@@ -1,4 +1,4 @@
-"""Lirox v1.1 — Deep Setup Wizard.
+"""Lirox v1.0 — Deep Setup Wizard.
 
 Step-by-step onboarding that produces a personalized first interaction:
   1. Welcome + operator name
@@ -7,9 +7,13 @@ Step-by-step onboarding that produces a personalized first interaction:
   4. Current project (+ stage + stack)
   5. Goals (with follow-up categorization)
   6. LLM setup (local + cloud)
-  7. One-paste memory import (optional)
-  8. Seed LearningsStore with everything captured
-  9. Personalized summary card
+  7. Home Screen folder (BUG-2 fix: ask user for ~/Lirox access)
+  8. One-paste memory import (optional)
+  9. Seed LearningsStore with everything captured
+ 10. Personalized summary card
+
+BUG-6 fix: profile.json write is validated before reporting "Setup complete".
+BUG-2 fix: step 7 asks user permission to create ~/Lirox folder.
 """
 from __future__ import annotations
 
@@ -32,12 +36,40 @@ _ENV_PATH = str(_PROJECT_ROOT_DIR / ".env")
 
 
 # ─────────────────────────────────────────────────────────────────────
+# BUG-6 FIX: validate write access before saving profile
+# ─────────────────────────────────────────────────────────────────────
+
+def _validate_write_access(directory: Path) -> tuple[bool, str]:
+    """Test that we can actually write to *directory*. Returns (ok, message)."""
+    test_file = directory / ".lirox_write_test"
+    try:
+        test_file.write_text("ok", encoding="utf-8")
+        test_file.unlink()
+        return True, ""
+    except PermissionError:
+        return False, (
+            f"No write permission to: {directory}\n"
+            f"  Try: chmod u+w '{directory}'\n"
+            f"  Or move Lirox to a location you own."
+        )
+    except OSError as e:
+        return False, f"Cannot write to {directory}: {e}"
+
+
+# ─────────────────────────────────────────────────────────────────────
 # Public entry point
 # ─────────────────────────────────────────────────────────────────────
 
 def run_setup_wizard(profile) -> None:
     """Full wizard. Safe to re-run via /setup."""
     console.clear()
+
+    # BUG-6 FIX: validate write access BEFORE starting wizard
+    ok, err_msg = _validate_write_access(_PROJECT_ROOT_DIR)
+    if not ok:
+        console.print(f"\n  [bold red]⚠️  Write Access Error[/]\n\n  {err_msg}\n")
+        if not Confirm.ask("  Continue anyway (data may not be saved)?", default=False):
+            return
 
     # Step 0 — Welcome
     console.print()
@@ -90,14 +122,17 @@ def run_setup_wizard(profile) -> None:
     # Step 6 — LLM setup
     _llm_setup_flow()
 
-    # Step 7 — Memory import (optional, one-paste)
+    # Step 7 — BUG-2 FIX: Home Screen folder integration
+    _setup_home_folder_step()
+
+    # Step 8 — Memory import (optional, one-paste)
     if Confirm.ask(
         "\n  [bold #FFC107]📋 Import memory from ChatGPT / Claude / Gemini?[/]",
         default=False,
     ):
         _run_one_paste_import()
 
-    # Step 8 — Seed LearningsStore with everything captured
+    # Step 9 — Seed LearningsStore with everything captured
     try:
         stats = seed_learnings_from_wizard(profile.data, niche_details, goals)
         console.print(
@@ -113,7 +148,10 @@ def run_setup_wizard(profile) -> None:
         prefs.setdefault("niche_details", {}).update(niche_details)
         profile.update("preferences", prefs)
 
-    # Step 9 — Summary card
+    # BUG-6 FIX: verify profile was actually saved
+    _verify_profile_saved(profile)
+
+    # Step 10 — Summary card
     _show_summary(profile, agent_name, user_name, niche)
 
 
@@ -413,3 +451,90 @@ def _show_summary(profile, agent_name: str, user_name: str, niche: str) -> None:
         f"\n  [bold green]{agent_name} is ready, {user_name}. Let's build. 💪[/]\n"
         f"  [dim]Type anything to start  ·  /help for commands  ·  /recall to see what I know[/]\n"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────
+# BUG-2 FIX: Home Screen folder step
+# ─────────────────────────────────────────────────────────────────────
+
+def _setup_home_folder_step() -> None:
+    """Ask user permission to create ~/Lirox/ folder for easy file access."""
+    try:
+        from lirox.home_screen.integration import (
+            is_home_folder_setup, setup_home_folder, HOME_LIROX_DIR
+        )
+
+        if is_home_folder_setup():
+            console.print(
+                f"\n  [dim green]✓ Lirox workspace already exists at {HOME_LIROX_DIR}[/]"
+            )
+            return
+
+        console.print()
+        console.print(Panel(
+            "[bold #FFC107]📁 Home Screen Access[/]\n\n"
+            f"Create a [bold]~/Lirox/[/] folder for easy access to your:\n"
+            "  • Memory & sessions    • Skills & agents\n"
+            "  • Backups              • Audit logs\n\n"
+            "[dim]A shortcut will also be added to your file manager.[/]",
+            border_style="#FFC107", box=ROUNDED, width=66,
+        ))
+
+        if Confirm.ask(
+            f"\n  [bold #FFC107]Create ~/Lirox/ workspace folder?[/]",
+            default=True,
+        ):
+            result = setup_home_folder(ask=False)
+            if result["created"]:
+                msg = f"  [bold green]✓ Workspace created: {HOME_LIROX_DIR}[/]"
+                if result.get("shortcut"):
+                    msg += "  [dim](shortcut added to file manager)[/]"
+                console.print(msg)
+                # Link data dirs
+                try:
+                    from lirox.config import DATA_DIR
+                    from lirox.home_screen.integration import link_data_dir
+                    link_data_dir(DATA_DIR)
+                except Exception:
+                    pass
+            else:
+                console.print(
+                    f"  [yellow]⚠ Could not create folder: {result.get('error', 'unknown')}[/]\n"
+                    f"  [dim]You can create it manually: mkdir ~/Lirox[/]"
+                )
+        else:
+            console.print("  [dim]Skipped. You can always access files via /backup and /export-memory.[/]")
+    except Exception as e:
+        console.print(f"  [dim]Home folder setup skipped: {e}[/]")
+
+
+# ─────────────────────────────────────────────────────────────────────
+# BUG-6 FIX: verify profile was actually persisted to disk
+# ─────────────────────────────────────────────────────────────────────
+
+def _verify_profile_saved(profile) -> None:
+    """Verify that the profile file exists on disk after setup completes."""
+    try:
+        profile_path = _PROJECT_ROOT_DIR / "profile.json"
+        if not profile_path.exists():
+            console.print(
+                "\n  [yellow]⚠ Profile file not found on disk after setup.[/]\n"
+                "  [dim]Attempting to save again…[/]"
+            )
+            try:
+                profile._save()  # force a re-save
+                if profile_path.exists():
+                    console.print("  [green]✓ Profile saved successfully.[/]")
+                else:
+                    console.print(
+                        "  [red]✖ Profile could not be saved.[/]\n"
+                        f"  [dim]Check write permissions for: {_PROJECT_ROOT_DIR}[/]"
+                    )
+            except Exception as save_err:
+                console.print(
+                    f"  [red]✖ Save failed: {save_err}[/]\n"
+                    "  [dim]Your preferences may not persist between sessions.[/]"
+                )
+    except Exception:
+        pass  # verification is best-effort
+

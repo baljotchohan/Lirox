@@ -1,12 +1,45 @@
-"""Multi-phase reasoning: UNDERSTAND → STRATEGIZE → PLAN"""
+"""Multi-phase reasoning: UNDERSTAND → STRATEGIZE → PLAN
+
+BUG-9 FIX: Added timeout with graceful degradation and output buffering.
+All LLM calls are now wrapped with a configurable timeout (THINKING_TIMEOUT
+env var, default 120s).  If the LLM times out, a partial/fallback result is
+returned instead of hanging the terminal indefinitely.
+"""
+import logging
+import concurrent.futures
 from lirox.utils.llm import generate_response
-from lirox.config import MAX_CONTEXT_CHARS, MAX_TOOL_RESULT_CHARS
+from lirox.config import MAX_CONTEXT_CHARS, MAX_TOOL_RESULT_CHARS, THINKING_TIMEOUT
+
+
+_log = logging.getLogger("lirox.thinking")
 
 
 class ThinkingEngine:
     def __init__(self, provider: str = "auto"):
         self.provider = provider
         self.last_trace = ""
+        self._timeout = THINKING_TIMEOUT  # BUG-9: configurable timeout
+
+    def _generate_with_timeout(self, prompt: str, system_prompt: str = "") -> str:
+        """BUG-9 FIX: Run LLM call in a thread with timeout + graceful degradation."""
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(
+                generate_response, prompt, self.provider, system_prompt
+            )
+            try:
+                return future.result(timeout=self._timeout)
+            except concurrent.futures.TimeoutError:
+                _log.warning("ThinkingEngine timed out after %ds — returning partial result",
+                             self._timeout)
+                return (
+                    f"[Thinking timed out after {self._timeout}s]\n\n"
+                    f"Partial analysis for: {prompt[:200]}\n\n"
+                    "Consider breaking your question into smaller parts, or "
+                    "use /use-model to switch to a faster provider."
+                )
+            except Exception as e:
+                _log.warning("ThinkingEngine._generate_with_timeout failed: %s", e)
+                raise
 
     def reason(self, query: str, context: str = "") -> str:
         prompt = f"""Structured reasoning:
@@ -21,15 +54,14 @@ PLAN: 3-5 concrete steps.
 
 Be concise. Focus on actionable insight."""
         try:
-            self.last_trace = generate_response(
+            # BUG-9 FIX: use timeout-protected call instead of bare generate_response
+            self.last_trace = self._generate_with_timeout(
                 prompt,
-                self.provider,
                 system_prompt="Strategic reasoning engine. Direct. Precise. No fluff.",
             )
             return self.last_trace
         except Exception as e:
-            import logging
-            logging.getLogger("lirox.thinking").warning(f"ThinkingEngine.reason failed: {e}")
+            _log.warning("ThinkingEngine.reason failed: %s", e)
             self.last_trace = f"UNDERSTAND: {query}"
             return self.last_trace
 
@@ -72,8 +104,9 @@ Then: What's the BOLDEST version of this idea?
 
 Be creative. Surprising. Useful."""
         try:
-            result = generate_response(
-                prompt, self.provider,
+            # BUG-9 FIX: use timeout-protected call
+            result = self._generate_with_timeout(
+                prompt,
                 system_prompt="Creative lateral thinking engine. Be genuinely surprising."
             )
             self.last_trace = result

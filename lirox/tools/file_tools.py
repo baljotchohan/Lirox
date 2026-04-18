@@ -1,8 +1,11 @@
-"""Lirox v1.1 — File Operations (verified, structured receipts).
+"""Lirox v1.0 — File Operations (verified, structured receipts, audit logging).
 
 Every write/read/delete/patch now returns a FileReceipt with explicit
 disk-verification. The agent can no longer report success unless
 `receipt.verified and receipt.ok` are both True.
+
+All file operations are logged to the audit trail (Feature-7).
+The self-modification gate is enforced on all write paths (BUG-12).
 
 Backwards-compat: string-returning wrappers kept for callers that
 haven't migrated — they produce identical output but internally use
@@ -27,16 +30,34 @@ from lirox.verify import (
 from lirox.config import is_self_modification
 
 
+def _audit(event_name: str, path: str = "", message: str = "", **kwargs) -> None:
+    """Non-blocking audit log call — silently ignores all errors."""
+    try:
+        from lirox.audit.logger import audit_log, AuditEvent
+        evt = AuditEvent(event_name)
+        audit_log(evt, path=path, message=message, extra=kwargs if kwargs else None)
+    except Exception:
+        pass
+
+
 def _self_mod_blocked(path: str) -> Optional[str]:
     """Return an error string if writing to `path` would modify Lirox itself
     AND the user hasn't opted in via LIROX_ALLOW_SELF_MOD=1. Else None.
+
+    BUG-12 fix: this function is now CALLED in every write path in file_tools.py.
     """
     try:
-        if is_self_modification(path) and os.getenv("LIROX_ALLOW_SELF_MOD") != "1":
-            return (
-                f"BLOCKED: '{path}' is inside the Lirox source tree. "
-                f"Set LIROX_ALLOW_SELF_MOD=1 to allow self-modification."
-            )
+        if is_self_modification(path):
+            if os.getenv("LIROX_ALLOW_SELF_MOD") != "1":
+                _audit("self_mod_blocked", path=path,
+                       message="Self-modification blocked — LIROX_ALLOW_SELF_MOD not set")
+                return (
+                    f"BLOCKED: '{path}' is inside the Lirox source tree. "
+                    f"Set LIROX_ALLOW_SELF_MOD=1 to allow self-modification."
+                )
+            else:
+                _audit("self_mod_allowed", path=path,
+                       message="Self-modification allowed (LIROX_ALLOW_SELF_MOD=1)")
     except Exception:
         pass
     return None
@@ -137,6 +158,7 @@ def file_write_verified(path: str, content: str, mode: str = "w") -> FileReceipt
                 return r
         r.verified = True
         r.details["verification"] = "file_exists + content_matches" if mode == "w" else "file_exists"
+        _audit("file_write", path=info, message=f"Wrote {r.bytes_written} bytes")
         return r
     except FileExistsError:
         r.error = f"File exists (use mode='a' to append): {info}"
@@ -205,6 +227,7 @@ def file_delete_verified(path: str, confirm: bool = True) -> FileReceipt:
         r.ok = True
         r.verified = True
         r.message = f"Deleted {info}"
+        _audit("file_delete", path=info, message="File deleted")
         return r
     except FileNotFoundError:
         # Idempotent delete: nothing to do
@@ -289,6 +312,7 @@ def file_patch_verified(path: str, old_text: str, new_text: str) -> FileReceipt:
         r.bytes_written = len(patched.encode("utf-8", errors="replace"))
         r.message = f"Patched {info} ({len(old_text)} → {len(new_text)} chars)"
         r.details["backup"] = backup
+        _audit("file_write", path=info, message=f"Patched file ({len(old_text)} → {len(new_text)} chars)")
         return r
     except FileNotFoundError:
         r.error = f"File not found: {info}"
