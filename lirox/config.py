@@ -27,6 +27,9 @@ else:
     load_dotenv()
 
 # ── API Keys ──
+# Raw env-var reads kept for backward compatibility with code that accesses
+# these module-level names directly.  New code should prefer
+# lirox.utils.secure_keys.get_api_key() which masks values in logs.
 OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -45,6 +48,7 @@ DEFAULT_MODEL        = os.getenv("DEFAULT_MODEL", "groq")
 MEMORY_LIMIT         = int(os.getenv("MEMORY_LIMIT", "100"))
 MAX_AGENT_ITERATIONS = int(os.getenv("MAX_AGENT_ITERATIONS", "30"))
 LLM_TIMEOUT          = int(os.getenv("LLM_TIMEOUT", "90"))
+SHELL_TIMEOUT        = int(os.getenv("SHELL_TIMEOUT", "60"))
 MAX_RETRIES          = 3
 
 MAX_LLM_PROMPT_CHARS    = 16000

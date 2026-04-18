@@ -73,6 +73,8 @@ class MasterOrchestrator:
                     yield OrchestratorEvent(
                         type=event_type, agent="personal",
                         message=event.get("message", ""), data=event)
+        except (SystemExit, KeyboardInterrupt):
+            raise
         except Exception as e:
             yield OrchestratorEvent(type="error", message=str(e))
             result_text = f"Error: {e}"
