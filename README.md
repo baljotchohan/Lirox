@@ -1,4 +1,4 @@
-# LIROX
+# 🦁LIROX
 
 **Intelligence as an Operating System.**
 
