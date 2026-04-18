@@ -87,22 +87,22 @@ def _extract_json(text: str) -> dict:
 
 
 def _resolve_path(raw: str, query: str) -> str:
-    if not raw: return ""
+    if not raw:
+        return ""
     from lirox.config import WORKSPACE_DIR
     from lirox.utils.input_sanitizer import sanitize_path
     raw = sanitize_path(raw)
     p = os.path.expandvars(os.path.expanduser(raw))
-    if os.path.isabs(p):
+    # Absolute paths and relative paths with separators are resolved directly
+    if os.path.isabs(p) or "/" in p or "\\" in p:
         return os.path.realpath(p)
-    if "/" in p or "\\" in p:
-        return os.path.realpath(os.path.abspath(p))
     # Bare filename → use workspace dir
     q = (query or "").lower()
     if "downloads" in q:   folder = "~/Downloads"
     elif "documents" in q: folder = "~/Documents"
     elif "desktop" in q:   folder = "~/Desktop"
     else:                  folder = WORKSPACE_DIR
-    return os.path.realpath(os.path.abspath(os.path.expanduser(os.path.join(folder, p))))
+    return os.path.realpath(os.path.expanduser(os.path.join(folder, p)))
 
 
 # ── Signal detection ──

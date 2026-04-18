@@ -47,6 +47,9 @@ class ManagedPool:
         with self._lock:
             if not self._active or self._pool is None:
                 return
+            # Mark inactive while still holding the lock so concurrent
+            # submit() calls will see _active=False and restart a fresh pool
+            # rather than submitting to a pool that is shutting down.
             self._active = False
             pool = self._pool
             self._pool = None

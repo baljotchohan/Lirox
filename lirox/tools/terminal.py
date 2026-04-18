@@ -22,15 +22,13 @@ from lirox.utils.regex_cache import SHELL_VAR_ASSIGN, SHELL_CHAIN
 INJECTION_PATTERNS = [
     "$(", "`",           # Command substitution (arbitrary code execution)
     "eval ", "exec(",    # Code injection
-    " > /dev",           # Device writes
-    ">/dev",             # Device writes (no space)
+    ">/dev",             # Device writes (with or without space before >)
     "| base64",          # Exfiltration
     "| curl",            # Exfiltration
     "|curl",             # Exfiltration (no space)
     "| wget",            # Exfiltration
     "|wget",             # Exfiltration (no space)
-    "2>&1",              # Stderr redirect (can hide errors during injection)
-    "&>/",               # Combined stdout/stderr redirect to file
+    "&>/",               # Combined stdout/stderr redirect to arbitrary path
     "tee /",             # Writing to arbitrary paths via tee
     "/dev/tcp/",         # Bash TCP redirection (reverse shells)
     "/dev/udp/",         # Bash UDP redirection (reverse shells)
