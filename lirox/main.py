@@ -194,6 +194,33 @@ def main():
     show_status_card(profile.data, available_providers())
     console.print("  [dim]Always-on deep thinking  ·  /help for commands[/]\n")
 
+    # BUG-4 + Feature-1 FIX: start auto-learning background thread
+    _auto_learner = None
+    try:
+        from lirox.autonomy.auto_learner import AutoLearner, _ENABLED as _AT_ENABLED
+        if _AT_ENABLED:
+            def _on_auto_train(stats: dict) -> None:
+                facts = stats.get("facts_added", 0)
+                if facts > 0:
+                    console.print(
+                        f"  [dim #10b981]🧠 Auto-trained: +{facts} facts learned silently[/]"
+                    )
+            _auto_learner = AutoLearner(
+                orchestrator.global_memory,
+                orchestrator.session_store,
+                on_train_complete=_on_auto_train,
+            )
+            _auto_learner.start()
+    except Exception:
+        pass
+
+    # Audit: system start
+    try:
+        from lirox.audit.logger import audit_log, AuditEvent
+        audit_log(AuditEvent.SYSTEM_START, message=f"Lirox v{APP_VERSION} started")
+    except Exception:
+        pass
+
     from prompt_toolkit import PromptSession
     from prompt_toolkit.styles import Style
     from prompt_toolkit.completion import Completer, Completion
@@ -210,7 +237,7 @@ def main():
         "/improve", "/apply", "/pending", "/self-execute",
         "/soul", "/mind", "/restart",
         "/backup", "/import-memory", "/export-memory",
-        "/exec",
+        "/exec", "/audit", "/personality",
         "/uninstall", "/update", "/exit",
     ]
 
@@ -241,20 +268,35 @@ def main():
             line = session.prompt(get_prompt_label(profile.data.get("agent_name", "Lirox")), style=style).strip()
             if not line: continue
             if line.lower() in ("exit", "quit", "/exit"):
+                if _auto_learner:
+                    try: _auto_learner.stop()
+                    except Exception: pass
                 info_panel("Shutting down. Goodbye."); break
             if line.startswith("/"):
                 handle_command(orchestrator, profile, line, verbose=args.verbose); continue
             if line.startswith("@"):
                 handle_agent_query(line); continue
             process_query(orchestrator, line, verbose=args.verbose)
+            # BUG-4 FIX: notify auto-learner that a new message was processed
+            if _auto_learner:
+                try:
+                    _auto_learner.notify_new_message()
+                except Exception:
+                    pass
 
         except KeyboardInterrupt:
             now = time.time()
             if now - last_int < 2.0:
+                if _auto_learner:
+                    try: _auto_learner.stop()
+                    except Exception: pass
                 print("\n[!] Force quit."); sys.exit(0)
             print("\n[!] Ctrl+C again to quit, or type /exit.")
             last_int = now
         except EOFError:
+            if _auto_learner:
+                try: _auto_learner.stop()
+                except Exception: pass
             info_panel("Shutting down. Goodbye."); break
         except Exception as e:
             error_panel("KERNEL ERROR", str(e))
@@ -463,6 +505,8 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             ("/backup",             "Backup all data to ~/.lirox_backup/"),
             ("/export-memory",      "Export profile + learnings as a Lirox JSON package"),
             ("/import-memory",      "Import from ChatGPT/Claude/Gemini/Lirox export"),
+            ("/audit [n]",          "View audit log (last n entries)"),
+            ("/personality",        "View/update agent personality traits"),
             ("/restart",            "Restart Lirox"),
             ("/update",             "Update to latest version"),
             ("/uninstall",          "Remove all Lirox data"),
@@ -816,13 +860,25 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             raw_params = sp[1] if len(sp) > 1 else ""
             params: dict = {}
             if raw_params:
-                import shlex
-                for token in shlex.split(raw_params):
+                # BUG-8 FIX: robust parameter parser that handles special chars.
+                # shlex.split can break on '#', unbalanced quotes, etc.
+                # Strategy: try shlex first, fall back to simple split on failure.
+                try:
+                    import shlex
+                    tokens = shlex.split(raw_params)
+                except ValueError:
+                    # Fallback: naive split on whitespace, preserving quoted segments
+                    import re as _re
+                    tokens = _re.findall(r'(?:"[^"]*"|\'[^\']*\'|\S)+', raw_params)
+                for token in tokens:
+                    token = token.strip()
                     if "=" in token:
                         k, v = token.split("=", 1)
-                        params[k.strip()] = v.strip()
-                    else:
-                        params["input"] = token
+                        # Strip surrounding quotes from value
+                        v = v.strip().strip('"').strip("'")
+                        params[k.strip()] = v
+                    elif token:
+                        params.setdefault("input", token)
 
             # BUG-2 FIX: extract real query value instead of passing str(params)
             # Priority: "input" key → "text" key → "query" key → first value → empty
@@ -861,11 +917,21 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
             info_panel("Usage: /add-agent <description — include the name you want>")
         else:
             import re
-            nm = (re.search(r'(?:name[d]?|called|as)\s+["\']?([A-Za-z][A-Za-z0-9_]+)["\']?',
-                            desc, re.IGNORECASE)
-                  or re.search(r'@([A-Za-z][A-Za-z0-9_]+)', desc)
-                  or re.search(r'\b([A-Z][a-z][a-zA-Z0-9_]+)\b', desc))
-            agent_name = nm.group(1) if nm else "CustomAgent"
+            # BUG-5 FIX: improved regex handles multi-word names, hyphens, and spaces.
+            # Normalizes to snake_case for reliable routing.
+            def _normalize_name(raw: str) -> str:
+                """Convert 'Data Analyzer' → 'DataAnalyzer', strip non-alnum."""
+                words = re.split(r'[\s\-_]+', raw.strip())
+                return "".join(w.capitalize() for w in words if w) or "CustomAgent"
+
+            nm = (
+                re.search(r'(?:name[d]?|called|as)\s+["\']?([\w][\w\s\-]+?)["\']?(?:\s+(?:that|which|to|agent)|$)',
+                          desc, re.IGNORECASE)
+                or re.search(r'@([\w][\w\s\-]+)', desc)
+                or re.search(r'\b([A-Z][a-z][a-zA-Z0-9\s\-]+)\b', desc)
+            )
+            raw_name   = nm.group(1).strip() if nm else "CustomAgent"
+            agent_name = _normalize_name(raw_name)
             info_panel(f"🧠 Building agent '{agent_name}'…")
             from lirox.mind.agent import get_sub_agents
             try:
@@ -975,6 +1041,31 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
     elif base == "/export-profile":
         info_panel("`/export-profile` is deprecated — use `/export-memory` instead.")
 
+    elif base == "/audit":
+        try:
+            from lirox.audit.logger import format_audit_log
+            limit = int(parts[1]) if len(parts) > 1 and parts[1].isdigit() else 50
+            info_panel(format_audit_log(limit))
+        except Exception as exc:
+            error_panel("AUDIT ERROR", str(exc))
+
+    elif base == "/personality":
+        try:
+            from lirox.personality.emergence import PersonalityEngine
+            engine = PersonalityEngine()
+            sub = parts[1] if len(parts) > 1 else "show"
+            if sub == "update":
+                from lirox.mind.agent import get_learnings
+                traits = engine.generate_from_profile(
+                    profile.data, get_learnings().data
+                )
+                engine.persist(traits)
+                success_message(f"Personality updated from profile:\n{engine.summary()}")
+            else:
+                info_panel(f"PERSONALITY TRAITS\n\n{engine.summary()}")
+        except Exception as exc:
+            error_panel("PERSONALITY ERROR", str(exc))
+
     elif base in ("/uninstall", "/update", "/exec"):
         _legacy_commands(orch, profile, cmd, base)
 
@@ -1041,15 +1132,69 @@ def run_backup():
     from lirox.config import DATA_DIR, PROJECT_ROOT
     from pathlib import Path
     from datetime import datetime
+
+    # BUG-10 FIX: handle Windows long paths, skip symlinks, show progress,
+    # use incremental naming to avoid overwriting previous backups.
     backup_dir = Path.home() / ".lirox_backup"
     backup_dir.mkdir(exist_ok=True)
     dest = backup_dir / f"lirox_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+    copied = 0
+    skipped = 0
+    errors = []
+
+    def _copy_tree(src: Path, dst: Path) -> None:
+        nonlocal copied, skipped
+        dst.mkdir(mode=0o700, parents=True, exist_ok=True)
+        for item in src.iterdir():
+            try:
+                s = item
+                d = dst / item.name
+
+                # BUG-10: skip symlinks safely on all platforms
+                if s.is_symlink():
+                    skipped += 1
+                    continue
+
+                if s.is_dir():
+                    _copy_tree(s, d)
+                elif s.is_file():
+                    # BUG-10: handle Windows long paths via \\?\ prefix
+                    src_str = str(s)
+                    dst_str = str(d)
+                    if sys.platform == "win32":
+                        src_str = "\\\\?\\" + src_str if not src_str.startswith("\\\\") else src_str
+                        dst_str = "\\\\?\\" + dst_str if not dst_str.startswith("\\\\") else dst_str
+                    shutil.copy2(src_str, dst_str)
+                    copied += 1
+            except Exception as e:
+                errors.append(f"{item.name}: {e}")
+                skipped += 1
+
     try:
-        shutil.copytree(DATA_DIR, str(dest))
+        data_path = Path(DATA_DIR)
+        if data_path.exists():
+            _copy_tree(data_path, dest)
+
         pf = Path(PROJECT_ROOT) / "profile.json"
         if pf.exists():
-            shutil.copy2(pf, dest / "profile.json")
-        success_message(f"Backup saved to: {dest}")
+            shutil.copy2(str(pf), str(dest / "profile.json"))
+            copied += 1
+
+        msg = f"Backup saved to: {dest}\n  Copied: {copied} files"
+        if skipped:
+            msg += f"  ·  Skipped: {skipped} (symlinks/errors)"
+        if errors:
+            msg += f"\n  Warnings: {'; '.join(errors[:3])}"
+        success_message(msg)
+
+        # Audit log
+        try:
+            from lirox.audit.logger import audit_log, AuditEvent
+            audit_log(AuditEvent.BACKUP_CREATE, path=str(dest),
+                      message=f"Backup: {copied} files")
+        except Exception:
+            pass
     except Exception as e:
         error_panel("BACKUP FAILED", str(e))
 

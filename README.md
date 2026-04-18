@@ -4,13 +4,13 @@
 
 ### **A personal AI agent that lives in your terminal — and actually remembers you.**
 
-*Local-first · Terminal-first · Persistent memory · Self-extending*
+*Local-first · Terminal-first · Persistent memory · Self-extending · Self-learning*
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](LICENSE)
 [![Python 3.9+](https://img.shields.io/badge/python-3.9+-007ACC.svg)](https://python.org)
 [![Runs Locally](https://img.shields.io/badge/100%25-local%20friendly-10b981.svg)](#privacy--local-first)
 [![Status](https://img.shields.io/badge/status-active-success.svg)](#)
-[![Version](https://img.shields.io/badge/version-1.1-orange.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-1.0.0-orange.svg)](CHANGELOG.md)
 
 </div>
 
@@ -18,13 +18,16 @@
 
 ## What is Lirox?
 
-Lirox is a CLI-first autonomous AI agent that does three things every other AI tool fails at:
+Lirox is a CLI-first autonomous AI agent that does things every other AI tool fails at:
 
 1. **It remembers you.** Across every session, restart, and reinstall — Lirox builds a structured memory of who you are, what you work on, how you talk, and what you care about. You can even import your existing history from ChatGPT, Claude, or Gemini.
-2. **It actually executes.** When you ask it to write a file, it writes the file — and verifies the bytes hit disk before claiming success. No more "I created the file at `~/Desktop/x.py`" only to find nothing there.
-3. **It extends itself.** Tell it "I need a tool that summarizes my git diffs" and it builds a Python skill, validates the contract, runs tests, and registers it. Same for sub-agents you can call by name.
+2. **It learns automatically in the background.** A background thread trains every 30 minutes (configurable), silently extracting facts without interrupting your work.
+3. **It develops a personality.** Based on your niche, goals, and communication style, Lirox generates unique personality traits that make responses feel like *yours*.
+4. **It actually executes.** When you ask it to write a file, it writes the file — and verifies the bytes hit disk before claiming success.
+5. **It extends itself.** Tell it "I need a tool that summarizes my git diffs" and it builds a Python skill, validates the contract, and registers it.
+6. **It has a Home Screen workspace.** A `~/Lirox/` folder gives you easy access to all your data, memory, and backups from your file manager.
 
-It is not a wrapper around someone else's chatbot. It runs in your terminal, stores everything on your machine, and works fully offline with Ollama if you want.
+It runs in your terminal, stores everything on your machine, and works fully offline with Ollama if you want.
 
 ---
 
@@ -47,21 +50,64 @@ The first launch opens a deep onboarding wizard that asks about your work, your 
 
 ---
 
-## What's new in v1.1
+## What's new in V1 (Production-Ready Rebuild)
 
-| Area | Change |
-|------|--------|
-| **Verified execution** | Every file write/delete/patch is checked on disk before reporting success. Hallucinated success is structurally impossible. |
-| **Deep onboarding** | Niche-aware wizard with follow-ups (Developer → primary language? stack? scale?), then seeds the learnings store so `/recall` works immediately. |
-| **One-paste memory import** | Copy a prompt to ChatGPT/Claude/Gemini, paste the JSON back. Handles fenced JSON, preambles, malformed inputs gracefully. |
-| **Skill & agent contracts** | Skills are AST-validated at load time — wrong `run()` signature fails fast, not at first call. |
-| **Stricter sub-agent routing** | Removed the greedy `"name: anything"` regex that misrouted normal sentences. Only `@name`, `hey name,`, and `ask name to` trigger routing. |
-| **Self-modification gate** | Writes inside the Lirox source tree are blocked unless `LIROX_ALLOW_SELF_MOD=1` is set. |
-| **Cursor-based training** | `/train` reads from on-disk JSONL logs (not just the live buffer) and tracks a cursor so re-running doesn't reprocess everything. |
-| **Stop-word filtering** | Memory recall no longer matches on `"the"`, `"is"`, `"a"`, etc. |
-| **Robust `classify_task`** | `"create a python script"` → code (not shell). `"make a list of files"` → file (not chat). `"show me a git tutorial"` → chat (not shell). |
+### 12 Critical Bugs Fixed at Root Level
 
-Full bug list and root-cause analysis lives in [`CHANGELOG.md`](CHANGELOG.md).
+| Bug | Area | Fix |
+|-----|------|-----|
+| **BUG-1** | Directory permissions | `_make_dir_safe()` creates with mode `0o700`, validates write access, provides helpful errors |
+| **BUG-2** | Home Screen access | Setup wizard asks to create `~/Lirox/` workspace with file manager integration |
+| **BUG-3** | Permission enforcement | `_self_mod_blocked()` called in ALL write paths; audit log records every check |
+| **BUG-4** | Auto-learning | `AutoLearner` background thread trains every 30 min + after every N messages |
+| **BUG-5** | Sub-agent routing | Regex handles multi-word names, hyphens, spaces; normalizes to `PascalCase` |
+| **BUG-6** | Setup file permissions | Write access validated before wizard starts; profile save verified after |
+| **BUG-7** | JSON import | Robust `_extract_json_robust()` handles fences, preambles, malformed input |
+| **BUG-8** | Skill parameters | `shlex.split()` failures fall back to regex tokenizer; handles `#`, unbalanced quotes |
+| **BUG-9** | Thinking timeout | `concurrent.futures` timeout wraps all LLM calls; graceful degradation on timeout |
+| **BUG-10** | Windows backup | `_copy_tree()` skips symlinks, handles `\\?\` long paths, shows progress |
+| **BUG-11** | Training cursor | Cursor persisted to `learnings.json` via `_set_cursor()` after every train |
+| **BUG-12** | Self-mod gate | `is_self_modification()` called before every write; audit logged |
+
+### New Modules
+
+| Module | Purpose |
+|--------|---------|
+| `lirox/home_screen/integration.py` | `~/Lirox/` workspace creation + platform shortcuts |
+| `lirox/autonomy/auto_learner.py` | Background training thread (daemon, configurable) |
+| `lirox/audit/logger.py` | Comprehensive JSONL audit trail for all operations |
+| `lirox/reasoning/advanced_engine.py` | 8-phase reasoning: UNDERSTAND → VERIFY |
+| `lirox/personality/emergence.py` | Personality trait generation from user profile |
+
+### New Commands
+
+| Command | Description |
+|---------|-------------|
+| `/audit [n]` | View last n audit log entries |
+| `/personality` | View current agent personality traits |
+| `/personality update` | Regenerate personality from profile |
+
+### New Configuration
+
+```env
+# Auto-training
+AUTO_TRAIN_ENABLED=true
+AUTO_TRAIN_INTERVAL_MINUTES=30
+AUTO_TRAIN_AFTER_MESSAGES=10
+
+# Home Screen
+HOME_SCREEN_FOLDER=~/Lirox
+
+# Reasoning
+THINKING_TIMEOUT=120
+ENABLE_TREE_OF_THOUGHT=true
+
+# Audit
+AUDIT_ENABLED=true
+
+# Personality
+PERSONALITY_ENABLED=true
+```
 
 ---
 
@@ -116,15 +162,23 @@ graph TD
         Subs --> Builder
     end
 
-    subgraph Verify["Verification layer (new in v1.1)"]
+    subgraph Verify["Verification layer (v1.0)"]
         Files --> Receipt[FileReceipt]
         Shell --> ShellR[ShellReceipt]
         Receipt --> Disk[Disk verification]
         ShellR --> Disk
     end
+
+    subgraph V1New["New in V1"]
+        Main --> AutoL[AutoLearner · background thread]
+        Main --> Audit[Audit Logger · JSONL trail]
+        Mind --> PersonE[Personality Emergence]
+        Mind --> AdvR[8-Phase Reasoning Engine]
+        Main --> HomeS[Home Screen · ~/Lirox/]
+    end
 ```
 
-The cognitive layer (Mind / Soul / Learnings) handles personalization. The execution layer (PersonalAgent + tools) handles doing things. The verification layer (new in v1.1) is the safety net — every side effect is checked before being reported as successful.
+The cognitive layer (Mind / Soul / Learnings) handles personalization. The execution layer (PersonalAgent + tools) handles doing things. The verification layer is the safety net — every side effect is checked before being reported as successful. New in V1: background auto-learning, audit logging, personality emergence, 8-phase reasoning, and Home Screen integration.
 
 ---
 
@@ -191,6 +245,9 @@ The cognitive layer (Mind / Soul / Learnings) handles personalization. The execu
 | `/update` | Pull the latest version |
 | `/uninstall` | Wipe all Lirox data |
 | `/exit` | Quit |
+| `/audit [n]` | View last n audit log entries |
+| `/personality` | View current personality traits |
+| `/personality update` | Regenerate personality from profile |
 
 ---
 

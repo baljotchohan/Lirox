@@ -1,5 +1,6 @@
-"""Lirox v1.1 — Central Configuration"""
+"""Lirox v1.0 — Central Configuration"""
 import os
+import stat
 from pathlib import Path
 
 try:
@@ -113,12 +114,39 @@ MIND_SKILLS_DIR   = str(_REPO_ROOT / "data" / "mind" / "skills")
 MIND_AGENTS_DIR   = str(_REPO_ROOT / "data" / "mind" / "agents")
 PATCHES_DIR       = str(_REPO_ROOT / "data" / "pending_patches")
 
+def _make_dir_safe(path: str) -> None:
+    """Create *path* with mode 0o700, verify write access, and emit a clear
+    error message if creation or access fails.  BUG-1 root-cause fix."""
+    try:
+        os.makedirs(path, mode=0o700, exist_ok=True)
+        # Verify write permission by stat-ing the directory
+        info = os.stat(path)
+        if not (info.st_mode & stat.S_IWUSR):
+            raise PermissionError(
+                f"Directory exists but is not writable: {path}\n"
+                f"  Fix: chmod u+w '{path}'"
+            )
+    except PermissionError as exc:
+        # Re-raise with helpful context so the user knows what to do
+        raise PermissionError(
+            f"[Lirox] Cannot create/access required directory: {path}\n"
+            f"  Reason : {exc}\n"
+            f"  Fix    : Make sure you have write access to the parent directory."
+        ) from exc
+    except OSError as exc:
+        raise OSError(
+            f"[Lirox] Failed to create directory: {path}\n"
+            f"  Reason : {exc}\n"
+            f"  Fix    : Check filesystem permissions and available disk space."
+        ) from exc
+
+
 for _d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, SESSIONS_DIR,
            str(Path(MEMORY_DIR) / "daily"),
            MIND_DIR, MIND_SKILLS_DIR, MIND_AGENTS_DIR, PATCHES_DIR]:
-    os.makedirs(_d, exist_ok=True)
+    _make_dir_safe(_d)
 
-# ── v1.1 additions ──────────────────────────────────────────────────────
+# ── v1.0 additions ──────────────────────────────────────────────────────
 
 # Directories where writes are considered "self-modification".
 # Writes inside these roots require LIROX_ALLOW_SELF_MOD=1 to proceed.
@@ -145,3 +173,27 @@ def is_self_modification(path: str) -> bool:
         if resolved == root_r or resolved.startswith(root_r + os.sep):
             return True
     return False
+
+
+# ── v1.0 new feature configuration ──────────────────────────────────────────
+
+# Auto-training background thread
+AUTO_TRAIN_ENABLED           = os.getenv("AUTO_TRAIN_ENABLED", "true").lower() == "true"
+AUTO_TRAIN_INTERVAL_MINUTES  = int(os.getenv("AUTO_TRAIN_INTERVAL_MINUTES", "30"))
+AUTO_TRAIN_AFTER_MESSAGES    = int(os.getenv("AUTO_TRAIN_AFTER_MESSAGES", "10"))
+
+# Home Screen folder
+HOME_SCREEN_FOLDER           = str(Path.home() / "Lirox")
+
+# Advanced reasoning
+REASONING_DEPTH              = os.getenv("REASONING_DEPTH", "complex")
+THINKING_TIMEOUT             = int(os.getenv("THINKING_TIMEOUT", "120"))
+ENABLE_TREE_OF_THOUGHT       = os.getenv("ENABLE_TREE_OF_THOUGHT", "true").lower() == "true"
+
+# Audit logging
+AUDIT_ENABLED                = os.getenv("AUDIT_ENABLED", "true").lower() == "true"
+AUDIT_LOG_DIR                = os.getenv("AUDIT_LOG_DIR", str(Path.home() / "Lirox" / "audit"))
+
+# Personality
+PERSONALITY_ENABLED          = os.getenv("PERSONALITY_ENABLED", "true").lower() == "true"
+PERSONALITY_UPDATE_INTERVAL_HOURS = int(os.getenv("PERSONALITY_UPDATE_INTERVAL_HOURS", "1"))
