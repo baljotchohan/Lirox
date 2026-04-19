@@ -79,35 +79,7 @@ class MasterOrchestrator:
         ]
         return any(s in query.lower() for s in signals)
 
-    def _run_thinking(self, query: str, context: str) -> Generator[OrchestratorEvent, None, None]:
-        """Run the 8-phase thinking engine and yield OrchestratorEvents.
 
-        Yields:
-            - One ``thinking_phase`` event per reasoning phase.
-            - One ``thinking_done`` event with the full trace text.
-        Returns the trace string via the ``thinking_done`` event's data.
-        """
-        try:
-            from lirox.mind.thinking_engine import ThinkingEngine
-            engine = ThinkingEngine()
-            for evt in engine.reason(query, context):
-                if evt["type"] == "thinking_phase":
-                    yield OrchestratorEvent(
-                        type="thinking_phase",
-                        message=evt.get("phase_name", ""),
-                        data=evt,
-                    )
-                elif evt["type"] == "thinking_done":
-                    yield OrchestratorEvent(
-                        type="thinking_done",
-                        message=evt.get("trace", ""),
-                        data=evt,
-                    )
-        except Exception as e:
-            import logging
-            logging.getLogger("lirox.orchestrator").warning(f"ThinkingEngine error: {e}")
-            # Thinking failure must never block the main query
-            yield OrchestratorEvent(type="thinking_done", message="", data={})
 
     def run(self, query: str) -> Generator[OrchestratorEvent, None, None]:
         start = time.time()
@@ -118,24 +90,8 @@ class MasterOrchestrator:
         history_ctx = self._get_recent_context(limit=3)
         context = f"RECENT CONTEXT:\n{history_ctx}" if history_ctx else ""
 
-        # ── Thinking phase ────────────────────────────────────────────────────
-        thinking_trace = ""
-        if THINKING_ENABLED:
-            # Emit initial spinner hint
-            yield OrchestratorEvent(type="thinking", message="Analyzing…")
-            for evt in self._run_thinking(query, context):
-                if evt.type == "thinking_done":
-                    thinking_trace = evt.message
-                else:
-                    yield evt
-
         # ── Agent execution ───────────────────────────────────────────────────
         full_context = context
-        if thinking_trace:
-            full_context = (
-                f"{context}\n\n{thinking_trace}" if context else thinking_trace
-            )
-
         agent = self._get_agent()
         result_text = ""
         try:

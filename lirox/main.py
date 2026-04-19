@@ -192,10 +192,7 @@ def process_query(orch, query: str, verbose: bool = False):
                     thinker.finish()
 
                 if not was_streamed:
-                    agent_n = ev.agent or last_agent
-                    icon    = "⚡" if agent_n == "personal" else "🧠"
-                    color   = "bold #FFD700"
-                    console.print(f"\n{icon} [{color}]Response:[/]")
+                    console.print("\n⚡ Response:")
                     was_streamed = True
                     live_ctx = Live(Markdown(""), console=console, refresh_per_second=12, auto_refresh=True)
                     live_ctx.start()
@@ -214,9 +211,11 @@ def process_query(orch, query: str, verbose: bool = False):
                     live_ctx = None
 
                 if was_streamed:
-                    console.print("  [bold #10b981]✓ Done[/]")
+                    console.print("✓ Done")
                 elif ev.message:
+                    console.print("\n⚡ Response:")
                     show_answer(ev.message, agent=last_agent)
+                    console.print("✓ Done")
 
             else:
                 # Route tool_call / tool_result / agent_progress to ThinkingDisplay

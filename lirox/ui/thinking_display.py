@@ -108,7 +108,7 @@ class ThinkingDisplay:
         )
         self.live = Live(
             self.tree, console=self.console,
-            refresh_per_second=8, transient=False,
+            refresh_per_second=8, transient=True,
         )
         self.live.start()
 
@@ -161,6 +161,8 @@ class ThinkingDisplay:
                 self.live.refresh()
                 time.sleep(0.2)  # Brief pause so user sees final state
             self.live.stop()
+            if self.tree and self._step_count > 0:
+                self.console.print(self.tree)
         self.tree = None
         self.live = None
 

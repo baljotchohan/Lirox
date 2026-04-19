@@ -16,7 +16,7 @@ import sys
 from pathlib import Path
 
 from dotenv import set_key
-from rich.box import HEAVY, ROUNDED
+from rich.box import ROUNDED, HEAVY, SIMPLE, DOUBLE
 from rich.panel import Panel
 from rich.prompt import Confirm, Prompt
 from rich.table import Table
