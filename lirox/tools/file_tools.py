@@ -114,7 +114,12 @@ def _is_safe_path(path: str) -> Tuple[bool, str]:
 # ── Structured (verified) ops ─────────────────────────────────────
 
 def file_write_verified(path: str, content: str, mode: str = "w") -> FileReceipt:
-    """Write + verify on disk. Never reports success without verification."""
+    """Write + verify on disk. Never reports success without verification.
+
+    TOCTOU fix (C-07): the resolved path is re-verified immediately before
+    the file open so that a symlink swap between the initial safety check and
+    the actual write cannot redirect the write to a protected location.
+    """
     r = FileReceipt(tool="file_write", operation="write", path=path)
     ok, info = _is_safe_path(path)
     if not ok:
@@ -129,6 +134,26 @@ def file_write_verified(path: str, content: str, mode: str = "w") -> FileReceipt
         return r
     try:
         os.makedirs(os.path.dirname(info) or ".", exist_ok=True)
+
+        # TOCTOU re-check: re-resolve immediately before open() to detect any
+        # symlink swap that occurred between the initial _is_safe_path call and
+        # now.  If the path resolves to a different location the write is aborted.
+        try:
+            recheck = os.path.realpath(info)
+        except OSError as e:
+            r.error = f"Path re-resolution failed: {e}"
+            return r
+        if recheck != info:
+            r.error = (
+                f"TOCTOU: path changed between check and write "
+                f"(was {info!r}, now {recheck!r})"
+            )
+            return r
+        ok2, _ = _is_safe_path(recheck)
+        if not ok2:
+            r.error = f"TOCTOU: path {recheck!r} is no longer in a permitted directory"
+            return r
+
         with open(info, mode, encoding="utf-8") as f:
             f.write(content)
         r.ok = True
@@ -202,6 +227,25 @@ def file_delete_verified(path: str, confirm: bool = True) -> FileReceipt:
         r.error = err
         return r
     try:
+        # TOCTOU re-check (C-07 fix): re-resolve immediately before the destructive
+        # operation so a symlink swap after the initial safety check cannot redirect
+        # the deletion to a protected path.
+        try:
+            recheck = os.path.realpath(info)
+        except OSError as e:
+            r.error = f"Path re-resolution failed before delete: {e}"
+            return r
+        if recheck != info:
+            r.error = (
+                f"TOCTOU: path changed between check and delete "
+                f"(was {info!r}, now {recheck!r})"
+            )
+            return r
+        ok2, _ = _is_safe_path(recheck)
+        if not ok2:
+            r.error = f"TOCTOU: path {recheck!r} is no longer in a permitted directory"
+            return r
+
         if os.path.isdir(info):
             if confirm:
                 r.error = (

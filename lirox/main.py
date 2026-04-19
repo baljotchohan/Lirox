@@ -42,6 +42,10 @@ def main():
     # ── Bootstrap FIRST — before any heavy imports ──
     check_dependencies()
 
+    # ── Configure structured logging early ──
+    from lirox.core.logger import configure_logging
+    configure_logging()
+
     # ── Ensure data directories exist ──
     from lirox.config import ensure_directories
     ensure_directories()
