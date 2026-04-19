@@ -451,27 +451,172 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         console.print(f"  [dim]Unknown command: {base}. Type /help.[/]")
 
 
+def _check_git_available() -> bool:
+    """Return True if the git executable is on PATH."""
+    import shutil
+    return shutil.which("git") is not None
+
+
+def _stash_changes(root: str) -> bool:
+    """Stash any uncommitted changes so git pull can proceed cleanly.
+
+    Returns True if stashing succeeded (or there was nothing to stash),
+    False on error.
+    """
+    import subprocess
+    try:
+        status = subprocess.run(
+            ["git", "-C", root, "status", "--porcelain"],
+            capture_output=True, text=True, timeout=15,
+        )
+        if not status.stdout.strip():
+            return True  # nothing to stash
+        stash = subprocess.run(
+            ["git", "-C", root, "stash", "--include-untracked"],
+            capture_output=True, text=True, timeout=30,
+        )
+        if stash.returncode == 0:
+            console.print("[dim]Local changes stashed before update.[/]")
+            return True
+        console.print(
+            f"[yellow]Warning: could not stash changes "
+            f"({stash.stderr.strip() or stash.stdout.strip()})[/]"
+        )
+        return False
+    except Exception as exc:
+        console.print(f"[yellow]Warning: stash check failed: {exc}[/]")
+        return False
+
+
+def _git_pull_with_retry(root: str, max_attempts: int = 3):
+    """Pull from origin with exponential backoff.
+
+    Returns (success: bool, output: str, error: str).
+    """
+    import subprocess
+    import time as _time
+
+    last_error = ""
+    for attempt in range(1, max_attempts + 1):
+        try:
+            result = subprocess.run(
+                ["git", "-C", root, "pull"],
+                capture_output=True, text=True, timeout=120,
+                check=True,
+            )
+            return True, result.stdout.strip(), ""
+        except subprocess.CalledProcessError as exc:
+            last_error = exc.stderr.strip() if exc.stderr else exc.stdout.strip()
+            if attempt < max_attempts:
+                wait = 2 ** (attempt - 1)  # 1 s, 2 s, 4 s for attempts 1-3
+                console.print(
+                    f"[yellow]Pull attempt {attempt}/{max_attempts} failed "
+                    f"(retrying in {wait}s)…[/]"
+                )
+                _time.sleep(wait)
+        except subprocess.TimeoutExpired:
+            last_error = "git pull timed out after 120 s"
+            if attempt < max_attempts:
+                wait = 2 ** (attempt - 1)  # 1 s, 2 s, 4 s for attempts 1-3
+                console.print(
+                    f"[yellow]Pull attempt {attempt}/{max_attempts} timed out "
+                    f"(retrying in {wait}s)…[/]"
+                )
+                _time.sleep(wait)
+        except OSError as exc:
+            last_error = str(exc)
+            break  # non-retriable OS error
+    return False, "", last_error
+
+
 def _run_update():
     import subprocess
+    import logging
     from lirox.config import PROJECT_ROOT
+
+    log = logging.getLogger("lirox.update")
     root = str(Path(PROJECT_ROOT).resolve())
     info_panel(f"Checking for updates in {root}…")
+
+    # 1. Verify git is available
+    if not _check_git_available():
+        error_panel(
+            "UPDATE FAILED",
+            "git is not installed or not on PATH.\n"
+            "Install git or run:  pip install --upgrade lirox",
+        )
+        return
+
+    git_dir = os.path.join(root, ".git")
+    if not os.path.exists(git_dir):
+        info_panel(
+            f"Not a git repository ({root}).\nRun: pip install --upgrade lirox"
+        )
+        return
+
     try:
-        git_dir = os.path.join(root, ".git")
-        if os.path.exists(git_dir):
-            result = subprocess.run(["git", "-C", root, "pull"],
-                                    capture_output=True, text=True, check=True)
-            if "Already up to date." in result.stdout:
-                success_message("Already up to date.")
-            else:
-                console.print(f"[dim]{result.stdout.strip()}[/]")
-                subprocess.run([sys.executable, "-m", "pip", "install", "-e", root],
-                               capture_output=True)
-                success_message("Updated. Please restart Lirox.")
+        # 2. Stash uncommitted changes so pull succeeds
+        _stash_changes(root)
+        log.debug("Stash check complete for %s", root)
+
+        # 3. Pull with retry / exponential backoff
+        console.print("[dim]Pulling latest changes…[/]")
+        pulled, stdout, pull_err = _git_pull_with_retry(root)
+        if not pulled:
+            error_panel(
+                "UPDATE FAILED",
+                f"git pull failed:\n{pull_err}\n\n"
+                "Tip: ensure you have network access and the repo remote is reachable.",
+            )
+            log.error("git pull failed: %s", pull_err)
+            return
+
+        log.debug("git pull succeeded: %s", stdout)
+
+        if "Already up to date." in stdout:
+            success_message("Already up to date.")
+            return
+
+        # Show what changed
+        if stdout:
+            console.print(f"[dim]{stdout}[/]")
+
+        # 4. Reinstall package (show output so user sees progress / errors)
+        console.print("[dim]Reinstalling package…[/]")
+        pip_result = subprocess.run(
+            [sys.executable, "-m", "pip", "install", "-e", root],
+            capture_output=True, text=True,
+        )
+        if pip_result.returncode != 0:
+            pip_err = pip_result.stderr.strip() or pip_result.stdout.strip()
+            error_panel(
+                "UPDATE PARTIALLY FAILED",
+                f"git pull succeeded but pip install failed:\n{pip_err}",
+            )
+            log.error("pip install failed: %s", pip_err)
+            return
+
+        if pip_result.stdout.strip():
+            console.print(f"[dim]{pip_result.stdout.strip()}[/]")
+
+        success_message("Updated successfully. Please restart Lirox.")
+        log.info("Update complete for %s", root)
+
+    except subprocess.CalledProcessError as exc:
+        if exc.stderr:
+            err_msg = exc.stderr.strip()
+        elif exc.stdout:
+            err_msg = exc.stdout.strip()
         else:
-            info_panel(f"Not a git repository.\nRun: pip install --upgrade lirox")
-    except Exception as e:
-        error_panel("UPDATE FAILED", str(e))
+            err_msg = str(exc)
+        error_panel("UPDATE FAILED", f"Git error:\n{err_msg}")
+        log.error("CalledProcessError during update: %s", err_msg)
+    except OSError as exc:
+        error_panel("UPDATE FAILED", f"OS error: {exc}")
+        log.error("OSError during update: %s", exc)
+    except Exception as exc:
+        error_panel("UPDATE FAILED", str(exc))
+        log.exception("Unexpected error during update")
 
 
 def _run_backup():
