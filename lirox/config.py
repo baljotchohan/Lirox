@@ -109,6 +109,9 @@ LIROX_SOURCE_DIR  = str(_REPO_ROOT / "lirox")
 AUTO_TRAIN_ENABLED          = os.getenv("AUTO_TRAIN_ENABLED", "true").lower() == "true"
 AUTO_TRAIN_AFTER_MESSAGES   = int(os.getenv("AUTO_TRAIN_AFTER_MESSAGES", "10"))
 
+# ── Thinking / Reasoning ──
+THINKING_ENABLED = os.getenv("LIROX_THINKING", "true").lower() != "false"
+
 
 # FIX-04: Deferred directory creation — called from main(), not at import
 _dirs_initialized = False

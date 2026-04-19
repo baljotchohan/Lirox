@@ -52,7 +52,8 @@ def main():
         show_welcome, show_status_card, show_answer,
         render_streaming_chunk, error_panel, info_panel,
         success_message, confirm_prompt, console, show_thinking,
-        show_agent_event,
+        show_agent_event, show_thinking_phase,
+        show_thinking_panel_open, show_thinking_panel_close,
     )
     from lirox.utils.llm import available_providers
     from lirox.config import APP_VERSION
@@ -153,13 +154,15 @@ def main():
 def process_query(orch, query: str, verbose: bool = False):
     from lirox.ui.display import (
         console, show_answer, show_thinking, show_agent_event,
+        show_thinking_phase, show_thinking_panel_open, show_thinking_panel_close,
     )
 
-    last_agent   = "personal"
-    status       = None
-    was_streamed = False
-    live_ctx     = None
-    stream_content = ""
+    last_agent                 = "personal"
+    status                     = None
+    was_streamed               = False
+    live_ctx                   = None
+    stream_content             = ""
+    thinking_panel_displayed   = False   # tracks whether the thinking header has been shown
 
     try:
         from rich.live import Live
@@ -169,12 +172,30 @@ def process_query(orch, query: str, verbose: bool = False):
             t = ev.type
 
             if t == "thinking":
+                # Initial spinner hint before phases begin
                 if verbose:
                     if status: status.stop(); status = None
                     show_thinking(ev.message)
                 elif status is None:
                     status = console.status("[bold purple]🧠 Thinking…[/]", spinner="dots")
                     status.start()
+
+            elif t == "thinking_phase":
+                # Structured phase event from ThinkingEngine
+                if status: status.stop(); status = None
+                if not thinking_panel_displayed:
+                    complexity = ev.data.get("complexity", "medium")
+                    show_thinking_panel_open(complexity)
+                    thinking_panel_displayed = True
+                show_thinking_phase(ev.data)
+
+            elif t == "thinking_done":
+                # Thinking pipeline finished — close panel if open
+                if thinking_panel_displayed:
+                    total_ms   = ev.data.get("total_ms", 0)
+                    complexity = ev.data.get("complexity", "medium")
+                    show_thinking_panel_close(total_ms, complexity)
+                    thinking_panel_displayed = False
 
             elif t == "streaming":
                 if status: status.stop(); status = None
