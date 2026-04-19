@@ -4,7 +4,7 @@ import os
 import threading
 from collections import deque
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Deque, List, Optional
 
 from lirox.config import MEMORY_DIR, MEMORY_LIMIT, MAX_MEMORY_ENTRY_CHARS
 
@@ -15,7 +15,7 @@ class MemoryManager:
         self._lock               = threading.Lock()
         # RELIABILITY-01 fix: use a bounded deque so the buffer never grows
         # past MEMORY_LIMIT * 2 entries without manual intervention.
-        self.conversation_buffer: deque = deque(maxlen=MEMORY_LIMIT * 2)
+        self.conversation_buffer: Deque[Dict[str, str]] = deque(maxlen=MEMORY_LIMIT * 2)
         # Each agent gets its own long-term memory file
         self._safe_name = agent_name.replace("/", "_").replace("\\", "_")
         self.lt_path = os.path.join(MEMORY_DIR, f"long_term_{self._safe_name}.json")

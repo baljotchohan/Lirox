@@ -37,9 +37,12 @@ INJECTION_PATTERNS = [
 # SECURITY-02: Additional argument-level validation for inherently dangerous commands.
 # These commands are allowed in the allowlist but must not be used with unsafe arguments.
 
-# rm: block recursive/force flag combinations targeting broad paths
+# rm: block recursive+force flag combos (joined or separate) targeting broad paths.
+# Matches: rm -rf /, rm -fr ~, rm -r -f *, rm -f -r .. etc.
 _RM_DANGEROUS = re.compile(
-    r'\brm\b.*\s(-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*)\s*(\/|~|\*|\.\.)',
+    r'\brm\b'
+    r'(?=.*\s-[a-z]*r[a-z]*)(?=.*\s-[a-z]*f[a-z]*)'  # has both -r and -f (any order/form)
+    r'.*\s(\/|~|\*|\.\.)',
     re.IGNORECASE,
 )
 # find: block -exec which can execute arbitrary commands
