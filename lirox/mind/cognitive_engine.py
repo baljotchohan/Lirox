@@ -801,7 +801,7 @@ class ThinkingDisplay:
     def add_planning(self, strategy_name: str): self.add_step("📋", f"Strategy: [bold]{strategy_name}[/bold]", "done")
 
     def finish(self):
-        if self.complexity and self.complexity.value <= Complexity.SIMPLE.value:
+        if isinstance(self.complexity, Complexity) and self.complexity.value <= Complexity.SIMPLE.value:
             self.console.print("  " * 40, end="\r"); return
         if self.live and self.tree:
             self.tree.add(f"  [dim]⏱ {time.time() - self.start_time:.1f}s[/dim]")
