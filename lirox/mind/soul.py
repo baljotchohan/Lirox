@@ -204,7 +204,7 @@ ADVISOR RULES
             for q in p["quirks"][-3:]:
                 lines.append(f"              └ {q}")
         if self.state["growth_log"]:
-            lines.append(f"\n  Recent growth:")
+            lines.append("\n  Recent growth:")
             for entry in self.state["growth_log"][-3:]:
                 lines.append(f"    • {entry['entry']}")
         return "\n".join(lines)

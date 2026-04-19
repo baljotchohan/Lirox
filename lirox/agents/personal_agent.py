@@ -309,7 +309,6 @@ class PersonalAgent(BaseAgent):
         yield {"type": "agent_progress", "message": "📄 Planning document generation…"}
 
         # ── STEP 1: Determine file type, path, and content via LLM ──
-        user_name = self.profile_data.get("user_name", "")
 
         plan_prompt = f"""You are a document generation planner. The user wants a file created.
 

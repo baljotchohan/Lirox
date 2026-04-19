@@ -402,7 +402,7 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         if topics:
             lines.append("INTERESTS: " + ", ".join(t["topic"] for t in topics))
         lines.append(f"\n{learn.stats_summary()}")
-        lines.append(f"\nRun /train to extract more from recent conversations.")
+        lines.append("\nRun /train to extract more from recent conversations.")
         info_panel("\n".join(lines))
 
     elif base == "/workspace":
@@ -539,7 +539,6 @@ def _run_update():
     from lirox.config import PROJECT_ROOT
     import subprocess
     import logging
-    log = logging.getLogger("lirox.update")
     root = str(Path(PROJECT_ROOT).resolve())
     info_panel(f"Checking for updates in {root}…")
     if not _check_git_available():

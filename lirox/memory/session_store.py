@@ -224,6 +224,6 @@ class SessionStore:
             return ""
         lines = []
         for e in recent:
-            label = "User" if e.role == "user" else f"Assistant"
+            label = "User" if e.role == "user" else "Assistant"
             lines.append(f"{label}: {e.content[:CONTEXT_CONTENT_LIMIT]}")
         return "\n".join(lines)

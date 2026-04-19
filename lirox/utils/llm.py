@@ -499,7 +499,6 @@ def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> 
     for _ in range(3):
         if sys_monitor.check_resources():
             break
-        import time
         time.sleep(2)
     api_limiter.record_call(provider)
     dispatch = {
