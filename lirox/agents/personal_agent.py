@@ -135,10 +135,14 @@ def _resolve_path(raw: str, query: str) -> str:
             raise PermissionError(f"Access denied: {protected} is a protected path")
 
     # Validate that the resolved path is within a permitted directory
-    if not any(canonical.startswith(safe) for safe in SAFE_DIRS_RESOLVED):
+    if not any(
+        canonical == safe or canonical.startswith(safe + os.sep)
+        for safe in SAFE_DIRS_RESOLVED
+    ):
+        allowed_dirs = ", ".join(SAFE_DIRS_RESOLVED)
         raise PermissionError(
             f"Path '{canonical}' is outside permitted directories. "
-            "Allowed: Desktop, Documents, Downloads, Projects, /tmp, Lirox project dir."
+            f"Allowed: {allowed_dirs}."
         )
 
     return canonical

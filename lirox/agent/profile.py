@@ -6,10 +6,13 @@ v3.0: Advanced prompt system with learning context boost integration.
 """
 
 import json
+import logging
 import os
 import threading
 from datetime import datetime
 from lirox.config import PROJECT_ROOT
+
+_logger = logging.getLogger("lirox.profile")
 
 
 class UserProfile:
@@ -52,24 +55,26 @@ class UserProfile:
             profile["created_at"] = datetime.now().isoformat()
             return profile
 
+    def _save_locked(self):
+        """Atomically write profile to disk.  Caller MUST hold ``self._lock``."""
+        temp_file = self.storage_file + ".tmp"
+        try:
+            self.data["last_updated"] = datetime.now().isoformat()
+            with open(temp_file, "w") as f:
+                json.dump(self.data, f, indent=4)
+            os.replace(temp_file, self.storage_file)
+        except Exception:
+            _logger.exception("Profile write failed")
+            if os.path.exists(temp_file):
+                try:
+                    os.remove(temp_file)
+                except OSError:
+                    pass
+
     def save(self):
         """Saves profile data to disk safely across multiple threads."""
-        with self._lock: # Acquire lock before opening file
-            temp_file = self.storage_file + ".tmp"
-            try:
-                self.data["last_updated"] = datetime.now().isoformat()
-                with open(temp_file, "w") as f:
-                    json.dump(self.data, f, indent=4)
-                # [FIX #2] Atomic file replacement
-                os.replace(temp_file, self.storage_file)
-            except Exception as e:
-                import logging
-                logging.getLogger("lirox.profile").warning(f"Non-critical: {e}")
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except OSError as e2:
-                        logging.getLogger("lirox.profile").warning(f"Non-critical error removing temp file: {e2}")
+        with self._lock:
+            self._save_locked()
 
     def update(self, key: str, value):
         with self._lock:
@@ -77,20 +82,7 @@ class UserProfile:
             # Write to disk while holding the lock so no concurrent update
             # can produce a mixed-state file between the in-memory change
             # and the disk flush.
-            temp_file = self.storage_file + ".tmp"
-            try:
-                self.data["last_updated"] = datetime.now().isoformat()
-                with open(temp_file, "w") as f:
-                    json.dump(self.data, f, indent=4)
-                os.replace(temp_file, self.storage_file)
-            except Exception as e:
-                import logging
-                logging.getLogger("lirox.profile").error(f"Profile write failed: {e}")
-                if os.path.exists(temp_file):
-                    try:
-                        os.remove(temp_file)
-                    except OSError:
-                        pass
+            self._save_locked()
         # Sync agent_name to the living soul so identity is consistent
         if key == "agent_name" and value:
             try:
