@@ -19,10 +19,12 @@ _OLLAMA_OPTIONS = {
 
 
 def _get_api_key(provider: str) -> Optional[str]:
-    """Return the API key for *provider*, with format validation and audit logging.
+    """Return the API key for *provider*, with format validation.
 
     SECURITY-01 fix: centralises all key access through secure_keys so that
-    key presence is logged and basic format checks are applied before use.
+    key presence is audit-logged (via secure_keys.get_api_key) and basic
+    format checks are applied before use.  A warning is emitted if the key
+    does not match the expected format for the provider.
     """
     from lirox.utils.secure_keys import get_api_key, validate_key_format
     key = get_api_key(provider)
@@ -477,7 +479,7 @@ def generate_response(prompt: str, provider: str = "auto",
                 if not api_limiter.is_allowed(fb):
                     continue  # skip rate-limited provider WITHOUT incrementing attempt
                 future = _get_pool().submit(_call_provider, fb, prompt, system_prompt)
-                retry  = future.result(timeout=timeout)
+                retry = future.result(timeout=timeout)
                 attempt += 1  # increment only after an actual call attempt
                 if not is_error_response(retry):
                     return retry

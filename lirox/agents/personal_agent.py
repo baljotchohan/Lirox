@@ -608,13 +608,10 @@ IMPORTANT:
             '"working_dir":"~ or path or empty"}}',
             provider="auto", system_prompt="Shell expert. Output ONLY JSON.")
         try:
+            # BUG-09 fix: ValueError from _extract_json is caught explicitly so
+            # that a meaningful error message is returned rather than the catch-all
+            # masking the real cause.
             d = _extract_json(raw)
-        except ValueError:
-            receipt = ShellReceipt(tool="shell", error="Could not parse shell plan from LLM response.")
-            yield {"type": "tool_result", "message": receipt.as_user_summary()}
-            yield from self._synth_receipt(query, receipt)
-            return
-        try:
             command = (d.get("command") or "").strip()
             if not command:
                 yield {"type": "tool_result", "message": "❌ Could not determine command."}
@@ -622,6 +619,8 @@ IMPORTANT:
                 return
             yield {"type": "tool_call", "message": f"$ {command}"}
             receipt = shell_run_verified(command, cwd=d.get("working_dir", ""))
+        except ValueError:
+            receipt = ShellReceipt(tool="shell", error="Could not parse shell plan from LLM response.")
         except Exception as e:
             receipt = ShellReceipt(tool="shell", error=f"Shell error: {e}")
         yield {"type": "tool_result", "message": receipt.as_user_summary()}

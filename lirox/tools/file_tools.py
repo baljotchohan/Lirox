@@ -378,7 +378,7 @@ def file_list(path: str = ".", pattern: str = "*", max_files: int = 100) -> str:
     # Check for actual traversal sequences, not just any occurrence of '..'
     # so that valid patterns like 'file..txt' are not falsely rejected.
     norm_pattern = pattern.replace("\\", "/")
-    if any(seg == ".." for seg in norm_pattern.split("/")) or pattern.startswith("/"):
+    if any(seg == ".." for seg in norm_pattern.split("/")) or norm_pattern.startswith("/"):
         return "Invalid glob pattern: '..' path components and leading '/' are not permitted."
     ok, info = _is_safe_path(path)
     if not ok:
