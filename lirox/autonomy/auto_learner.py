@@ -1,4 +1,4 @@
-"""Lirox V1 — Auto-Learning Background Thread.
+"""Lirox v1.1 — Auto-Learning Background Thread.
 
 Automatically extracts learnings from conversations in the background every
 AUTO_TRAIN_INTERVAL_MINUTES (default 30) without blocking user interaction.

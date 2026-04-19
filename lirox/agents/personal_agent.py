@@ -1,4 +1,4 @@
-"""Lirox v3.2 — PersonalAgent with ReAct Reasoning Engine
+"""Lirox v1.1 — PersonalAgent
 
 ARCHITECTURE:
   Every query goes through: CLASSIFY → PLAN → EXECUTE → VERIFY → RESPOND

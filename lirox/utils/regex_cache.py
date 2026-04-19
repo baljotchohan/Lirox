@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Compiled Regex Cache
+"""Lirox v1.1 — Compiled Regex Cache
 
 Pre-compiles and caches frequently used regex patterns so they are not
 recompiled on every call.  Using a compiled pattern is typically 10-100×

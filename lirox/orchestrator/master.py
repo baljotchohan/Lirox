@@ -1,4 +1,4 @@
-"""Lirox v3.1 — Master Orchestrator"""
+"""Lirox v1.1 — Master Orchestrator"""
 from __future__ import annotations
 import os
 import time

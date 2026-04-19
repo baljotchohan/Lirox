@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Streaming Response Engine survival_prompt"""
+"""Lirox v1.1 — Streaming Response Engine"""
 from __future__ import annotations
 import re
 import time

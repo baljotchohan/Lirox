@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Input Sanitizer
+"""Lirox v1.1 — Input Sanitizer
 
 Sanitizes user input before it is forwarded to an LLM:
 - Removes ASCII control characters (except normal whitespace)

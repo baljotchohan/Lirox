@@ -1,4 +1,4 @@
-"""Lirox v3.2 — File Generation Engine
+"""Lirox v1.1 — File Generation Engine
 
 Actually creates PDF, Word, Excel, and PowerPoint files.
 Dependencies are auto-installed on first use.

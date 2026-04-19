@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Secure API Key Management
+"""Lirox v1.1 — Secure API Key Management
 
 Provides a manager that:
 - Validates API keys are present before use

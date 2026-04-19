@@ -1,5 +1,5 @@
 """
-Lirox v3.0 — Living Soul Engine
+Lirox v1.1 — Living Soul Engine
 
 The soul is a dynamic document that evolves with the user.
 It's not a fixed config — it grows, changes personality, learns quirks,
@@ -17,7 +17,7 @@ from lirox.config import MIND_SOUL_FILE
 
 
 DEFAULT_SOUL_STATE = {
-    "version": "4.0",
+    "version": "1.1",
     "created_at": None,
     "name": "Lirox",                    # Agent name (customizable)
     "personality": {

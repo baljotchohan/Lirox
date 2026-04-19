@@ -1,5 +1,7 @@
 # 🦁 Lirox
 
+> **v1.1.0** · Intelligence as an Operating System
+
 **Intelligence as an Operating System.**
 
 A terminal-first, local-first autonomous personal AI agent that reads, writes, and controls your desktop. Lirox learns who you are, remembers your conversations, and gets better over time.

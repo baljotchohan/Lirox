@@ -1,5 +1,5 @@
 """
-Lirox v3.0 — Permanent Learnings Store
+Lirox v1.1 — Permanent Learnings Store
 
 This is the Mind Agent's long-term knowledge base.
 Every /train call crystallizes session patterns into permanent learnings.
@@ -24,7 +24,7 @@ class LearningsStore:
     """
 
     SCHEMA = {
-        "version": "4.0",
+        "version": "1.1",
         "created_at": None,
         "last_trained": None,
         "user_facts": [],          # Hard facts about the user

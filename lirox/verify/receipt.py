@@ -1,6 +1,6 @@
 """Structured execution receipts.
 
-Every tool in Lirox v2 returns one of these instead of a plain string.
+Every tool returns one of these instead of a plain string.
 The agent's summarizer (_synth) reads `verified` and `ok` — it NEVER
 narrates success unless both are True. This eliminates hallucinated
 success.

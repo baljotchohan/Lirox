@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Setup Wizard (Clean)
+"""Lirox v1.1 — Setup Wizard
 
 Steps:
   1. Welcome + operator name
@@ -373,7 +373,7 @@ def _run_one_paste_import() -> None:
 def _multiline_read() -> str:
     """Read a multi-line block. The user MUST type END on its own line to
     finish — this is explicit and unambiguous, unlike heuristic blank-line
-    detection which truncated valid JSON paste in v2.x.
+    detection which truncated valid JSON paste in earlier versions.
     """
     lines: list[str] = []
     while True:

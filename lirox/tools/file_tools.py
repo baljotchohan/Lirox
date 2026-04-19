@@ -1,4 +1,4 @@
-"""Lirox v3.0 — File Operations (verified, structured receipts, audit logging).
+"""Lirox v1.1 — File Operations (verified, structured receipts, audit logging).
 
 Every write/read/delete/patch now returns a FileReceipt with explicit
 disk-verification. The agent can no longer report success unless
@@ -31,7 +31,7 @@ from lirox.config import is_self_modification
 
 
 def _audit(event_name: str, path: str = "", message: str = "", **kwargs) -> None:
-    """Audit logging placeholder — audit module removed in v3.0."""
+    """Audit logging placeholder."""
     pass
 
 

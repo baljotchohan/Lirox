@@ -1,4 +1,4 @@
-"""Lirox v3.2 — Entry Point"""
+"""Lirox v1.1 — Entry Point"""
 import os
 import sys
 import time

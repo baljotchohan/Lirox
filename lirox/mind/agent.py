@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Mind module singletons (simplified)."""
+"""Lirox v1.1 — Mind module singletons."""
 from __future__ import annotations
 import threading
 

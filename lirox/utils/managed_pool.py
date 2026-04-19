@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Managed Thread Pool
+"""Lirox v1.1 — Managed Thread Pool
 
 A drop-in replacement for ``concurrent.futures.ThreadPoolExecutor`` that:
 - Shuts down with ``wait=True`` so in-flight work is completed before the

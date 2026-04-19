@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Training Engine (Rebuilt)
+"""Lirox v1.1 — Training Engine
 
 Simple and reliable:
   - Reads from memory buffer + daily JSONL + session store

@@ -1,4 +1,4 @@
-"""Lirox v3.2 — Central Configuration"""
+"""Lirox v1.1 — Central Configuration"""
 import os
 import tempfile
 from pathlib import Path
@@ -10,7 +10,7 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-APP_VERSION = "3.2.0"
+APP_VERSION = "1.1.0"
 
 _REPO_ROOT   = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
