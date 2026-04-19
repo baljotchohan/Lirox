@@ -1,138 +1,47 @@
 <div align="center">
 
-# 🦁 Lirox: Intelligence as an Operating System
+# 🦁 Lirox
 
-**A terminal-first, local-first autonomous AI agent that reads, writes, and controls your desktop.** 
-Lirox learns who you are, remembers your conversations, and constantly evolves.
+**Intelligence as an Operating System**
 
-[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](#)
+[![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)](https://github.com/baljotchohan/Lirox)
 [![Python](https://img.shields.io/badge/python-3.9+-yellow.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](#)
+[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+*A terminal-first, local-first autonomous personal AI agent that reads, writes, and controls your desktop. Lirox learns who you are, remembers your conversations, and gets better over time.*
 
 </div>
 
-<br/>
-
-Lirox is not just a chatbot; it's an **intelligent reasoning engine** running natively on your machine space. It integrates deeply into your operating system to safely execute shell commands, autonomously generate complex file structures, surf the web, and store long-term learnings spanning across multiple sessions securely on disk.
-
 ---
 
-## 📑 Table of Contents
+## ⚡ What is Lirox?
 
-- [Requirements](#requirements)
-- [What Lirox Can Do & Core Features](#what-lirox-can-do--core-features)
-- [How Lirox Thinks (Flowcharts)](#how-lirox-thinks-flowcharts)
-- [Commands](#commands)
-- [Quick Install](#quick-install)
-- [Platform-Specific Installation](#platform-specific-installation)
-  - [Windows](#windows)
-  - [Linux](#linux)
-  - [macOS](#macos)
-- [Virtual Environment Setup (Recommended)](#virtual-environment-setup-recommended)
-- [First Run & Setup](#first-run--setup)
-- [API Keys](#api-keys)
-- [Troubleshooting](#troubleshooting)
-- [Architecture](#architecture)
-- [License](#license)
-
----
-
-## 📋 Requirements
-
-- **Python 3.9 or newer** — [python.org/downloads](https://www.python.org/downloads/)
-- **pip** (comes with Python; if missing run `python -m ensurepip --upgrade`)
-- **Git** (optional, for cloning) — [git-scm.com](https://git-scm.com)
-- At least one LLM API key — see [API Keys](#api-keys)
-
-All Python library dependencies are installed automatically. If any library is missing when Lirox starts, it will detect and install it for you. You can also install them manually:
-
-```bash
-pip install -r requirements.txt
-```
-
----
-
-## 🌟 What Lirox Can Do & Core Features
-
-- **🧠 Autonomous ReAct Engine:** Lirox features a strict "Plan-Execute-Verify" pipeline ensuring every action is deliberately planned and evaluated before moving forward.
-- **📄 Native File & Document Engine:** Generates rich project architectures, codebases, PDFs, Word docs (DOCX), Excel spreadsheets (XLSX), and PowerPoint presentations natively out-of-the-box verified on disk.
-- **💻 Verified System Control:** Runs shell commands safely with an allowlist protection and verification buffer.
-- **🌐 Web Search:** Live knowledge via DuckDuckGo and other search operators.
-- **💭 Living Episodic Memory:** Automatically runs background categorization threads (`/train`) extracting critical facts, code preferences, and ongoing projects into long-term memory.
-- **🔄 Universal Memory Import:** Setup Wizard automatically provisions imports directly from ChatGPT, Claude, and Gemini exports.
-- **🛠 Code Knowledge:** Knows its own code—ask it about its architecture.
-- **🧩 Auto-installs missing dependencies:** Lirox detects and installs any missing Python libraries on startup.
-
----
-
-## 🛠 How Lirox Thinks (Flowcharts)
-
-### ReAct Engine Execution Pipeline
+Lirox is a powerful, autonomous reasoning engine built locally into your terminal. It connects multi-provider LLMs directly to your file system, shell, and internet to act as a personal assistant that actively learns from you. 
 
 ```mermaid
-graph TD
-    A[User Request] -->|Parsed via UI| B(Orchestrator)
-    B --> C{ReAct Engine}
-    C -->|Plan Action| D[Tool Selection]
-    
-    D -->|Exec| E1[File Tools / Generator]
-    D -->|Exec| E2[Code & Shell Executor]
-    D -->|Exec| E3[Search Tools]
-    D -->|Exec| E4[Memory Operations]
-
-    E1 --> V[Verification / Strict Receipt Checks]
-    E2 --> V
-    E3 --> V
-    E4 --> V
-
-    V -->|Success/Correction| C
-    C -->|Done| F[Final Markdown Answer Streamed]
-```
-
-### Episodic Memory & Local Learning Flow
-
-```mermaid
-sequenceDiagram
-    participant User
-    participant Lirox Memory System
-    participant Temporal Buffer
-    participant Local Vector DB 
-
-    User->>Lirox Memory System: Interacts & Issues commands
-    Lirox Memory System->>Temporal Buffer: Thread & Context stored for session
-    Lirox Memory System->>User: Action Completed
-    User->>Lirox Memory System: Issues "/train" command
-    Lirox Memory System->>Local Vector DB: Trainer Engine extracts Facts / Preferences and saves to disk
+graph TD;
+    User-->|Commands & Chat|Lirox;
+    Lirox-->|Execute|Shell;
+    Lirox-->|Manage|FileSystem;
+    Lirox-->|Search|Web(DuckDuckGo);
+    Lirox-->|Memory|KnowledgeBase[Personal Knowledge Base];
+    KnowledgeBase-->|Recall|Lirox;
 ```
 
 ---
 
-## ⚡ Commands
+## 🌟 Key Features
 
-Lirox provides a suite of deeply integrated commands to control the engine directly from the CLI.
+Lirox is packed with native capabilities to serve as your ultimate daily driver AI:
 
-| Command | Usage / Parameters | Description |
-|:---|:---|:---|
-| `/help` | - | Show all system commands and syntax. |
-| `/setup` | - | Launch the interactive console setup wizard. |
-| `/session` | - | Display current working session information. |
-| `/history` | `[n]` | Query historical session logs (default: last 20). |
-| `/memory` | - | Analyze memory, buffers, and active memory retention stats. |
-| `/profile` | - | Show User & Agent profile configurations. |
-| `/train` | - | Extract facts, projects, and preferences from sessions to permanent vault. |
-| `/recall` | - | List deeply cached user knowledge and project states. |
-| `/workspace`| `[path]` | Show or change the core execution workspace directory path. |
-| `/models`| - | List configurations and availability strings for provider backends. |
-| `/use-model`| `<model_name>` | Select and pin an LLM backend (e.g. `groq`, `gemini`). Use `auto` to reset. |
-| `/test`| - | Run dependency diagnostics, file system checks, and internal checks. | 
-| `/reset`| - | Flush session memory and restart context explicitly. |
-| `/backup`| - | Encrypt and ZIP profile/memory assets, saving backup to local disk. |
-| `/import-memory`| `<path>` | Ingest existing conversational histories from JSON exports. |
-| `/export-memory`| - | Extract active knowledge and settings into an external raw JSON file. |
-| `/update`| - | Verify upstream changes and sync via git/pip immediately. |
-| `/restart`| - | Safely reboot Lirox kernel processes without breaking active bash. |
-| `/uninstall`| - | Purge all data folders, caches, DBs and environments entirely. |
-| `/exit`| - | Shutdown operations and exit. |
+- 🧠 **Autonomous Reasoning Engine** – Powered by ReAct architecture, ensuring logical plan-execute-verify pipelines.
+- 💾 **Living Memory & Soul** – Continuously extracts learnings from your conversations. It remembers preferences, projects, and facts using a robust `.json` driven local state.
+- 💻 **Verified Desktop Control** – Can create, edit, move, and track files on disk securely. 
+- 🐚 **Safe Shell Execution** – Runs terminal commands gracefully with built-in sandbox-style protection (allow/blocklists).
+- 🌐 **Web Searching** – Pulls real-time information via DuckDuckGo seamlessly.
+- 🔌 **Dynamic Multi-Provider** – Toggle effortlessly between Groq, Gemini, OpenRouter, Ollama, OpenAI, Anthropic, and more.
+- 🛠 **Zero-Friction Dependencies** – Boots up and auto-installs missing Python packages natively without breaking your flow.
+- 🪄 **Beautiful UI** – Terminal interactions with a clean layout, streaming response rendering, word-by-word animation, and syntax highlighting.
 
 ---
 
@@ -146,204 +55,95 @@ cd Lirox
 # 2. Install Lirox
 pip install -e .
 
-# 3. Run Lirox
+# 3. Start Operating
 lirox
 ```
-
-> **Note:** If `pip install -e .` gives the error  
-> `ERROR: file:///C:/Users/... does not appear to be a Python project`  
-> make sure you are **inside the Lirox folder** before running the command (the folder must contain `pyproject.toml`).
+*(If pip gives an externally-managed-environment error, you are encouraged to use a `venv` or allow `pip install --break-system-packages -e .`)*
 
 ---
 
-## 📦 Platform-Specific Installation
+## 💻 Platform-Specific Installation
 
-### Windows
+<details>
+<summary><b>Windows</b></summary>
 
-**Option A — Automated installer (recommended)**
+**Option A — Automated**
 ```bat
 git clone https://github.com/baljotchohan/Lirox.git
 cd Lirox
 install_windows.bat
+lirox
 ```
 
-**Option B — Manual steps**
+**Option B — Manual**
 ```bat
-:: 1. Verify Python is installed
-python --version
-:: If not found, try:
-py --version
-
-:: 2. Upgrade pip
 python -m pip install --upgrade pip
-
-:: 3. Install Lirox
 python -m pip install -e .
-
-:: 4. Run Lirox
 lirox
 ```
+*(If `lirox` command not found, use `python -m lirox`)*
+</details>
 
-**Option C — If `lirox` command is not found after install**
-```bat
-:: Run via Python module directly
-python -m lirox
+<details>
+<summary><b>macOS</b></summary>
 
-:: Or add Python's Scripts folder to PATH, e.g.:
-:: C:\Users\YourName\AppData\Local\Programs\Python\Python3xx\Scripts
-```
-
----
-
-### Linux
-
-**Option A — Automated installer (recommended)**
-```bash
-git clone https://github.com/baljotchohan/Lirox.git
-cd Lirox
-chmod +x install_linux.sh
-./install_linux.sh
-```
-
-**Option B — Manual steps**
-```bash
-# 1. Install Python & pip (if not already installed)
-# Ubuntu/Debian:
-sudo apt update && sudo apt install -y python3 python3-pip
-
-# Fedora/RHEL:
-sudo dnf install -y python3 python3-pip
-
-# Arch Linux:
-sudo pacman -S python python-pip
-
-# 2. Upgrade pip
-python3 -m pip install --upgrade pip
-
-# 3. Clone and install
-git clone https://github.com/baljotchohan/Lirox.git
-cd Lirox
-python3 -m pip install -e .
-
-# 4. Run Lirox
-lirox
-```
-
-**Option C — If `lirox` command is not found**
-```bash
-# Add ~/.local/bin to PATH
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
-source ~/.bashrc
-
-# Or run directly
-python3 -m lirox
-```
-
----
-
-### macOS
-
-**Option A — Automated installer (recommended)**
+**Option A — Automated**
 ```bash
 git clone https://github.com/baljotchohan/Lirox.git
 cd Lirox
 chmod +x install_macOS.sh
 ./install_macOS.sh
+lirox
 ```
 
-**Option B — Manual steps**
+**Option B — Manual**
 ```bash
-# 1. Install Python (via Homebrew is recommended)
-brew install python
-
-# 2. Upgrade pip
 python3 -m pip install --upgrade pip
+python3 -m pip install -e .
+lirox
+```
+</details>
 
-# 3. Clone and install
+<details>
+<summary><b>Linux</b></summary>
+
+**Option A — Automated**
+```bash
 git clone https://github.com/baljotchohan/Lirox.git
 cd Lirox
+chmod +x install_linux.sh
+./install_linux.sh
+lirox
+```
+
+**Option B — Manual**
+```bash
+sudo apt update && sudo apt install -y python3 python3-pip
 python3 -m pip install -e .
-
-# 4. Run Lirox
 lirox
 ```
-
-**Option C — macOS system Python restrictions (externally-managed-environment error)**
-```bash
-# Use a virtual environment (recommended):
-python3 -m venv lirox-env
-source lirox-env/bin/activate
-pip install -e .
-lirox
-
-# Or allow system pip override (use with caution):
-pip install --break-system-packages -e .
-```
-
-**Option D — If `lirox` command is not found**
-```bash
-# Add Python bin to PATH — detect your version first, then update PATH
-python3 --version          # e.g. "Python 3.11.9" → version is 3.11
-echo 'export PATH="$HOME/Library/Python/3.11/bin:$PATH"' >> ~/.zshrc   # replace 3.11 with your version
-source ~/.zshrc
-
-# Or run directly without changing PATH
-python3 -m lirox
-```
+</details>
 
 ---
 
-## 🛡 Virtual Environment Setup (Recommended)
+## ⚙️ First Run & Setup
 
-Using a virtual environment keeps Lirox isolated from your system Python and avoids permission issues:
-
+Once installed, simply start the engine:
 ```bash
-# Create virtual environment
-python3 -m venv lirox-env        # Linux/macOS
-python  -m venv lirox-env        # Windows
-
-# Activate it
-source lirox-env/bin/activate    # Linux/macOS
-lirox-env\Scripts\activate       # Windows (cmd)
-lirox-env\Scripts\Activate.ps1   # Windows (PowerShell)
-
-# Install inside the environment
-pip install -e .
-
-# Run Lirox
 lirox
-
-# Deactivate when done
-deactivate
 ```
 
----
-
-## 🏁 First Run & Setup
-
-Booting up for the very first time:
-
-```bash
-# Start Lirox
-lirox
-
-# Run the setup wizard (add API keys, set your profile)
-lirox --setup
-
-# Check version runtime
-lirox --version
+From within Lirox, you can set up your keys and profile:
+```text
+/setup
 ```
 
----
-
-## 🔑 API Keys
-
-Lirox supports multiple LLM providers. Add at least one during `lirox --setup`:
+### Supported API Providers
 
 | Provider | Cost | Link |
 |----------|------|------|
-| **Groq** | Free limits | [console.groq.com](https://console.groq.com) |
-| **Gemini** | Free limits | [aistudio.google.com](https://aistudio.google.com) |
+| **Groq** | Free | [console.groq.com](https://console.groq.com) |
+| **Gemini** | Free | [aistudio.google.com](https://aistudio.google.com) |
 | **OpenRouter** | Free tier | [openrouter.ai](https://openrouter.ai) |
 | **Ollama** | Local / Free | [ollama.com](https://ollama.com) |
 | **OpenAI** | Paid | [platform.openai.com](https://platform.openai.com) |
@@ -351,114 +151,80 @@ Lirox supports multiple LLM providers. Add at least one during `lirox --setup`:
 
 ---
 
-## 🏥 Troubleshooting
+## ⌨️ Command Reference
 
-### `ERROR: file:///C:/Users/... does not appear to be a Python project`
+Lirox provides an extensive set of slash-commands to manage its operating system and your data completely.
 
-This error means pip cannot find `pyproject.toml` or `setup.py`. **Solution:** run `pip install -e .` from inside the cloned Lirox directory:
+### 🛠 System & Settings
+| Command | Description |
+|---------|-------------|
+| `/help` | Show all available commands |
+| `/setup` | Re-run setup wizard (API keys, profile) |
+| `/profile` | Display your user profile |
+| `/workspace [path]`| Show or change the active operational directory |
+| `/models` | List all available LLM providers |
+| `/use-model <n>` | Pin a specific provider (groq, gemini, ollama…) |
+| `/test` | Run system diagnostics |
+| `/restart` | Restart the Lirox engine |
+| `/update` | Auto-update repository via git pull & reinstall |
+| `/exit` | Gracefully shutdown Lirox |
 
-```bash
-cd Lirox       # make sure you are in the project root
-pip install -e .
-```
+### 🧠 Memory & Knowledge
+| Command | Description |
+|---------|-------------|
+| `/history [n]`| Show the last N sessions |
+| `/session` | View current session routing info |
+| `/memory` | Show memory buffer and long-term statistics |
+| `/reset` | Wipe short-term session memory for a fresh context |
+| `/train` | Force agent to extract and solidify learnings from chats |
+| `/recall` | View everything Lirox has learned about you |
 
-### `lirox: command not found` (Linux/macOS)
-
-Python user scripts may not be on your `PATH`. Fix:
-
-```bash
-# Linux
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc && source ~/.bashrc
-
-# macOS (zsh) — detect your Python version first:
-#   python3 --version   →  e.g. "Python 3.11.9"  →  use 3.11 below
-echo 'export PATH="$HOME/Library/Python/3.11/bin:$PATH"' >> ~/.zshrc && source ~/.zshrc
-
-# Or use the module form:
-python3 -m lirox
-```
-
-### `lirox` not recognized (Windows)
-
-Python's `Scripts` directory is not on your `PATH`. Either:
-
-1. Reinstall Python and check **"Add Python to PATH"** during setup.
-2. Manually add the Scripts folder to your system PATH. Find the exact path by running `python -c "import sys; print(sys.executable)"` — the `Scripts` folder is in the same directory (e.g. `C:\Users\YourName\AppData\Local\Programs\Python\Python311\Scripts`).
-3. Use the module form: `python -m lirox`
-
-### `externally-managed-environment` error (macOS/Linux)
-
-Your system Python is protected. Use a virtual environment or add the flag:
-
-```bash
-# Recommended: virtual environment
-python3 -m venv lirox-env && source lirox-env/bin/activate && pip install -e .
-
-# Quick override (not recommended for system Python)
-pip install --break-system-packages -e .
-```
-
-### Missing dependency at runtime
-
-Lirox will auto-detect and install missing packages when it starts. If that fails, install manually:
-
-```bash
-pip install -r requirements.txt
-```
-
-### `pip` not found
-
-```bash
-# Linux
-sudo apt install python3-pip    # Ubuntu/Debian
-sudo dnf install python3-pip    # Fedora
-
-# macOS
-brew install python
-
-# All platforms
-python3 -m ensurepip --upgrade
-python3 -m pip install --upgrade pip
-```
+### 📦 Data Portability
+| Command | Description |
+|---------|-------------|
+| `/backup` | Compress and backup all data securely |
+| `/export-memory`| Export whole configuration & knowledge state to JSON |
+| `/import-memory`| Import JSON context (from web ChatGPT/Claude/Lirox exports)|
+| `/uninstall`| Self-destruct and wipe Lirox data safely |
 
 ---
 
-## 🏗 Architecture
+## 💡 Use Cases
+
+### 1. Developer Co-Pilot
+> *“Lirox, create a full python script to batch download images from an API, save it to `/workspace/scripts/batch_downloader.py`, run it, and let me know if there are syntax errors.”*
+
+### 2. Autonomous Knowledge Worker
+> *“Fetch the top news on AI safety, generate a 2-page summarized report, and save it as a Markdown document on my Desktop.”*
+
+### 3. Personal Mentor
+> *(After weeks of chatting, Lirox remembers your ongoing projects)*
+> *“How should I refactor the database schema in my recent web-app project?”* 
+
+### 4. File System Cleanup
+> *“Give me a list of all files in my Downloads folder larger than 100MB and calculate the total size.”*
+
+---
+
+## 🔧 Architecture Overview
+
+Lirox operates logically by isolating reasoning layers from operational interfaces, ensuring sanity checks and runtime safety.
 
 ```text
 lirox/
-├── main.py               # Lirox Process Shell & Command Handlers
-├── config.py             # System Configurations
-├── agent/ 
-│   ├── profile.py        # System identity and core profile bindings
-├── agents/ 
-│   ├── base_agent.py     # Base abstract behavior nodes 
-│   └── personal_agent.py # The dynamic identity mapping layer
-├── mind/
-│   ├── learnings.py      # Permanent Key-Value vector DB handler
-│   ├── soul.py           # Identity parameterization algorithms
-│   └── trainer.py        # Entity extractions from /train mapping
-├── orchestrator/
-│   └── master.py         # Sub-process threading & Master Controller
-├── memory/               
-│   ├── manager.py        # 3-tier memory abstraction logic (buffer + logs + long term)
-│   └── session_store.py  # SQLite cache persistence models
-├── tools/                # Sub-system tool injections
-│   ├── file_tools.py     # Sandbox aware disk mutation
-│   ├── file_generator.py # Robust PDF/Word/Spreadsheet generator module 
-│   ├── terminal.py       # Safe shell execution controller
-│   ├── shell_verified.py # Verified executor
-│   └── code_executor.py  # Sandboxed python execution contexts
-├── ui/                   # Rich Terminal System Interactions
-│   ├── display.py        # Block, Chunk, Streaming UI Logic
-│   └── wizard.py         # Set up Wizard
-└── verify/
-    ├── receipt.py        # Structured transaction hash mappings
-    └── disk.py           # Hard drive block presence checks
+├── main.py              # Application Entry / System Ring 0
+├── config.py            # Hardened Configuration Settings
+├── agents/              # ReAct Reasoning Entities
+├── memory/              # Buffer & Persistence Pipeline
+├── mind/                # Dynamic Self / Learning Extraction
+├── tools/               # Secure Sub-systems (Terminal, Search)
+├── ui/                  # Rich Front-End Rendering
+└── utils/               # Native Utilities & Bootstrapping
 ```
 
 ---
 
-## ⚖️ License
-
-MIT License. See `LICENSE` for more information.
+<div align="center">
+  <i>Empower your workflow today securely from your terminal.</i><br>
+  <b>Built by Baljot Chohan</b> under the <b>MIT License</b>.
+</div>
