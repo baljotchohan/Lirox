@@ -556,7 +556,19 @@ def _run_update():
 
     try:
         # 2. Stash uncommitted changes so pull succeeds
-        _stash_changes(root)
+        stash_ok = _stash_changes(root)
+        if not stash_ok:
+            error_panel(
+                "UPDATE FAILED",
+                "Could not stash local changes.\n\n"
+                "Your changes are conflicting with the repository.\n\n"
+                "Solutions:\n"
+                "  1. Run: git status  (inspect what changed)\n"
+                "  2. Run: git stash --include-untracked\n"
+                "  3. Run: git clean -fd\n"
+                "  4. Run: /update again",
+            )
+            return
         log.debug("Stash check complete for %s", root)
 
         # 3. Pull with retry / exponential backoff
