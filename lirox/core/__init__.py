@@ -6,6 +6,7 @@ from lirox.core.errors import (
     ToolError,
     SecurityError,
     DataError,
+    LiroxMemoryError,
 )
 from lirox.core.logger import get_logger
 from lirox.core.transaction import atomic_write, AtomicTransaction
@@ -18,6 +19,7 @@ __all__ = [
     "ToolError",
     "SecurityError",
     "DataError",
+    "LiroxMemoryError",
     "get_logger",
     "atomic_write",
     "AtomicTransaction",

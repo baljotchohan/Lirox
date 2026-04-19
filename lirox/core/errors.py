@@ -144,7 +144,7 @@ class DataError(LiroxError):
         self.data_type = data_type
 
 
-class MemoryError(LiroxError):  # noqa: A001 — shadows built-in intentionally scoped
+class LiroxMemoryError(LiroxError):
     """Raised when memory operations fail."""
 
     def __init__(self, message: str, agent: str = "", retryable: bool = False) -> None:

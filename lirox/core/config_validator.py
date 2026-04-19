@@ -22,6 +22,20 @@ from dataclasses import dataclass, field
 from typing import List, Optional
 
 
+# ---------------------------------------------------------------------------
+# Timeout range constants
+# ---------------------------------------------------------------------------
+
+MIN_LLM_TIMEOUT: int = 10    # seconds — below this, most LLMs will always time out
+MAX_LLM_TIMEOUT: int = 300   # seconds — above this, UX degrades significantly
+
+MIN_SHELL_TIMEOUT: int = 5   # seconds — very short commands still need a few seconds
+MAX_SHELL_TIMEOUT: int = 300
+
+MIN_FILE_TIMEOUT: int = 5
+MAX_FILE_TIMEOUT: int = 120
+
+
 @dataclass
 class ConfigReport:
     """Result of a configuration validation pass."""
@@ -113,9 +127,9 @@ def _check_api_keys(report: ConfigReport) -> None:
 def _check_timeouts(report: ConfigReport) -> None:
     """Validate that configured timeouts are in sane ranges."""
     checks = [
-        ("LIROX_LLM_TIMEOUT",   "LLM_TIMEOUT",   10, 300, "LLM timeout"),
-        ("LIROX_SHELL_TIMEOUT",  "SHELL_TIMEOUT",  5, 300, "shell timeout"),
-        ("LIROX_FILE_TIMEOUT",   None,             5, 120, "file timeout"),
+        ("LIROX_LLM_TIMEOUT",   "LLM_TIMEOUT",   MIN_LLM_TIMEOUT,   MAX_LLM_TIMEOUT,   "LLM timeout"),
+        ("LIROX_SHELL_TIMEOUT",  "SHELL_TIMEOUT",  MIN_SHELL_TIMEOUT, MAX_SHELL_TIMEOUT, "shell timeout"),
+        ("LIROX_FILE_TIMEOUT",   None,             MIN_FILE_TIMEOUT,  MAX_FILE_TIMEOUT,  "file timeout"),
     ]
     for primary, fallback, lo, hi, label in checks:
         raw = os.getenv(primary) or (os.getenv(fallback) if fallback else None)
