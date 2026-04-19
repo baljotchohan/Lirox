@@ -81,7 +81,16 @@ def show_answer(text: str, agent: str = "personal"):
     icon = "⚡" if agent == "personal" else "🧠"
     console.print(f"\n{icon} [bold #FFD700]Response:[/]")
     from rich.markdown import Markdown
-    console.print(Markdown(text))
+    from rich.live import Live
+    from lirox.utils.streaming import StreamingResponse
+    
+    streamer = StreamingResponse()
+    full_text = ""
+    with Live(Markdown(""), console=console, refresh_per_second=15) as live:
+        for chunk in streamer.stream_words(text, delay=0.01):
+            full_text += chunk
+            live.update(Markdown(full_text))
+            
     console.print(f"  [{CLR_SUCCESS}]✓ Done[/]")
 
 

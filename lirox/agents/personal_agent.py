@@ -223,7 +223,7 @@ class PersonalAgent(BaseAgent):
             prompt = f"Context:\n{context[:1500]}\n\n{prompt}"
         answer = generate_response(prompt, provider="auto", system_prompt=base_sys)
         self.memory.save_exchange(query, answer)
-        for chunk in _STREAMER.stream_in_paragraphs(answer):
+        for chunk in _STREAMER.stream_words(answer, delay=0.01):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
@@ -283,7 +283,7 @@ class PersonalAgent(BaseAgent):
                     if receipt.details.get("truncated"):
                         answer += "\n\n*(truncated — file is larger)*"
                     self.memory.save_exchange(query, answer)
-                    for chunk in _STREAMER.stream_in_paragraphs(answer):
+                    for chunk in _STREAMER.stream_words(answer, delay=0.01):
                         yield {"type": "streaming", "message": chunk}
                     yield {"type": "done", "answer": answer}
                     return
@@ -369,7 +369,7 @@ class PersonalAgent(BaseAgent):
             f"Query: {query}\nResults:\n{str(results)[:6000]}\nComprehensive answer:",
             provider="auto", system_prompt=_get_sys(self.profile_data))
         self.memory.save_exchange(query, answer)
-        for chunk in _STREAMER.stream_in_paragraphs(answer):
+        for chunk in _STREAMER.stream_words(answer, delay=0.01):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
@@ -392,7 +392,7 @@ class PersonalAgent(BaseAgent):
             f"Query: {query}\n\nMy own source code:\n{summary}\n\nAnswer from actual code.",
             provider="auto", system_prompt=_get_sys(self.profile_data))
         self.memory.save_exchange(query, answer)
-        for chunk in _STREAMER.stream_in_paragraphs(answer):
+        for chunk in _STREAMER.stream_words(answer, delay=0.01):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
@@ -436,7 +436,7 @@ class PersonalAgent(BaseAgent):
             "Answer using ONLY the data above. If missing, say so honestly.",
             provider="auto", system_prompt=_get_sys(self.profile_data))
         self.memory.save_exchange(query, answer)
-        for chunk in _STREAMER.stream_in_paragraphs(answer):
+        for chunk in _STREAMER.stream_words(answer, delay=0.01):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
@@ -451,7 +451,7 @@ class PersonalAgent(BaseAgent):
                       "Operation FAILED. Tell user what failed and suggest a fix. Max 3 sentences.")
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
         self.memory.save_exchange(query, answer)
-        for chunk in _STREAMER.stream_in_paragraphs(answer):
+        for chunk in _STREAMER.stream_words(answer, delay=0.01):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
@@ -459,6 +459,6 @@ class PersonalAgent(BaseAgent):
         prompt = f"Task: {query}\nTool output:\n{text_result}\n\nSummarize concisely."
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
         self.memory.save_exchange(query, answer)
-        for chunk in _STREAMER.stream_in_paragraphs(answer):
+        for chunk in _STREAMER.stream_words(answer, delay=0.01):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
