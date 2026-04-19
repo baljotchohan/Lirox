@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lirox"
-version = "3.1.0"
+version = "3.2.0"
 description = "Intelligence as an Operating System. Terminal-first autonomous personal AI agent."
 readme = "README.md"
 requires-python = ">=3.9"

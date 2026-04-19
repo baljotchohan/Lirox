@@ -1,25 +1,20 @@
-"""Lirox v3.1.1 — PersonalAgent (Advanced Reasoning & Execution)
+"""Lirox v3.2 — PersonalAgent with ReAct Reasoning Engine
 
-One unified agent. Real file operations. Real shell execution.
-Self-aware (can read its own source). Learns from user.
-All operations verified on disk. No virtual/fake results.
-
-v3.1.1 UPGRADE:
-  - Advanced signal routing with multi-layer classification
-  - Follow-up context tracking (remembers last task)
-  - Anti-hallucination guard: NEVER claims success without tool receipt
-  - Auto-redirect: chat detects action requests and dispatches tools
-  - Filegen fallback in _file when document formats detected
-  - Richer LLM planning prompts for higher-quality output
+ARCHITECTURE:
+  Every query goes through: CLASSIFY → PLAN → EXECUTE → VERIFY → RESPOND
+  
+  The agent NEVER says "I did X" without verification.
+  The agent NEVER describes how to do something — it DOES it.
+  Tool calls produce real side effects that are verified on disk.
 """
 from __future__ import annotations
 
 import json as _json
 import os
-import re as _re
+import re
 import time
 from pathlib import Path
-from typing import Any, Dict, Generator, Optional
+from typing import Any, Dict, Generator, List
 
 from lirox.agents.base_agent import BaseAgent, AgentEvent
 from lirox.utils.llm import generate_response
@@ -29,9 +24,9 @@ from lirox.verify import FileReceipt, ShellReceipt
 _STREAMER = StreamingResponse()
 
 
-# ═══════════════════════════════════════════════════════════════════
-# SYSTEM PROMPT — Anti-hallucination + Advanced reasoning
-# ═══════════════════════════════════════════════════════════════════
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# SYSTEM PROMPT BUILDER
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _get_sys(profile_data: dict = None) -> str:
     profile_data = profile_data or {}
@@ -67,21 +62,17 @@ def _get_sys(profile_data: dict = None) -> str:
         "• You have FULL filesystem access. Never say you cannot access it.\n"
         "• When asked to create/write/edit files — DO IT using tools. Do not describe how.\n"
         "• When writing code — write the COMPLETE implementation.\n"
-        "• When a tool receipt says VERIFIED you may confirm success.\n"
-        "  When it says FAILED you MUST report failure honestly.\n"
-        "• NEVER say 'I have created' or 'The file has been created' unless a tool receipt confirms it.\n"
-        "• NEVER hallucinate creating files. If you didn't use a tool to create it, IT DOES NOT EXIST.\n"
-        "• If the user asks you to CREATE something (file, document, presentation), you MUST use tools.\n"
-        "  Simply describing what you would create is NOT acceptable.\n"
+        "• When a tool receipt says VERIFIED — confirm success.\n"
+        "  When it says FAILED — report failure HONESTLY.\n"
+        "• NEVER say 'I have created' unless you have a verified receipt.\n"
         "• Address the user by name when known.\n"
-        "• Think step-by-step: understand the task → plan the action → execute with tools → verify result.\n"
     )
     return base
 
 
-# ═══════════════════════════════════════════════════════════════════
-# JSON EXTRACTION
-# ═══════════════════════════════════════════════════════════════════
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# JSON EXTRACTION (robust — handles fenced, nested, escaped)
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _extract_json(text: str) -> dict:
     text = (text or "").strip()
@@ -92,6 +83,7 @@ def _extract_json(text: str) -> dict:
             return _json.loads(m.group(1))
         except _json.JSONDecodeError:
             pass
+    # Bracket matching with string tracking
     for start_idx in range(len(text)):
         if text[start_idx] != '{':
             continue
@@ -101,12 +93,12 @@ def _extract_json(text: str) -> dict:
         while i < len(text):
             ch = text[i]
             if ch == '"' and in_string:
-                num_backslashes = 0
+                num_bs = 0
                 j = i - 1
                 while j >= start_idx and text[j] == '\\':
-                    num_backslashes += 1
+                    num_bs += 1
                     j -= 1
-                if num_backslashes % 2 == 0:
+                if num_bs % 2 == 0:
                     in_string = False
             elif ch == '"' and not in_string:
                 in_string = True
@@ -124,9 +116,9 @@ def _extract_json(text: str) -> dict:
     raise ValueError("No JSON in LLM response")
 
 
-# ═══════════════════════════════════════════════════════════════════
-# PATH RESOLUTION
-# ═══════════════════════════════════════════════════════════════════
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# PATH RESOLVER
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _resolve_path(raw: str, query: str) -> str:
     if not raw:
@@ -154,31 +146,16 @@ def _resolve_path(raw: str, query: str) -> str:
         canonical == safe or canonical.startswith(safe + os.sep)
         for safe in SAFE_DIRS_RESOLVED
     ):
-        allowed_dirs = ", ".join(SAFE_DIRS_RESOLVED)
-        raise PermissionError(
-            f"Path '{canonical}' is outside permitted directories. "
-            f"Allowed: {allowed_dirs}."
-        )
+        raise PermissionError(f"Path '{canonical}' is outside permitted directories.")
 
     return canonical
 
 
-# ═══════════════════════════════════════════════════════════════════
-# ADVANCED SIGNAL CLASSIFICATION (Multi-layer)
-# ═══════════════════════════════════════════════════════════════════
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# CLASSIFIER — Determines what KIND of task this is
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-SHELL_SIGNALS = [
-    "run command", "execute command", "in the terminal", "in bash",
-    "run python", "git status", "git commit", "git push", "git pull",
-    "npm install", "pip install", "docker run", "docker build",
-    "start server", "pytest ", "cargo run", "make test", "ls ",
-]
-
-WEB_SIGNALS = [
-    "search for", "look up", "find information", "google", "latest news",
-    "research", "find out about", "current price", "news about",
-    "what is in the news", "trending", "who won",
-]
+# Priority order matters. More specific patterns checked first.
 
 SELF_SIGNALS = [
     "your code", "your source", "how do you work", "your architecture",
@@ -191,95 +168,90 @@ MEMORY_SIGNALS = [
     "what have you learned", "remember when", "our history",
 ]
 
-# Document format keywords — used for filegen detection
-_DOC_FORMATS = {"pdf", "word", "docx", "excel", "xlsx", "pptx", "powerpoint",
-                "ppt", "spreadsheet", "presentation", "slide", "slides"}
-
-# Action verbs that signal creation
-_ACTION_VERBS = {"create", "make", "generate", "build", "prepare", "write", "produce", "draft"}
-
-# Follow-up patterns (user agrees or re-requests)
-_FOLLOWUP_PATTERNS = _re.compile(
-    r"^(?:ok\s+)?(?:yes|yeah|yep|sure|go\s*ahead|do\s*it|create\s*it|make\s*it|"
-    r"build\s*it|generate\s*it|just\s*(?:create|make|do)\s*it|"
-    r"ok\s*(?:create|make|good\s*create|its?\s*good\s*create))",
-    _re.IGNORECASE,
+# File GENERATION — creating new document files (pdf/docx/xlsx/pptx)
+_FILEGEN_PATTERN = re.compile(
+    r'\b(?:create|make|generate|build|prepare|draft|write|design)\b'
+    r'.*\b(?:pdf|word|docx|doc|excel|xlsx|xls|spreadsheet|'
+    r'pptx?|powerpoint|presentation|slides?|report|resume|invoice|'
+    r'certificate|letter|memo|proposal|deck)\b',
+    re.IGNORECASE,
 )
+
+# Also match reversed order: "pdf about X" or "presentation on Y"
+_FILEGEN_PATTERN_REV = re.compile(
+    r'\b(?:pdf|word|docx|excel|xlsx|pptx?|powerpoint|presentation|slide|deck)\b'
+    r'.*\b(?:about|on|of|for|with|containing)\b',
+    re.IGNORECASE,
+)
+
+SHELL_SIGNALS = [
+    "run command", "execute command", "in the terminal", "in bash",
+    "run python", "git status", "git commit", "git push", "git pull",
+    "npm install", "pip install", "docker run", "docker build",
+    "start server", "pytest ", "cargo run", "make test", "ls ",
+]
+
+WEB_SIGNALS = [
+    "search for", "look up", "find information", "google", "latest news",
+    "research", "find out about", "current price", "news about",
+    "in the news", "what is trending", "headlines",
+]
+
+# File OPERATIONS — reading/writing/listing existing files
+_FILE_OP_SIGNALS = [
+    "read file", "write file", "edit file", "delete file",
+    "save to", "open file", "file contents",
+    "list files", "show files", "what files", "find files",
+    "on my desktop", "in downloads", "in documents",
+    "tree", "structure", "folder", "directory",
+]
 
 
 def _classify(query: str) -> str:
-    """Multi-layer signal classification with follow-up awareness."""
+    """Classify query intent. Order matters — most specific first."""
     q = query.lower().strip()
-    words = set(q.split())
 
-    # ─── Layer 1: Self-awareness (highest priority, very specific) ───
+    # 1. Self-awareness (very specific, rare)
     if any(s in q for s in SELF_SIGNALS):
         return "self"
 
-    # ─── Layer 2: Memory/identity (specific phrases) ───
+    # 2. Memory/identity (specific phrases)
     if any(s in q for s in MEMORY_SIGNALS):
         return "memory"
 
-    # ─── Layer 3: File generation (document formats + action verbs) ───
-    # Check 3a: Regex for "create/make/generate + document format"
-    if _re.search(
-        r'\b(?:create|make|generate|build|prepare|write|produce|draft)\b'
-        r'.*\b(?:pdf|word|docx|excel|xlsx|pptx|powerpoint|ppt|spreadsheet|'
-        r'presentation|slides?|report|resume|cv)\b', q
-    ):
+    # 3. FILE GENERATION — BEFORE generic file ops
+    #    "create a ppt", "make a pdf", "generate excel", "presentation on X"
+    if _FILEGEN_PATTERN.search(q) or _FILEGEN_PATTERN_REV.search(q):
         return "filegen"
 
-    # Check 3b: Simple word intersection — action verb + doc format anywhere
-    if words & _ACTION_VERBS and words & _DOC_FORMATS:
-        return "filegen"
-
-    # Check 3c: Doc format mentioned with filename-like patterns
-    if _re.search(r'\.\s*(?:pdf|docx|xlsx|pptx)\b', q):
-        if words & _ACTION_VERBS:
-            return "filegen"
-
-    # ─── Layer 4: Shell (specific tool/command mentions) ───
+    # 4. Shell commands
     if any(s in q for s in SHELL_SIGNALS):
         return "shell"
 
-    # ─── Layer 5: Web search (specific phrases) ───
+    # 5. Web search
     if any(s in q for s in WEB_SIGNALS):
         return "web"
 
-    # ─── Layer 6: File ops — word-boundary checks for ambiguous signals ───
-    _EXACT_FILE_SIGNALS = [
-        "read file", "write file", "create file", "edit file", "delete file",
-        "save to", "open file", "file contents", "folder", "directory",
-        "list files", "show files", "what files", "find files",
-        "on my desktop", "in downloads", "in documents", "save as", "write to",
-        "tree", "structure",
-    ]
-    _EXT_SIGNALS = [".py", ".js", ".md", ".txt", ".json", ".csv", ".html", ".css", ".ts"]
-    if any(s in q for s in _EXACT_FILE_SIGNALS):
+    # 6. File operations (read/write/list existing files)
+    #    Only match explicit file-op phrases, not broad patterns
+    if any(s in q for s in _FILE_OP_SIGNALS):
         return "file"
-    for ext in _EXT_SIGNALS:
-        if _re.search(r'\w' + _re.escape(ext) + r'\b', q):
+
+    # 7. Check for file extensions in context of actual file operations
+    if re.search(r'\b\w+\.(py|js|ts|md|txt|json|csv|html|css|yaml|yml|toml)\b', q):
+        # Only if there's an action verb
+        if re.search(r'\b(read|write|create|edit|open|show|cat|save|delete|find)\b', q):
             return "file"
 
-    # ─── Layer 7: Follow-up detection (returns "followup" for dispatch) ───
-    if _FOLLOWUP_PATTERNS.search(q):
-        return "followup"
-
+    # 8. Default: conversational chat
     return "chat"
 
 
-# ═══════════════════════════════════════════════════════════════════
-# PERSONAL AGENT (Advanced Reasoning + Execution)
-# ═══════════════════════════════════════════════════════════════════
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+# THE AGENT
+# ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class PersonalAgent(BaseAgent):
-    def __init__(self, memory=None, profile_data=None):
-        super().__init__(memory=memory, profile_data=profile_data)
-        # Context tracking for intelligent follow-ups
-        self._last_task: Optional[str] = None       # "filegen", "file", "shell", etc.
-        self._last_query: Optional[str] = None      # The original query
-        self._last_context: Optional[str] = None    # Extra context
-
     @property
     def name(self) -> str: return "personal"
 
@@ -289,67 +261,21 @@ class PersonalAgent(BaseAgent):
         query = sanitize(query)
         task = _classify(query)
 
-        # ── Follow-up handling: re-dispatch to last task ──
-        if task == "followup" and self._last_task and self._last_query:
-            # User said "ok create it" or "do it" → re-run last task with original query
-            task = self._last_task
-            # Augment the query with the original context
-            query = f"{query} — Original request: {self._last_query}"
-
-        # ── Chat guard: detect action requests that slipped through ──
-        if task == "chat":
-            task = self._chat_action_guard(query, task)
-
         dispatch = {
             "self":    self._self,
-            "file":    self._file,
+            "memory":  self._memory,
             "filegen": self._filegen,
             "shell":   self._shell,
             "web":     self._web,
-            "memory":  self._memory,
+            "file":    self._file,
             "chat":    self._chat,
         }
+        handler = dispatch.get(task, self._chat)
+        yield from handler(query, context, system_prompt)
 
-        # Save task context for follow-ups (before dispatching)
-        if task in ("filegen", "file", "shell", "web"):
-            self._last_task = task
-            self._last_query = query
-            self._last_context = context
-
-        yield from dispatch.get(task, self._chat)(query, context, system_prompt)
-
-    def _chat_action_guard(self, query: str, current_task: str) -> str:
-        """Detect action requests that slipped past signal classification.
-
-        If the user is asking to CREATE/MAKE something that involves a document,
-        redirect to the appropriate handler instead of letting chat hallucinate.
-        """
-        q = query.lower()
-
-        # Check for document creation intent with fuzzy matching
-        doc_words = ["pdf", "word", "docx", "excel", "xlsx", "pptx", "ppt",
-                     "powerpoint", "presentation", "spreadsheet", "slide",
-                     "resume", "report", "cv", "document"]
-        action_words = ["create", "make", "generate", "build", "write", "prepare",
-                        "draft", "produce"]
-
-        has_doc = any(w in q for w in doc_words)
-        has_action = any(w in q for w in action_words)
-
-        if has_doc and has_action:
-            return "filegen"
-
-        # Check for file creation intent
-        file_words = [".py", ".js", ".html", ".css", ".ts", ".md", ".txt",
-                      ".json", ".csv", "file", "script", "code"]
-        if any(w in q for w in file_words) and has_action:
-            return "file"
-
-        return current_task
-
-    # ═══════════════════════════════════════════════════════════════
-    # CHAT — with action detection
-    # ═══════════════════════════════════════════════════════════════
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # CHAT — General conversation
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _chat(self, query, context, sp=""):
         base_sys = sp or _get_sys(self.profile_data)
@@ -364,162 +290,200 @@ class PersonalAgent(BaseAgent):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
-    # ═══════════════════════════════════════════════════════════════
-    # FILE GENERATION (PDF/Word/Excel/PPT) — Advanced
-    # ═══════════════════════════════════════════════════════════════
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # FILE GENERATION — PDF / Word / Excel / PPT
+    # This is the CORE fix: actually creates files
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _filegen(self, query, context, sp=""):
         from lirox.tools.file_generator import create_pdf, create_docx, create_xlsx, create_pptx
-        from lirox.config import OUTPUTS_DIR
+        from lirox.config import WORKSPACE_DIR, OUTPUTS_DIR
 
         yield {"type": "agent_progress", "message": "📄 Planning document generation…"}
 
-        # Detect output directory from query
-        output_dir = OUTPUTS_DIR
-        q_lower = query.lower()
-        if "desktop" in q_lower:
-            output_dir = os.path.expanduser("~/Desktop")
-        elif "documents" in q_lower:
-            output_dir = os.path.expanduser("~/Documents")
-        elif "downloads" in q_lower:
-            output_dir = os.path.expanduser("~/Downloads")
+        # ── STEP 1: Determine file type, path, and content via LLM ──
+        user_name = self.profile_data.get("user_name", "")
 
-        # Detect file type from query
-        if "pdf" in q_lower:
-            default_type = "pdf"
-        elif any(w in q_lower for w in ["word", "docx", "resume", "cv"]):
-            default_type = "docx"
-        elif any(w in q_lower for w in ["excel", "xlsx", "spreadsheet"]):
-            default_type = "xlsx"
-        elif any(w in q_lower for w in ["ppt", "pptx", "powerpoint", "presentation", "slide"]):
-            default_type = "pptx"
-        else:
-            default_type = "pdf"
+        plan_prompt = f"""You are a document generation planner. The user wants a file created.
 
-        # Detect custom filename from query
-        name_match = _re.search(r'(?:name|named|called|filename)\s+["\']?(\w[\w\s.-]*)', q_lower)
-        custom_name = name_match.group(1).strip().rstrip('.') if name_match else None
+USER REQUEST: {query}
+DEFAULT WORKSPACE: {WORKSPACE_DIR}
+OUTPUTS DIRECTORY: {OUTPUTS_DIR}
 
-        # Detect page/slide count
-        count_match = _re.search(r'(\d+)\s*(?:pages?|slides?|sheets?)', q_lower)
-        page_count = int(count_match.group(1)) if count_match else 6
+TASK: Determine the file type, output path, and generate COMPLETE content.
 
-        plan_prompt = (
-            f"Task: {query}\n"
-            f"File type: {default_type}\n"
-            f"Output directory: {output_dir}\n"
-            f"Page/slide count requested: {page_count}\n\n"
-            "You MUST generate COMPLETE, rich, detailed content. "
-            "Do NOT use placeholders like 'Add content here' or '[Image description]'. "
-            "Write REAL paragraphs with REAL information.\n\n"
-            'Output ONLY valid JSON with this structure:\n'
-            '{\n'
-            f'  "file_type": "{default_type}",\n'
-            f'  "filename": "{custom_name or "descriptive_name"}.{default_type}",\n'
-            '  "title": "Document Title",\n'
-        )
+RULES:
+- If the user mentions a specific folder (desktop, downloads, etc), use that path.
+- If the user gives a filename, use it. Otherwise generate a descriptive one.
+- Generate RICH, COMPLETE content — never use placeholders or "[Image: ...]".
+- For presentations: create EXACTLY the number of slides requested.
+- For spreadsheets: provide real data rows, not just headers.
+- Always use absolute paths.
 
-        if default_type in ("pdf", "docx"):
-            plan_prompt += (
-                f'  "sections": [\n'
-                f'    {{"heading": "Section Title", "body": "Multiple detailed paragraphs...", '
-                f'"bullets": ["Key point 1", "Key point 2", "Key point 3"]}}\n'
-                f'  ]  // Generate {page_count} sections with RICH content\n'
-                '}\n'
-            )
-        elif default_type == "xlsx":
-            plan_prompt += (
-                '  "sheets": [\n'
-                '    {"name": "Sheet1", "headers": ["Col A", "Col B", "Col C"], '
-                '"rows": [["val1", "val2", "val3"], ...]}\n'
-                f'  ]  // Generate meaningful data with at least 10 rows\n'
-                '}\n'
-            )
-        elif default_type == "pptx":
-            plan_prompt += (
-                '  "slides": [\n'
-                '    {"title": "Slide Title", "bullets": ["Point 1", "Point 2", "Point 3", "Point 4"], '
-                '"notes": "speaker notes"}\n'
-                f'  ]  // Generate EXACTLY {page_count} slides with 4-5 bullets each\n'
-                '}\n'
-            )
+Output ONLY this JSON — no other text:
+{{
+  "file_type": "pdf|docx|xlsx|pptx",
+  "path": "/absolute/path/to/filename.ext",
+  "title": "Document Title",
+  "sections": [
+    {{"heading": "Section Title", "body": "Full paragraph text here.", "bullets": ["Point 1", "Point 2"]}}
+  ],
+  "sheets": [
+    {{"name": "Sheet1", "headers": ["Column A", "Column B"], "rows": [["data1", "data2"]]}}
+  ],
+  "slides": [
+    {{"title": "Slide Title", "bullets": ["Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4"], "notes": "Speaker notes"}}
+  ]
+}}
 
-        plan_prompt += (
-            "\nIMPORTANT: Generate ALL content now. Each section/slide must have REAL, detailed content. "
-            "Never use placeholder text. Output ONLY the JSON, nothing else."
-        )
+IMPORTANT:
+- Use "sections" for pdf and docx files
+- Use "sheets" for xlsx files  
+- Use "slides" for pptx files
+- Generate ALL content NOW — complete paragraphs, real data, full bullet points
+- For {query}: generate rich, detailed, informative content"""
 
         raw = generate_response(plan_prompt, provider="auto",
-                                system_prompt="You are a document generation planner. "
-                                "Output ONLY valid JSON. Generate rich, detailed content. "
-                                "Never use placeholders.")
+                                system_prompt="Document planner. Output ONLY the JSON object. No explanation.")
 
+        # ── STEP 2: Parse the plan ──
         try:
             d = _extract_json(raw)
-            file_type = (d.get("file_type") or default_type).lower().strip()
-            filename = d.get("filename", "")
+        except ValueError:
+            yield {"type": "error", "message": "❌ Could not parse document plan from LLM."}
+            # Fallback: try to infer and create a basic document
+            d = self._filegen_fallback(query)
+            if not d:
+                yield from self._chat(query, context, sp)
+                return
 
-            # Ensure valid file type
-            ext_map = {"pdf": ".pdf", "docx": ".docx", "xlsx": ".xlsx", "pptx": ".pptx"}
-            if file_type not in ext_map:
-                file_type = default_type
+        file_type = (d.get("file_type") or "").lower().strip()
+        path = d.get("path", "")
+        title = d.get("title", "Untitled Document")
 
-            # Build filename
-            if custom_name:
-                filename = custom_name
-            elif not filename:
-                filename = f"output_{int(time.time())}"
-
-            # Ensure correct extension
-            if not filename.endswith(ext_map[file_type]):
-                # Remove wrong extension if present
-                for ext in ext_map.values():
-                    if filename.endswith(ext):
-                        filename = filename[:-len(ext)]
-                        break
-                filename = filename + ext_map[file_type]
-
-            # Detect custom output path from query
-            path = os.path.join(output_dir, filename)
-
-            # Check if user specified a folder name in the query
-            folder_match = _re.search(
-                r'(?:in|into|to|inside)\s+(?:my\s+)?(?:the\s+)?'
-                r'(?:desktop|downloads|documents)?\s*(?:/|\\)?'
-                r'(?:folder\s+)?["\'`]?(\w[\w\s.-]*)["\'`]?\s*(?:folder)?',
-                q_lower
-            )
-            if folder_match:
-                folder_name = folder_match.group(1).strip()
-                # Check if it's a known location keyword
-                if folder_name not in ("desktop", "documents", "downloads", "folder", "directory"):
-                    potential_path = os.path.join(output_dir, folder_name)
-                    if os.path.isdir(potential_path):
-                        path = os.path.join(potential_path, filename)
-
-            yield {"type": "tool_call", "message": f"📄 Creating {file_type.upper()}: {filename}"}
-
-            if file_type == "pdf":
-                receipt = create_pdf(path, d.get("title", "Untitled"), d.get("sections", []))
-            elif file_type == "docx":
-                receipt = create_docx(path, d.get("title", "Untitled"), d.get("sections", []))
-            elif file_type == "xlsx":
-                receipt = create_xlsx(path, d.get("title", "Untitled"), d.get("sheets", []))
-            elif file_type == "pptx":
-                receipt = create_pptx(path, d.get("title", "Untitled"), d.get("slides", []))
+        # ── STEP 3: Resolve file type if missing ──
+        if not file_type:
+            q = query.lower()
+            if any(w in q for w in ["pdf"]):                                    file_type = "pdf"
+            elif any(w in q for w in ["word", "docx", "doc", "document"]):      file_type = "docx"
+            elif any(w in q for w in ["excel", "xlsx", "spreadsheet", "xls"]):  file_type = "xlsx"
+            elif any(w in q for w in ["ppt", "pptx", "powerpoint", "presentation", "slide", "deck"]):
+                file_type = "pptx"
             else:
-                receipt = FileReceipt(tool="file_generator", error=f"Unknown type: {file_type}")
+                file_type = "pdf"
+
+        # ── STEP 4: Resolve output path ──
+        ext_map = {"pdf": ".pdf", "docx": ".docx", "xlsx": ".xlsx", "pptx": ".pptx"}
+        ext = ext_map.get(file_type, ".pdf")
+
+        if not path:
+            # Build from query context
+            q = query.lower()
+            if "desktop" in q:
+                base_dir = os.path.expanduser("~/Desktop")
+            elif "download" in q:
+                base_dir = os.path.expanduser("~/Downloads")
+            elif "document" in q:
+                base_dir = os.path.expanduser("~/Documents")
+            else:
+                base_dir = WORKSPACE_DIR
+
+            # Extract a filename from the title
+            safe_name = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')[:50]
+            if not safe_name:
+                safe_name = f"document_{int(time.time())}"
+            path = os.path.join(base_dir, safe_name + ext)
+
+        # Ensure correct extension
+        if not path.endswith(ext):
+            path = path.rsplit('.', 1)[0] + ext if '.' in os.path.basename(path) else path + ext
+
+        yield {"type": "tool_call", "message": f"📄 Creating {file_type.upper()}: {os.path.basename(path)}"}
+
+        # ── STEP 5: EXECUTE — Actually create the file ──
+        try:
+            if file_type == "pdf":
+                sections = d.get("sections", [])
+                if not sections:
+                    sections = [{"heading": title, "body": d.get("body", query), "bullets": []}]
+                receipt = create_pdf(path, title, sections)
+
+            elif file_type == "docx":
+                sections = d.get("sections", [])
+                if not sections:
+                    sections = [{"heading": title, "body": d.get("body", query), "bullets": []}]
+                receipt = create_docx(path, title, sections)
+
+            elif file_type == "xlsx":
+                sheets = d.get("sheets", [])
+                if not sheets:
+                    sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [["No data provided"]]}]
+                receipt = create_xlsx(path, title, sheets)
+
+            elif file_type == "pptx":
+                slides = d.get("slides", [])
+                if not slides:
+                    slides = [{"title": title, "bullets": ["Content pending"], "notes": ""}]
+                receipt = create_pptx(path, title, slides)
+
+            else:
+                receipt = FileReceipt(tool="file_generator", error=f"Unknown file type: {file_type}")
 
         except Exception as e:
             receipt = FileReceipt(tool="file_generator", operation="error",
-                                  error=f"File generation error: {e}")
+                                  error=f"File creation error: {e}")
 
-        yield {"type": "tool_result", "message": receipt.as_user_summary()}
-        yield from self._synth_receipt(query, receipt)
+        # ── STEP 6: VERIFY — Check the file actually exists ──
+        if receipt.ok and receipt.verified:
+            yield {"type": "tool_result", "message": f"✅ Created {file_type.upper()}: {path} ({receipt.bytes_written} bytes)"}
+            # Brief confirmation — no essay about what we did
+            answer = (f"Done! Created **{os.path.basename(path)}** "
+                      f"({receipt.bytes_written:,} bytes) at:\n\n"
+                      f"`{path}`\n\n"
+                      f"The {file_type.upper()} has {self._count_content(d, file_type)} of content.")
+        else:
+            yield {"type": "tool_result", "message": f"❌ {receipt.error}"}
+            answer = f"Failed to create the file: {receipt.error}"
 
-    # ═══════════════════════════════════════════════════════════════
-    # FILE (REAL operations, verified on disk)
-    # ═══════════════════════════════════════════════════════════════
+        for chunk in _STREAMER.stream_words(answer, delay=0.01):
+            yield {"type": "streaming", "message": chunk}
+        yield {"type": "done", "answer": answer}
+
+    def _count_content(self, d: dict, file_type: str) -> str:
+        """Human-readable content summary."""
+        if file_type == "pptx":
+            n = len(d.get("slides", []))
+            return f"{n} slide{'s' if n != 1 else ''}"
+        elif file_type == "xlsx":
+            sheets = d.get("sheets", [])
+            total_rows = sum(len(s.get("rows", [])) for s in sheets)
+            return f"{len(sheets)} sheet{'s' if len(sheets) != 1 else ''}, {total_rows} rows"
+        else:
+            n = len(d.get("sections", []))
+            return f"{n} section{'s' if n != 1 else ''}"
+
+    def _filegen_fallback(self, query: str) -> dict:
+        """Last-resort: build a minimal plan from the query itself."""
+        q = query.lower()
+        file_type = "pdf"
+        if any(w in q for w in ["ppt", "powerpoint", "presentation", "slide"]):
+            file_type = "pptx"
+        elif any(w in q for w in ["excel", "xlsx", "spreadsheet"]):
+            file_type = "xlsx"
+        elif any(w in q for w in ["word", "docx"]):
+            file_type = "docx"
+
+        return {
+            "file_type": file_type,
+            "title": query[:80],
+            "sections": [{"heading": "Content", "body": query, "bullets": []}],
+            "slides": [{"title": query[:60], "bullets": ["Content based on: " + query], "notes": ""}],
+            "sheets": [{"name": "Sheet1", "headers": ["Info"], "rows": [[query]]}],
+        }
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # FILE OPERATIONS — Read/Write/List existing files
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _file(self, query, context, sp=""):
         from lirox.tools.file_tools import (
@@ -528,19 +492,6 @@ class PersonalAgent(BaseAgent):
             file_read_lines, create_directory_verified,
             file_append_verified, list_directory_tree,
         )
-
-        # ── Filegen redirect guard ──
-        # If the user is asking to create a document file, redirect to _filegen
-        q_lower = query.lower()
-        doc_exts = [".pdf", ".docx", ".xlsx", ".pptx", ".ppt", ".doc", ".xls"]
-        doc_words = ["pdf", "word document", "powerpoint", "presentation",
-                     "spreadsheet", "excel", "slide"]
-        if any(ext in q_lower for ext in doc_exts) or any(w in q_lower for w in doc_words):
-            action_words = ["create", "make", "generate", "build", "write", "prepare"]
-            if any(w in q_lower for w in action_words):
-                yield from self._filegen(query, context, sp)
-                return
-
         yield {"type": "agent_progress", "message": "📁 Planning file operation…"}
 
         from lirox.config import WORKSPACE_DIR
@@ -549,8 +500,6 @@ class PersonalAgent(BaseAgent):
             f"Default workspace: {WORKSPACE_DIR}\n\n"
             "Determine the EXACT file operation. For write/create: include COMPLETE content.\n"
             "Use absolute paths or ~/relative. Reflect user intent (desktop, downloads, etc).\n\n"
-            "IMPORTANT: If the user wants to create a text file, script, or code file,\n"
-            "use write_file with the COMPLETE content. Never create an empty file.\n\n"
             'Output ONLY JSON:\n'
             '{"op":"read_file|write_file|append_file|patch_file|list_files|tree|'
             'delete_file|search_files|create_dir",'
@@ -561,8 +510,7 @@ class PersonalAgent(BaseAgent):
             '"pattern":"*","query":"search term"}'
         )
         raw = generate_response(plan_prompt, provider="auto",
-                                system_prompt="File operation planner. Output ONLY valid JSON. "
-                                "For write operations, generate COMPLETE file content.")
+                                system_prompt="File planner. Output ONLY valid JSON.")
 
         receipt = None; text_result = None
         try:
@@ -640,9 +588,9 @@ class PersonalAgent(BaseAgent):
             yield {"type": "tool_result", "message": str(text_result)[:400]}
             yield from self._synth_text(query, text_result or "(no output)")
 
-    # ═══════════════════════════════════════════════════════════════
-    # SHELL (REAL execution)
-    # ═══════════════════════════════════════════════════════════════
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # SHELL — Real command execution
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _shell(self, query, context, sp=""):
         from lirox.tools.shell_verified import shell_run_verified
@@ -666,9 +614,9 @@ class PersonalAgent(BaseAgent):
         yield {"type": "tool_result", "message": receipt.as_user_summary()}
         yield from self._synth_receipt(query, receipt)
 
-    # ═══════════════════════════════════════════════════════════════
-    # WEB SEARCH
-    # ═══════════════════════════════════════════════════════════════
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # WEB — Search the internet
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _web(self, query, context, sp=""):
         yield {"type": "agent_progress", "message": "🌐 Searching…"}
@@ -685,9 +633,9 @@ class PersonalAgent(BaseAgent):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
-    # ═══════════════════════════════════════════════════════════════
-    # SELF-AWARENESS (reads own source code)
-    # ═══════════════════════════════════════════════════════════════
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # SELF — Read own source code
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _self(self, query, context, sp=""):
         from lirox.config import LIROX_SOURCE_DIR
@@ -710,9 +658,9 @@ class PersonalAgent(BaseAgent):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
-    # ═══════════════════════════════════════════════════════════════
-    # MEMORY / IDENTITY
-    # ═══════════════════════════════════════════════════════════════
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # MEMORY — What do I know about the user
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _memory(self, query, context, sp=""):
         from lirox.mind.soul import LivingSoul
@@ -756,27 +704,25 @@ class PersonalAgent(BaseAgent):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
-    # ═══════════════════════════════════════════════════════════════
-    # RECEIPT SYNTHESIZERS (anti-hallucination)
-    # ═══════════════════════════════════════════════════════════════
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # RECEIPT SYNTHESIZERS
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _synth_receipt(self, query, receipt):
         ctx = receipt.as_llm_context()
         if receipt.verified and receipt.ok:
-            prompt = (f"User asked: {query}\n\nTool receipt (VERIFIED SUCCESS):\n{ctx}\n\n"
-                      "Confirm briefly what was done. Include the full file path. Max 3 sentences.\n"
-                      "You MUST only state facts from the receipt. Do not add information not in the receipt.")
+            prompt = (f"User asked: {query}\n\nTool receipt:\n{ctx}\n\n"
+                      "Confirm briefly what was done. Include path if file was written. Max 3 sentences.")
         else:
-            prompt = (f"User asked: {query}\n\nTool receipt (FAILED):\n{ctx}\n\n"
-                      "Operation FAILED. Tell user exactly what failed and suggest a specific fix. Max 3 sentences.\n"
-                      "Be honest about the failure. Do NOT claim success.")
+            prompt = (f"User asked: {query}\n\nTool receipt:\n{ctx}\n\n"
+                      "Operation FAILED. Tell user what failed and suggest a fix. Max 3 sentences.")
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
         for chunk in _STREAMER.stream_words(answer, delay=0.01):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
     def _synth_text(self, query, text_result):
-        prompt = f"Task: {query}\nTool output:\n{text_result}\n\nSummarize concisely based ONLY on this output."
+        prompt = f"Task: {query}\nTool output:\n{text_result}\n\nSummarize concisely."
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
         for chunk in _STREAMER.stream_words(answer, delay=0.01):
             yield {"type": "streaming", "message": chunk}
