@@ -154,15 +154,23 @@ def main():
 def process_query(orch, query: str, verbose: bool = False):
     from lirox.ui.display import (
         console, show_answer, show_thinking, show_agent_event,
-        show_thinking_phase, show_thinking_panel_open, show_thinking_panel_close,
     )
+    from lirox.ui.thinking_display import ThinkingDisplay
 
-    last_agent                 = "personal"
-    status                     = None
-    was_streamed               = False
-    live_ctx                   = None
-    stream_content             = ""
-    thinking_panel_displayed   = False   # tracks whether the thinking header has been shown
+    last_agent     = "personal"
+    was_streamed   = False
+    live_ctx       = None
+    stream_content = ""
+
+    # ── Adaptive thinking display ──
+    thinker = ThinkingDisplay(console)
+    thinker.start(query)
+
+    # For SIMPLE queries, use a basic spinner (not the tree)
+    status = None
+    if thinker.should_show_spinner:
+        status = console.status("[bold purple]🧠 Thinking…[/]", spinner="dots")
+        status.start()
 
     try:
         from rich.live import Live
@@ -172,33 +180,17 @@ def process_query(orch, query: str, verbose: bool = False):
             t = ev.type
 
             if t == "thinking":
-                # Initial spinner hint before phases begin
                 if verbose:
-                    if status: status.stop(); status = None
                     show_thinking(ev.message)
-                elif status is None:
-                    status = console.status("[bold purple]🧠 Thinking…[/]", spinner="dots")
-                    status.start()
-
-            elif t == "thinking_phase":
-                # Structured phase event from ThinkingEngine
-                if status: status.stop(); status = None
-                if not thinking_panel_displayed:
-                    complexity = ev.data.get("complexity", "medium")
-                    show_thinking_panel_open(complexity)
-                    thinking_panel_displayed = True
-                show_thinking_phase(ev.data)
-
-            elif t == "thinking_done":
-                # Thinking pipeline finished — close panel if open
-                if thinking_panel_displayed:
-                    total_ms   = ev.data.get("total_ms", 0)
-                    complexity = ev.data.get("complexity", "medium")
-                    show_thinking_panel_close(total_ms, complexity)
-                    thinking_panel_displayed = False
+                # Thinking events are handled by ThinkingDisplay now
 
             elif t == "streaming":
-                if status: status.stop(); status = None
+                # Stop thinking displays before showing response
+                if status:
+                    status.stop(); status = None
+                if thinker.is_active:
+                    thinker.finish()
+
                 if not was_streamed:
                     agent_n = ev.agent or last_agent
                     icon    = "⚡" if agent_n == "personal" else "🧠"
@@ -213,7 +205,10 @@ def process_query(orch, query: str, verbose: bool = False):
                     live_ctx.update(Markdown(stream_content))
 
             elif t == "done":
-                if status: status.stop(); status = None
+                if status:
+                    status.stop(); status = None
+                if thinker.is_active:
+                    thinker.finish()
                 if live_ctx:
                     live_ctx.stop()
                     live_ctx = None
@@ -224,17 +219,38 @@ def process_query(orch, query: str, verbose: bool = False):
                     show_answer(ev.message, agent=last_agent)
 
             else:
-                if status and t in ("tool_call", "tool_result"):
-                    status.stop(); status = None
+                # Route tool_call / tool_result / agent_progress to ThinkingDisplay
                 if t == "agent_start":
                     last_agent = ev.agent or last_agent
-                elif t in ("tool_call", "tool_result", "agent_progress"):
-                    show_agent_event(ev.agent or last_agent, t, ev.message)
+                elif t == "tool_call":
+                    if status:
+                        status.stop(); status = None
+                    if thinker.is_active:
+                        thinker.add_tool_call("tool", ev.message or "")
+                    else:
+                        show_agent_event(ev.agent or last_agent, t, ev.message)
+                elif t == "tool_result":
+                    if thinker.is_active:
+                        is_ok = not (ev.message or "").startswith("❌")
+                        thinker.add_tool_result("result", (ev.message or "")[:120], success=is_ok)
+                    else:
+                        show_agent_event(ev.agent or last_agent, t, ev.message)
+                elif t == "agent_progress":
+                    if thinker.is_active:
+                        thinker.add_progress(ev.message or "")
+                    else:
+                        show_agent_event(ev.agent or last_agent, t, ev.message)
                 elif t == "error":
+                    if thinker.is_active:
+                        thinker.add_step("💥", ev.message or "Error", "error")
                     show_agent_event(ev.agent or last_agent, "error", ev.message)
     finally:
-        if status: status.stop()
-        if live_ctx: live_ctx.stop()
+        if status:
+            status.stop()
+        if thinker.is_active:
+            thinker.finish()
+        if live_ctx:
+            live_ctx.stop()
 
 
 def handle_command(orch, profile, cmd: str, verbose: bool = False):

@@ -308,6 +308,8 @@ class PersonalAgent(BaseAgent):
 
         yield {"type": "agent_progress", "message": "📄 Planning document generation…"}
 
+        user_name = self.profile_data.get("user_name", "")
+
         # ── STEP 1: Determine file type, path, and content via LLM ──
 
         plan_prompt = f"""You are a document generation planner. The user wants a file created.
@@ -315,16 +317,18 @@ class PersonalAgent(BaseAgent):
 USER REQUEST: {query}
 DEFAULT WORKSPACE: {WORKSPACE_DIR}
 OUTPUTS DIRECTORY: {OUTPUTS_DIR}
+USER NAME: {user_name or 'User'}
 
-TASK: Determine the file type, output path, and generate COMPLETE content.
+TASK: Determine the file type, output path, and generate COMPLETE, RICH content.
 
-RULES:
-- If the user mentions a specific folder (desktop, downloads, etc), use that path.
-- If the user gives a filename, use it. Otherwise generate a descriptive one.
-- Generate RICH, COMPLETE content — never use placeholders or "[Image: ...]".
-- For presentations: create EXACTLY the number of slides requested.
-- For spreadsheets: provide real data rows, not just headers.
-- Always use absolute paths.
+CONTENT QUALITY RULES:
+- Generate AT LEAST 3-4 sentences per section — never just bullet points
+- Include specific facts, statistics, dates, and examples
+- Vary the content structure — mix paragraphs, key stats, comparisons
+- For presentations: create 8+ slides with rich bullet points (4-6 per slide)
+- For PDFs: write full prose paragraphs, not just bullet lists
+- Always include an introduction and conclusion section
+- Add real value — don't restate the topic title as a sentence
 
 Output ONLY this JSON — no other text:
 {{
@@ -332,22 +336,23 @@ Output ONLY this JSON — no other text:
   "path": "/absolute/path/to/filename.ext",
   "title": "Document Title",
   "sections": [
-    {{"heading": "Section Title", "body": "Full paragraph text here.", "bullets": ["Point 1", "Point 2"]}}
+    {{"heading": "Section Title", "body": "Full paragraph text here. Multiple sentences with real content.", "bullets": ["Detailed point 1", "Detailed point 2"]}}
   ],
   "sheets": [
     {{"name": "Sheet1", "headers": ["Column A", "Column B"], "rows": [["data1", "data2"]]}}
   ],
   "slides": [
-    {{"title": "Slide Title", "bullets": ["Bullet 1", "Bullet 2", "Bullet 3", "Bullet 4"], "notes": "Speaker notes"}}
+    {{"title": "Slide Title", "bullets": ["Rich bullet with detail and context", "Another substantial point with examples", "A third point with specific facts", "Fourth point with actionable insight"], "notes": "Speaker notes with additional context"}}
   ]
 }}
 
 IMPORTANT:
 - Use "sections" for pdf and docx files
-- Use "sheets" for xlsx files  
-- Use "slides" for pptx files
+- Use "sheets" for xlsx files
+- Use "slides" for pptx files — generate AT LEAST 6-8 content slides
 - Generate ALL content NOW — complete paragraphs, real data, full bullet points
-- For {query}: generate rich, detailed, informative content"""
+- Each bullet should be a full sentence or detailed phrase, NOT just 2-3 words
+- For {query}: generate rich, detailed, informative, expert-level content"""
 
         raw = generate_response(plan_prompt, provider="auto",
                                 system_prompt="Document planner. Output ONLY the JSON object. No explanation.")
@@ -383,7 +388,6 @@ IMPORTANT:
         ext = ext_map.get(file_type, ".pdf")
 
         if not path:
-            # Build from query context
             q = query.lower()
             if "desktop" in q:
                 base_dir = os.path.expanduser("~/Desktop")
@@ -394,7 +398,6 @@ IMPORTANT:
             else:
                 base_dir = WORKSPACE_DIR
 
-            # Extract a filename from the title
             safe_name = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')[:50]
             if not safe_name:
                 safe_name = f"document_{int(time.time())}"
@@ -412,25 +415,29 @@ IMPORTANT:
                 sections = d.get("sections", [])
                 if not sections:
                     sections = [{"heading": title, "body": d.get("body", query), "bullets": []}]
-                receipt = create_pdf(path, title, sections)
+                receipt = create_pdf(path, title, sections,
+                                     query=query, user_name=user_name)
 
             elif file_type == "docx":
                 sections = d.get("sections", [])
                 if not sections:
                     sections = [{"heading": title, "body": d.get("body", query), "bullets": []}]
-                receipt = create_docx(path, title, sections)
+                receipt = create_docx(path, title, sections,
+                                      query=query, user_name=user_name)
 
             elif file_type == "xlsx":
                 sheets = d.get("sheets", [])
                 if not sheets:
                     sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [["No data provided"]]}]
-                receipt = create_xlsx(path, title, sheets)
+                receipt = create_xlsx(path, title, sheets,
+                                      query=query, user_name=user_name)
 
             elif file_type == "pptx":
                 slides = d.get("slides", [])
                 if not slides:
                     slides = [{"title": title, "bullets": ["Content pending"], "notes": ""}]
-                receipt = create_pptx(path, title, slides)
+                receipt = create_pptx(path, title, slides,
+                                      query=query, user_name=user_name)
 
             else:
                 receipt = FileReceipt(tool="file_generator", error=f"Unknown file type: {file_type}")
@@ -441,8 +448,7 @@ IMPORTANT:
 
         # ── STEP 6: VERIFY — Check the file actually exists ──
         if receipt.ok and receipt.verified:
-            yield {"type": "tool_result", "message": f"✅ Created {file_type.upper()}: {path} ({receipt.bytes_written} bytes)"}
-            # Brief confirmation — no essay about what we did
+            yield {"type": "tool_result", "message": f"✅ Created {file_type.upper()}: {path} ({receipt.bytes_written:,} bytes)"}
             answer = (f"Done! Created **{os.path.basename(path)}** "
                       f"({receipt.bytes_written:,} bytes) at:\n\n"
                       f"`{path}`\n\n"
