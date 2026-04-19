@@ -152,104 +152,49 @@ def main():
 
 
 def process_query(orch, query: str, verbose: bool = False):
-    from lirox.ui.display import (
-        console, show_answer, show_thinking, show_agent_event,
+    from lirox.ui.display import console
+    from lirox.mind.cognitive_engine import CognitiveEngine, CognitiveContext, ThinkingDisplay
+    from lirox.mind.bridge import cognitive_llm_call, cognitive_tool_executor
+    import os
+
+    # Register user query in memory
+    session = orch.session_store.current()
+    session.add("user", query, agent="personal")
+
+    # Build conversation history
+    history = []
+    for entry in session.entries[-6:]:
+        if entry.role in ("user", "assistant"):
+            history.append({"role": entry.role, "content": entry.content})
+
+    context = CognitiveContext(
+        user_name=orch.profile_data.get("name", ""),
+        workspace=os.getenv("LIROX_WORKSPACE", str(Path.home() / "Desktop")),
+        available_tools=["list_files", "read_file", "write_file", "edit_file", "create_presentation", "create_pdf"],
+        conversation_history=history
     )
-    from lirox.ui.thinking_display import ThinkingDisplay
-
-    last_agent     = "personal"
-    was_streamed   = False
-    live_ctx       = None
-    stream_content = ""
-
-    # ── Adaptive thinking display ──
-    thinker = ThinkingDisplay(console)
-    thinker.start(query)
-
-    # For SIMPLE queries, use a basic spinner (not the tree)
-    status = None
-    if thinker.should_show_spinner:
-        status = console.status("[bold purple]🧠 Thinking…[/]", spinner="dots")
-        status.start()
-
-    try:
-        from rich.live import Live
-        from rich.markdown import Markdown
-
-        for ev in orch.run(query):
-            t = ev.type
-
-            if t == "thinking":
-                if verbose:
-                    show_thinking(ev.message)
-                # Thinking events are handled by ThinkingDisplay now
-
-            elif t == "streaming":
-                # Stop thinking displays before showing response
-                if status:
-                    status.stop(); status = None
-                if thinker.is_active:
-                    thinker.finish()
-
-                if not was_streamed:
-                    console.print("\n⚡ Response:")
-                    was_streamed = True
-                    live_ctx = Live(Markdown(""), console=console, refresh_per_second=12, auto_refresh=True)
-                    live_ctx.start()
-
-                stream_content += ev.message
-                if live_ctx:
-                    live_ctx.update(Markdown(stream_content))
-
-            elif t == "done":
-                if status:
-                    status.stop(); status = None
-                if thinker.is_active:
-                    thinker.finish()
-                if live_ctx:
-                    live_ctx.stop()
-                    live_ctx = None
-
-                if was_streamed:
-                    console.print("✓ Done")
-                elif ev.message:
-                    console.print("\n⚡ Response:")
-                    show_answer(ev.message, agent=last_agent)
-                    console.print("✓ Done")
-
-            else:
-                # Route tool_call / tool_result / agent_progress to ThinkingDisplay
-                if t == "agent_start":
-                    last_agent = ev.agent or last_agent
-                elif t == "tool_call":
-                    if status:
-                        status.stop(); status = None
-                    if thinker.is_active:
-                        thinker.add_tool_call("tool", ev.message or "")
-                    else:
-                        show_agent_event(ev.agent or last_agent, t, ev.message)
-                elif t == "tool_result":
-                    if thinker.is_active:
-                        is_ok = not (ev.message or "").startswith("❌")
-                        thinker.add_tool_result("result", (ev.message or "")[:120], success=is_ok)
-                    else:
-                        show_agent_event(ev.agent or last_agent, t, ev.message)
-                elif t == "agent_progress":
-                    if thinker.is_active:
-                        thinker.add_progress(ev.message or "")
-                    else:
-                        show_agent_event(ev.agent or last_agent, t, ev.message)
-                elif t == "error":
-                    if thinker.is_active:
-                        thinker.add_step("💥", ev.message or "Error", "error")
-                    show_agent_event(ev.agent or last_agent, "error", ev.message)
-    finally:
-        if status:
-            status.stop()
-        if thinker.is_active:
-            thinker.finish()
-        if live_ctx:
-            live_ctx.stop()
+    
+    display = ThinkingDisplay(console)
+    engine = CognitiveEngine(
+        context=context,
+        llm_call=cognitive_llm_call,
+        tool_executor=cognitive_tool_executor,
+        display=display
+    )
+    
+    result = engine.process(query)
+    
+    console.print("\n⚡ Response:")
+    console.print(result["response"])
+    console.print("✓ Done")
+    
+    # Store assistant response and auto train
+    orch.global_memory.save_exchange(query, result["response"])
+    session.add("assistant", result["response"], agent="personal")
+    orch.session_store.save_current()
+    orch._interaction_count += 1
+    if orch._interaction_count % 20 == 0:
+        orch._auto_train()
 
 
 def handle_command(orch, profile, cmd: str, verbose: bool = False):
