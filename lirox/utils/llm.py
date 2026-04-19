@@ -1,4 +1,5 @@
 """Lirox v3.0 — LLM Utility Layer"""
+import logging
 import os
 import hashlib
 import time
@@ -7,6 +8,8 @@ import concurrent.futures
 from typing import List, Dict, Optional, Generator
 
 from lirox.utils.managed_pool import get_default_pool as _get_pool
+
+_logger = logging.getLogger("lirox.llm")
 
 _OLLAMA_OPTIONS = {
     "num_ctx": 8192, "num_thread": 4, "num_batch": 512,
@@ -398,7 +401,12 @@ def generate_response(prompt: str, provider: str = "auto",
         return f"Error: LLM API timed out after {timeout}s"
     except (SystemExit, KeyboardInterrupt):
         raise
+    except ValueError as e:
+        response = f"Error: Invalid request — {e}"
+    except requests.RequestException as e:
+        response = f"Error: Network failure — {e}"
     except Exception as e:
+        _logger.exception("Unexpected error in generate_response")
         response = f"Error: {e}"
 
     if response is None or is_error_response(response):

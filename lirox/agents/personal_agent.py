@@ -71,38 +71,77 @@ def _extract_json(text: str) -> dict:
             return _json.loads(m.group(1))
         except _json.JSONDecodeError:
             pass
-    depth = 0; start = None
-    for i, ch in enumerate(text):
-        if ch == "{":
-            if start is None: start = i
-            depth += 1
-        elif ch == "}":
-            depth -= 1
-            if depth == 0 and start is not None:
-                try:
-                    return _json.loads(text[start:i + 1])
-                except _json.JSONDecodeError:
-                    start = None; depth = 0
+    # Bracket matching with string/escape tracking to avoid false positives
+    # from `}` characters inside JSON string values.
+    # Counts consecutive preceding backslashes to correctly handle sequences
+    # like `\\\"` (escaped backslash + real quote) vs `\"` (escaped quote).
+    for start_idx in range(len(text)):
+        if text[start_idx] != '{':
+            continue
+        depth = 0
+        in_string = False
+        i = start_idx
+        while i < len(text):
+            ch = text[i]
+            if ch == '"' and in_string:
+                # Count backslashes immediately preceding this quote
+                num_backslashes = 0
+                j = i - 1
+                while j >= start_idx and text[j] == '\\':
+                    num_backslashes += 1
+                    j -= 1
+                if num_backslashes % 2 == 0:
+                    # Even count → quote is not escaped → closes string
+                    in_string = False
+            elif ch == '"' and not in_string:
+                in_string = True
+            if not in_string:
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        try:
+                            return _json.loads(text[start_idx:i + 1])
+                        except _json.JSONDecodeError:
+                            break  # try next start position
+            i += 1
     raise ValueError("No JSON in LLM response")
 
 
 def _resolve_path(raw: str, query: str) -> str:
     if not raw:
         return ""
-    from lirox.config import WORKSPACE_DIR
+    from lirox.config import WORKSPACE_DIR, SAFE_DIRS_RESOLVED, PROTECTED_PATHS
     from lirox.utils.input_sanitizer import sanitize_path
     raw = sanitize_path(raw)
     p = os.path.expandvars(os.path.expanduser(raw))
     # Absolute paths and relative paths with separators are resolved directly
     if os.path.isabs(p) or "/" in p or "\\" in p:
-        return os.path.realpath(p)
-    # Bare filename → use workspace dir
-    q = (query or "").lower()
-    if "downloads" in q:   folder = "~/Downloads"
-    elif "documents" in q: folder = "~/Documents"
-    elif "desktop" in q:   folder = "~/Desktop"
-    else:                  folder = WORKSPACE_DIR
-    return os.path.realpath(os.path.expanduser(os.path.join(folder, p)))
+        canonical = os.path.realpath(p)
+    else:
+        # Bare filename → use context-appropriate directory
+        q = (query or "").lower()
+        if "downloads" in q:   folder = "~/Downloads"
+        elif "documents" in q: folder = "~/Documents"
+        elif "desktop" in q:   folder = "~/Desktop"
+        else:                  folder = WORKSPACE_DIR
+        canonical = os.path.realpath(os.path.expanduser(os.path.join(folder, p)))
+
+    # Block access to protected system paths
+    for protected in PROTECTED_PATHS:
+        protected_real = os.path.realpath(protected)
+        if canonical.startswith(protected_real + os.sep) or canonical == protected_real:
+            raise PermissionError(f"Access denied: {protected} is a protected path")
+
+    # Validate that the resolved path is within a permitted directory
+    if not any(canonical.startswith(safe) for safe in SAFE_DIRS_RESOLVED):
+        raise PermissionError(
+            f"Path '{canonical}' is outside permitted directories. "
+            "Allowed: Desktop, Documents, Downloads, Projects, /tmp, Lirox project dir."
+        )
+
+    return canonical
 
 
 # ── Signal detection ──

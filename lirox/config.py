@@ -1,6 +1,6 @@
 """Lirox v3.0 — Central Configuration"""
 import os
-import stat
+import tempfile
 from pathlib import Path
 
 try:
@@ -47,8 +47,9 @@ OLLAMA_MODEL      = os.getenv("OLLAMA_MODEL", "llama3")
 DEFAULT_MODEL        = os.getenv("DEFAULT_MODEL", "groq")
 MEMORY_LIMIT         = int(os.getenv("MEMORY_LIMIT", "100"))
 MAX_AGENT_ITERATIONS = int(os.getenv("MAX_AGENT_ITERATIONS", "30"))
-LLM_TIMEOUT          = int(os.getenv("LLM_TIMEOUT", "90"))
-SHELL_TIMEOUT        = int(os.getenv("SHELL_TIMEOUT", "60"))
+LLM_TIMEOUT          = int(os.getenv("LIROX_LLM_TIMEOUT", os.getenv("LLM_TIMEOUT", "90")))
+SHELL_TIMEOUT        = int(os.getenv("LIROX_SHELL_TIMEOUT", os.getenv("SHELL_TIMEOUT", "60")))
+FILE_TIMEOUT         = int(os.getenv("LIROX_FILE_TIMEOUT", "30"))
 MAX_RETRIES          = 3
 
 MAX_LLM_PROMPT_CHARS    = 16000
@@ -119,9 +120,16 @@ AUTO_TRAIN_AFTER_MESSAGES   = int(os.getenv("AUTO_TRAIN_AFTER_MESSAGES", "10"))
 def _make_dir_safe(path: str) -> None:
     try:
         os.makedirs(path, mode=0o700, exist_ok=True)
-        info = os.stat(path)
-        if not (info.st_mode & stat.S_IWUSR):
-            raise PermissionError(f"Directory not writable: {path}")
+        # Actually test write capability using a uniquely named temp file to
+        # avoid TOCTOU races between concurrent processes.
+        fd, test_file = tempfile.mkstemp(dir=path, prefix=".lirox_write_test_")
+        try:
+            os.close(fd)
+        finally:
+            try:
+                os.unlink(test_file)
+            except OSError:
+                pass
     except PermissionError as exc:
         raise PermissionError(
             f"[Lirox] Cannot access directory: {path}\n  {exc}"

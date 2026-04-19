@@ -74,7 +74,23 @@ class UserProfile:
     def update(self, key: str, value):
         with self._lock:
             self.data[key] = value
-        self.save()
+            # Write to disk while holding the lock so no concurrent update
+            # can produce a mixed-state file between the in-memory change
+            # and the disk flush.
+            temp_file = self.storage_file + ".tmp"
+            try:
+                self.data["last_updated"] = datetime.now().isoformat()
+                with open(temp_file, "w") as f:
+                    json.dump(self.data, f, indent=4)
+                os.replace(temp_file, self.storage_file)
+            except Exception as e:
+                import logging
+                logging.getLogger("lirox.profile").error(f"Profile write failed: {e}")
+                if os.path.exists(temp_file):
+                    try:
+                        os.remove(temp_file)
+                    except OSError:
+                        pass
         # Sync agent_name to the living soul so identity is consistent
         if key == "agent_name" and value:
             try:
