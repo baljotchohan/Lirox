@@ -29,7 +29,7 @@ PHASES = [
     ("UNDERSTAND",   "🔍", "Analyzing intent and requirements"),
     ("DECOMPOSE",    "🧩", "Breaking problem into sub-tasks"),
     ("PLAN",         "📋", "Evaluating solution strategies"),
-    ("EXECUTE",      "⚙️ ", "Applying step-by-step reasoning"),
+    ("EXECUTE",      "⚙️", "Applying step-by-step reasoning"),
     ("TOOL USAGE",   "🔧", "Determining required tools"),
     ("VERIFY",       "✅", "Validating logic and completeness"),
     ("REFLECT",      "🔄", "Refining for clarity and depth"),
@@ -388,12 +388,12 @@ class ThinkingEngine:
                 system_prompt="Concise strategic analysis. No preamble.",
             )
             lines = [l.strip() for l in raw.splitlines() if l.strip()]
-            # Annotate with scores
+            # Score each approach — handle flexible LLM format variations
             scored: List[str] = []
             for line in lines[:6]:
-                m = re.match(r"^(\d+)\.\s+\[([^\]]+)\]:(.*)", line)
+                m = re.match(r"^(\d+)\.\s+\[([^\]]+)\][:\s]+(.*)", line)
                 if m:
-                    score = _score_approach(m.group(2) + m.group(3))
+                    score = _score_approach(m.group(2) + " " + m.group(3))
                     scored.append(f"{line}  [score: {score}/10]")
                 else:
                     scored.append(line)

@@ -104,6 +104,8 @@ class MasterOrchestrator:
                         data=evt,
                     )
         except Exception as e:
+            import logging
+            logging.getLogger("lirox.orchestrator").warning(f"ThinkingEngine error: {e}")
             # Thinking failure must never block the main query
             yield OrchestratorEvent(type="thinking_done", message="", data={})
 

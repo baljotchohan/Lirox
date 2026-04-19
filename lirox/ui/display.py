@@ -14,6 +14,14 @@ CLR_ERROR   = "bold #ef4444"
 CLR_DIM     = "dim #94a3b8"
 CLR_THINK   = "bold #a78bfa"
 
+# Complexity-to-color mapping used by thinking panel display
+COMPLEXITY_COLORS = {
+    "simple":   "#10b981",
+    "medium":   "#FFC107",
+    "complex":  "#a78bfa",
+    "creative": "#f472b6",
+}
+
 _raw_logo = [
     "██╗     ██╗██████╗  ██████╗ ██╗  ██╗",
     "██║     ██║██╔══██╗██╔═══██╗╚██╗██╔╝",
@@ -88,7 +96,7 @@ def show_thinking_phase(event: dict):
     bar      = "█" * filled + "░" * (10 - filled)
     phase_lbl = f"[{idx + 1}/{total}]"
 
-    # ── Confidence colour ─────────────────────────────────────────────────────
+    # ── Confidence color ──────────────────────────────────────────────────────
     if confidence >= 90:
         conf_color = "#10b981"   # green
     elif confidence >= 75:
@@ -112,13 +120,7 @@ def show_thinking_phase(event: dict):
 
 def show_thinking_panel_open(complexity: str):
     """Print the opening banner of the thinking panel."""
-    complexity_colors = {
-        "simple":   "#10b981",
-        "medium":   "#FFC107",
-        "complex":  "#a78bfa",
-        "creative": "#f472b6",
-    }
-    color = complexity_colors.get(complexity, "#a78bfa")
+    color = COMPLEXITY_COLORS.get(complexity, "#a78bfa")
     console.print()
     console.print(
         f"  [bold {color}]🧠 DEEP THINKING[/]  "
