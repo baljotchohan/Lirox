@@ -34,12 +34,41 @@ INJECTION_PATTERNS = [
     "/dev/udp/",         # Bash UDP redirection (reverse shells)
 ]
 
+# SECURITY-02: Additional argument-level validation for inherently dangerous commands.
+# These commands are allowed in the allowlist but must not be used with unsafe arguments.
+
+# rm: block recursive/force flag combinations targeting broad paths
+_RM_DANGEROUS = re.compile(
+    r'\brm\b.*\s(-[a-z]*r[a-z]*f[a-z]*|-[a-z]*f[a-z]*r[a-z]*)\s*(\/|~|\*|\.\.)',
+    re.IGNORECASE,
+)
+# find: block -exec which can execute arbitrary commands
+_FIND_EXEC = re.compile(r'\bfind\b.*\s-exec\b', re.IGNORECASE)
+# python/python3: block -c (inline code) which bypasses script-path checks
+_PYTHON_INLINE = re.compile(r'\bpython3?\b\s+-c\b', re.IGNORECASE)
+
+
+def _check_dangerous_args(cmd: str) -> tuple:
+    """Additional argument-level safety checks for high-risk allowed commands.
+
+    Returns (ok: bool, reason: str).
+    """
+    if _RM_DANGEROUS.search(cmd):
+        return False, "rm with recursive+force flags targeting broad paths is blocked"
+    if _FIND_EXEC.search(cmd):
+        return False, "find -exec is blocked (use find + xargs if needed)"
+    if _PYTHON_INLINE.search(cmd):
+        return False, "python -c inline code execution is blocked"
+    return True, "ok"
+
 
 def is_safe(cmd):
     """
-    Two-layer safety check:
+    Multi-layer safety check:
     1. Block dangerous commands and injection patterns
-    2. Check that every command in a chain/pipe is on the allowlist
+    2. Check injection patterns
+    3. Argument-level validation for high-risk allowed commands (SECURITY-02)
+    4. Check that every command in a chain/pipe is on the allowlist
     """
     cmd_lower = cmd.lower().strip()
 
@@ -54,7 +83,12 @@ def is_safe(cmd):
         if pattern.lower() in cmd_for_injection:
             return False, f"Blocked injection pattern: '{pattern}'"
 
-    # 3. Comprehensive Chain/Pipe Parsing
+    # 3. SECURITY-02: Argument-level checks for dangerous but allowed commands
+    safe, reason = _check_dangerous_args(cmd)
+    if not safe:
+        return False, reason
+
+    # 4. Comprehensive Chain/Pipe Parsing
     # We split by all shell delimiters to ensure NO command escapes validation
     # Split by: &&, ||, ;, | (with optional surrounding whitespace)
     sub_commands = SHELL_CHAIN.split(cmd)

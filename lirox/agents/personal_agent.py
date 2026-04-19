@@ -95,7 +95,10 @@ def _extract_json(text: str) -> dict:
             if ch == '"' and in_string:
                 num_bs = 0
                 j = i - 1
-                while j >= start_idx and text[j] == '\\':
+                # Count ALL preceding backslashes, not just those from start_idx,
+                # so consecutive escaped backslashes (e.g. `\\\\"`) are handled
+                # correctly.  BUG-08 fix: was `j >= start_idx`.
+                while j >= 0 and text[j] == '\\':
                     num_bs += 1
                     j -= 1
                 if num_bs % 2 == 0:
@@ -128,6 +131,10 @@ def _resolve_path(raw: str, query: str) -> str:
     raw = sanitize_path(raw)
     p = os.path.expandvars(os.path.expanduser(raw))
     if os.path.isabs(p) or "/" in p or "\\" in p:
+        # BUG-10 fix: os.path.realpath() fully resolves ALL symlink chains
+        # (including intermediate components) so that symlinks pointing outside
+        # the permitted directories are caught by the SAFE_DIRS_RESOLVED check
+        # below.
         canonical = os.path.realpath(p)
     else:
         q = (query or "").lower()
@@ -602,6 +609,12 @@ IMPORTANT:
             provider="auto", system_prompt="Shell expert. Output ONLY JSON.")
         try:
             d = _extract_json(raw)
+        except ValueError:
+            receipt = ShellReceipt(tool="shell", error="Could not parse shell plan from LLM response.")
+            yield {"type": "tool_result", "message": receipt.as_user_summary()}
+            yield from self._synth_receipt(query, receipt)
+            return
+        try:
             command = (d.get("command") or "").strip()
             if not command:
                 yield {"type": "tool_result", "message": "❌ Could not determine command."}

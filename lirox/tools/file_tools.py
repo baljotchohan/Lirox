@@ -373,6 +373,10 @@ def create_directory(path: str) -> str:
 # ── List / tree / search (read-only, no state to verify beyond existence) ─
 
 def file_list(path: str = ".", pattern: str = "*", max_files: int = 100) -> str:
+    # SECURITY-03 fix: reject glob patterns that escape the directory via '..'
+    # or begin with '/' (absolute patterns).
+    if ".." in pattern or pattern.startswith("/"):
+        return "Invalid glob pattern: '..' and leading '/' are not permitted."
     ok, info = _is_safe_path(path)
     if not ok:
         return info
