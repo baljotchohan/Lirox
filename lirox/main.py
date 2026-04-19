@@ -192,9 +192,7 @@ def process_query(orch, query: str, verbose: bool = False):
     orch.global_memory.save_exchange(query, result["response"])
     session.add("assistant", result["response"], agent="personal")
     orch.session_store.save_current()
-    orch._interaction_count += 1
-    if orch._interaction_count % 20 == 0:
-        orch._auto_train()
+    orch.record_interaction()
 
 
 def handle_command(orch, profile, cmd: str, verbose: bool = False):
@@ -317,6 +315,7 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             success_message("Memory reset. New session started.")
 
     elif base == "/test":
+        _diag_log = __import__("logging").getLogger("lirox.diagnostics")
         info_panel("Running diagnostics…")
         tests = [
             ("Providers",     lambda: ", ".join(available_providers()) or "None"),
@@ -329,6 +328,7 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             try:
                 console.print(f"  [green]✓[/] {name:22}: {fn()}")
             except Exception as e:
+                _diag_log.debug("Diagnostic check '%s' failed", name, exc_info=True)
                 console.print(f"  [red]✖[/] {name:22}: {e}")
         success_message("Diagnostics complete.")
 
@@ -393,16 +393,25 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             info_panel(f"WORKSPACE\n\n  Current: {current_ws}\n\n"
                        f"  Usage: /workspace ~/Projects/myapp")
         else:
-            expanded = os.path.expanduser(new_path)
-            if os.path.isdir(expanded):
-                os.environ["LIROX_WORKSPACE"] = expanded
-                # FIX-08: Also update the live config module attribute
-                import lirox.config as _cfg
-                _cfg.WORKSPACE_DIR = expanded
-                _cfg.SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in _cfg.SAFE_DIRS]
-                success_message(f"Workspace set to: {expanded}")
-            else:
+            import lirox.config as _cfg
+            expanded = os.path.realpath(os.path.expanduser(new_path))
+            if not os.path.isdir(expanded):
                 error_panel("INVALID PATH", f"'{expanded}' does not exist or is not a directory.")
+                return
+            safe = any(
+                expanded == d or expanded.startswith(d + os.sep)
+                for d in _cfg.SAFE_DIRS_RESOLVED
+            )
+            if not safe:
+                error_panel("UNSAFE PATH", f"'{expanded}' is outside allowed directories.\n"
+                            "Use a path under your home folder or project directory.")
+                return
+            os.environ["LIROX_WORKSPACE"] = expanded
+            _cfg.WORKSPACE_DIR = expanded
+            # Include the new workspace in safe dirs so subsequent checks recognise it
+            _cfg.SAFE_DIRS = [d for d in _cfg.SAFE_DIRS if d != _cfg.WORKSPACE_DIR] + [expanded]
+            _cfg.SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in _cfg.SAFE_DIRS]
+            success_message(f"Workspace set to: {expanded}")
 
     elif base == "/backup":
         _run_backup()
@@ -433,14 +442,14 @@ def _handle(orch, profile, cmd, base, parts, verbose):
 
     elif base == "/uninstall":
         import shutil
-        from lirox.config import DATA_DIR, OUTPUTS_DIR
+        from lirox.config import DATA_DIR, OUTPUTS_DIR, PROJECT_ROOT
         from rich.panel import Panel as _P
         console.print(_P(
             "[bold red]⚠️  UNINSTALL[/]\n\nDeletes ALL data.",
             border_style="red"))
         if confirm_prompt("Delete ALL Lirox data?"):
-            for path in [os.path.join(os.path.dirname(os.path.dirname(__file__)), "profile.json"),
-                          os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")]:
+            for path in [os.path.join(PROJECT_ROOT, "profile.json"),
+                          os.path.join(PROJECT_ROOT, ".env")]:
                 if os.path.exists(path): os.remove(path)
             for dp in [DATA_DIR, OUTPUTS_DIR]:
                 if os.path.exists(dp): shutil.rmtree(dp, ignore_errors=True)

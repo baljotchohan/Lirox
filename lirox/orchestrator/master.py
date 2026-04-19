@@ -120,6 +120,12 @@ class MasterOrchestrator:
         if self._interaction_count % 20 == 0:
             self._auto_train()
 
+    def record_interaction(self) -> None:
+        """Increment interaction counter and trigger auto-training if threshold reached."""
+        self._interaction_count += 1
+        if self._interaction_count % 20 == 0:
+            self._auto_train()
+
     def _auto_train(self) -> None:
         import threading
         def _worker():
