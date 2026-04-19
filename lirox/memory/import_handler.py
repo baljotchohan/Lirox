@@ -130,16 +130,15 @@ class MemoryImporter:
 
         try:
             if ext == ".json" and ("lirox_memory" in fname or "lirox_export" in fname):
-                from lirox.utils.memory_utils import import_full_memory
-                r = import_full_memory(str(path))
-                return {
-                    "success": bool(r.get("success")),
-                    "imported": "Full Profile",
-                    "facts_added": r.get("facts_added", 0),
-                    "source": "Lirox Export",
-                    "is_full": True,
-                    "error": r.get("error"),
-                }
+                # FIX: Handle Lirox exports directly, no memory_utils
+                try:
+                    data = json.loads(path.read_text())
+                    result = self._apply_structured(data.get("learnings", data), source="lirox_export")
+                    result["source"] = "Lirox Export"
+                    result["is_full"] = True
+                    return result
+                except Exception as e:
+                    return {"error": str(e), "success": False}
 
             if ext == ".json":
                 if "conversations" in fname or "chatgpt" in fname:

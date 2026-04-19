@@ -1,10 +1,11 @@
-"""Lirox v3.0 — LLM Utility Layer"""
+"""Lirox v3.1 — LLM Utility Layer"""
 import logging
 import os
 import hashlib
 import time
 import requests
 import concurrent.futures
+from collections import OrderedDict
 from typing import List, Dict, Optional, Generator
 
 from lirox.utils.managed_pool import get_default_pool as _get_pool
@@ -25,7 +26,20 @@ DEFAULT_SYSTEM = (
 )
 
 _LLM_TIMEOUT  = 90
-_task_cache: Dict[str, bool] = {}
+
+class _LRUCache(OrderedDict):
+    """Simple LRU cache with max size (FIX-17)."""
+    def __init__(self, maxsize=256):
+        super().__init__()
+        self._maxsize = maxsize
+    def __setitem__(self, key, value):
+        if key in self:
+            self.move_to_end(key)
+        super().__setitem__(key, value)
+        if len(self) > self._maxsize:
+            self.popitem(last=False)
+
+_task_cache = _LRUCache(256)
 
 
 def strip_code_fences(text: str, lang: str = "") -> str:
@@ -260,13 +274,26 @@ RESEARCH_KEYWORDS = [
 ]
 
 
+_ollama_cache_ts = 0.0
+_ollama_cache_val = False
+_OLLAMA_CACHE_TTL = 10  # seconds
+
+
 def _is_ollama_available() -> bool:
+    """Check Ollama availability with 10s cache (FIX-16)."""
+    global _ollama_cache_ts, _ollama_cache_val
+    import time as _t
+    now = _t.time()
+    if now - _ollama_cache_ts < _OLLAMA_CACHE_TTL:
+        return _ollama_cache_val
     try:
         res = requests.get(
             f"{os.getenv('OLLAMA_ENDPOINT', 'http://localhost:11434')}/api/tags", timeout=2)
-        return res.status_code == 200
+        _ollama_cache_val = res.status_code == 200
     except Exception:
-        return False
+        _ollama_cache_val = False
+    _ollama_cache_ts = now
+    return _ollama_cache_val
 
 
 def _is_hf_bnb_available() -> bool:
@@ -322,12 +349,17 @@ def is_error_response(text: str) -> bool:
     if not text or len(text.strip()) < 5:
         return True
     lowered = text.strip().lower()
-    if any(s in lowered for s in ["api key missing", "api key not set"]):
+    # FIX-12: Catch ALL provider error formats including install messages
+    error_indicators = [
+        "api key missing", "api key not set", "not installed",
+        "error:", "rate limit exceeded",
+    ]
+    if any(s in lowered for s in error_indicators):
         return True
     error_prefixes = [
-        "openai error:", "gemini error:", "groq error:", "anthropic error:",
-        "deepseek error:", "nvidia error:", "openrouter error:", "ollama error:",
-        "hf bnb error:", "error:", "unknown provider:", "rate limit exceeded",
+        "openai error", "gemini error", "groq error", "anthropic error",
+        "deepseek error", "nvidia error", "openrouter error", "ollama error",
+        "hf bnb error", "unknown provider",
     ]
     return any(lowered.startswith(p) for p in error_prefixes)
 

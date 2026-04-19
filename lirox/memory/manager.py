@@ -24,7 +24,7 @@ class MemoryManager:
             self.conversation_buffer.append({"role": "user",      "content": user_msg, "ts": ts})
             self.conversation_buffer.append({"role": "assistant", "content": str(asst_msg)[:MAX_MEMORY_ENTRY_CHARS], "ts": ts})
             if len(self.conversation_buffer) > MEMORY_LIMIT * 2:
-                self.conversation_buffer = self.conversation_buffer[-MEMORY_LIMIT:]
+                self.conversation_buffer = self.conversation_buffer[-(MEMORY_LIMIT * 2):]
 
         daily = os.path.join(
             MEMORY_DIR, "daily",

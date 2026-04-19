@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Master Orchestrator (Clean)"""
+"""Lirox v3.1 — Master Orchestrator"""
 from __future__ import annotations
 import os
 import time
@@ -21,17 +21,18 @@ class OrchestratorEvent:
 class MasterOrchestrator:
     def __init__(self, profile_data: Dict[str, Any] = None):
         self.profile_data    = profile_data or {}
+        # FIX-03: Single shared memory — both orchestrator and agent use the same instance
         self.global_memory   = MemoryManager()
         self.session_store   = SessionStore()
         self._agent:         Optional[Any] = None
         self._interaction_count: int = 0
-        self.default_provider = None
 
     def _get_agent(self):
         if self._agent is None:
             from lirox.agents.personal_agent import PersonalAgent
+            # FIX-03: Pass the SAME global_memory to the agent
             self._agent = PersonalAgent(
-                memory=MemoryManager(agent_name="personal"),
+                memory=self.global_memory,
                 profile_data=self.profile_data)
         return self._agent
 
@@ -79,6 +80,7 @@ class MasterOrchestrator:
             yield OrchestratorEvent(type="error", message=str(e))
             result_text = f"Error: {e}"
 
+        # FIX-22: Only save once here — agent no longer saves separately
         self.global_memory.save_exchange(query, result_text)
         session.add("assistant", result_text, agent="personal")
         self.session_store.save_current()
@@ -86,7 +88,6 @@ class MasterOrchestrator:
             type="done", agent="personal", message=result_text,
             data={"total_time": time.time() - start})
 
-        # Auto-train every 20 interactions
         if self._interaction_count % 20 == 0:
             self._auto_train()
 

@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Entry Point (Clean)"""
+"""Lirox v3.1 — Entry Point"""
 import os
 import sys
 import time
@@ -34,23 +34,28 @@ def check_dependencies():
     sys.exit(1)
 
 
-from lirox.orchestrator.master import MasterOrchestrator
-from lirox.ui.display import (
-    show_welcome, show_status_card, show_answer,
-    render_streaming_chunk, error_panel, info_panel,
-    success_message, confirm_prompt, console, show_thinking,
-    show_agent_event,
-)
-from lirox.utils.llm import available_providers
-from lirox.config import APP_VERSION
-
-
 def get_prompt_label(agent_name: str) -> list:
     return [("class:prompt", f"[{agent_name}] "), ("class:symbol", "✦ ")]
 
 
 def main():
+    # ── Bootstrap FIRST — before any heavy imports ──
     check_dependencies()
+
+    # ── Ensure data directories exist ──
+    from lirox.config import ensure_directories
+    ensure_directories()
+
+    # ── Now safe to import everything ──
+    from lirox.orchestrator.master import MasterOrchestrator
+    from lirox.ui.display import (
+        show_welcome, show_status_card, show_answer,
+        render_streaming_chunk, error_panel, info_panel,
+        success_message, confirm_prompt, console, show_thinking,
+        show_agent_event,
+    )
+    from lirox.utils.llm import available_providers
+    from lirox.config import APP_VERSION
 
     parser = argparse.ArgumentParser(description=f"Lirox v{APP_VERSION}")
     parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
@@ -145,7 +150,11 @@ def main():
             error_panel("KERNEL ERROR", str(e))
 
 
-def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
+def process_query(orch, query: str, verbose: bool = False):
+    from lirox.ui.display import (
+        console, show_answer, show_thinking, show_agent_event,
+    )
+
     last_agent   = "personal"
     status       = None
     was_streamed = False
@@ -177,7 +186,7 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                     was_streamed = True
                     live_ctx = Live(Markdown(""), console=console, refresh_per_second=12, auto_refresh=True)
                     live_ctx.start()
-                
+
                 stream_content += ev.message
                 if live_ctx:
                     live_ctx.update(Markdown(stream_content))
@@ -187,7 +196,7 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
                 if live_ctx:
                     live_ctx.stop()
                     live_ctx = None
-                
+
                 if was_streamed:
                     console.print("  [bold #10b981]✓ Done[/]")
                 elif ev.message:
@@ -207,7 +216,12 @@ def process_query(orch: MasterOrchestrator, query: str, verbose: bool = False):
         if live_ctx: live_ctx.stop()
 
 
-def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = False):
+def handle_command(orch, profile, cmd: str, verbose: bool = False):
+    from lirox.ui.display import (
+        console, error_panel, info_panel, success_message, confirm_prompt,
+    )
+    from lirox.config import APP_VERSION
+
     parts = cmd.strip().split()
     base  = parts[0].lower()
     try:
@@ -219,6 +233,11 @@ def handle_command(orch: MasterOrchestrator, profile, cmd: str, verbose: bool = 
 
 
 def _handle(orch, profile, cmd, base, parts, verbose):
+    from lirox.ui.display import (
+        console, error_panel, info_panel, success_message, confirm_prompt,
+    )
+    from lirox.config import APP_VERSION
+    from lirox.utils.llm import available_providers
 
     if base == "/help":
         from rich.table import Table as _T
@@ -232,7 +251,7 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             ("/history [n]",        "Show last N sessions"),
             ("/session",            "Current session info"),
             ("/models",             "Available LLM providers"),
-            ("/use-model <name>",   "Pin a provider (groq, gemini, openai…)"),
+            ("/use-model <n>",      "Pin a provider (groq, gemini, openai…)"),
             ("/memory",             "Memory stats"),
             ("/profile",            "Show your profile"),
             ("/reset",              "Reset session memory"),
@@ -282,11 +301,11 @@ def _handle(orch, profile, cmd, base, parts, verbose):
                     "  None configured — run /setup") + pin_note)
 
     elif base == "/use-model":
-        from lirox.utils.llm import available_providers as _avp, _PROVIDER_ENV_MAP
+        from lirox.utils.llm import _PROVIDER_ENV_MAP
         target = parts[1].lower().strip() if len(parts) > 1 else ""
         valid  = list(_PROVIDER_ENV_MAP.keys()) + ["ollama", "auto"]
         if not target:
-            avail  = _avp()
+            avail  = available_providers()
             pinned = os.getenv("_LIROX_PINNED_MODEL", "none")
             info_panel(f"Currently pinned: {pinned}\n"
                        f"Available: {', '.join(avail) or 'none'}\n\n"
@@ -296,10 +315,6 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             error_panel("UNKNOWN PROVIDER", f"'{target}' not recognised.\nValid: {', '.join(valid)}")
         else:
             os.environ["_LIROX_PINNED_MODEL"] = target
-            try:
-                orch.default_provider = None if target == "auto" else target
-            except AttributeError:
-                pass
             if target == "auto":
                 success_message("Model set to [auto].")
             else:
@@ -391,15 +406,19 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         info_panel("\n".join(lines))
 
     elif base == "/workspace":
-        from lirox.config import WORKSPACE_DIR
         new_path = cmd[len("/workspace"):].strip()
         if not new_path:
-            info_panel(f"WORKSPACE\n\n  Current: {WORKSPACE_DIR}\n\n"
+            current_ws = os.getenv("LIROX_WORKSPACE", str(Path.home() / "Desktop"))
+            info_panel(f"WORKSPACE\n\n  Current: {current_ws}\n\n"
                        f"  Usage: /workspace ~/Projects/myapp")
         else:
             expanded = os.path.expanduser(new_path)
             if os.path.isdir(expanded):
                 os.environ["LIROX_WORKSPACE"] = expanded
+                # FIX-08: Also update the live config module attribute
+                import lirox.config as _cfg
+                _cfg.WORKSPACE_DIR = expanded
+                _cfg.SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in _cfg.SAFE_DIRS]
                 success_message(f"Workspace set to: {expanded}")
             else:
                 error_panel("INVALID PATH", f"'{expanded}' does not exist or is not a directory.")
@@ -451,18 +470,15 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         console.print(f"  [dim]Unknown command: {base}. Type /help.[/]")
 
 
+# ── Utility functions ──
+
 def _check_git_available() -> bool:
-    """Return True if the git executable is on PATH."""
     import shutil
     return shutil.which("git") is not None
 
 
 def _stash_changes(root: str) -> bool:
-    """Stash any uncommitted changes so git pull can proceed cleanly.
-
-    Returns True if stashing succeeded (or there was nothing to stash),
-    False on error.
-    """
+    from lirox.ui.display import console
     import subprocess
     try:
         status = subprocess.run(
@@ -470,7 +486,7 @@ def _stash_changes(root: str) -> bool:
             capture_output=True, text=True, timeout=15,
         )
         if not status.stdout.strip():
-            return True  # nothing to stash
+            return True
         stash = subprocess.run(
             ["git", "-C", root, "stash", "--include-untracked"],
             capture_output=True, text=True, timeout=30,
@@ -489,111 +505,65 @@ def _stash_changes(root: str) -> bool:
 
 
 def _git_pull_with_retry(root: str, max_attempts: int = 3):
-    """Pull from origin with exponential backoff.
-
-    Returns (success: bool, output: str, error: str).
-    """
+    from lirox.ui.display import console
     import subprocess
     import time as _time
-
     last_error = ""
     for attempt in range(1, max_attempts + 1):
         try:
             result = subprocess.run(
                 ["git", "-C", root, "pull"],
-                capture_output=True, text=True, timeout=120,
-                check=True,
+                capture_output=True, text=True, timeout=120, check=True,
             )
             return True, result.stdout.strip(), ""
         except subprocess.CalledProcessError as exc:
             last_error = exc.stderr.strip() if exc.stderr else exc.stdout.strip()
             if attempt < max_attempts:
-                wait = 2 ** (attempt - 1)  # 1 s, 2 s, 4 s for attempts 1-3
-                console.print(
-                    f"[yellow]Pull attempt {attempt}/{max_attempts} failed "
-                    f"(retrying in {wait}s)…[/]"
-                )
+                wait = 2 ** (attempt - 1)
+                console.print(f"[yellow]Pull attempt {attempt}/{max_attempts} failed (retrying in {wait}s)…[/]")
                 _time.sleep(wait)
         except subprocess.TimeoutExpired:
             last_error = "git pull timed out after 120 s"
             if attempt < max_attempts:
-                wait = 2 ** (attempt - 1)  # 1 s, 2 s, 4 s for attempts 1-3
-                console.print(
-                    f"[yellow]Pull attempt {attempt}/{max_attempts} timed out "
-                    f"(retrying in {wait}s)…[/]"
-                )
+                wait = 2 ** (attempt - 1)
+                console.print(f"[yellow]Pull attempt {attempt}/{max_attempts} timed out (retrying in {wait}s)…[/]")
                 _time.sleep(wait)
         except OSError as exc:
             last_error = str(exc)
-            break  # non-retriable OS error
+            break
     return False, "", last_error
 
 
 def _run_update():
+    from lirox.ui.display import console, error_panel, info_panel, success_message
+    from lirox.config import PROJECT_ROOT
     import subprocess
     import logging
-    from lirox.config import PROJECT_ROOT
-
     log = logging.getLogger("lirox.update")
     root = str(Path(PROJECT_ROOT).resolve())
     info_panel(f"Checking for updates in {root}…")
-
-    # 1. Verify git is available
     if not _check_git_available():
-        error_panel(
-            "UPDATE FAILED",
-            "git is not installed or not on PATH.\n"
-            "Install git or run:  pip install --upgrade lirox",
-        )
+        error_panel("UPDATE FAILED", "git is not installed or not on PATH.\nInstall git or run:  pip install --upgrade lirox")
         return
-
     git_dir = os.path.join(root, ".git")
     if not os.path.exists(git_dir):
-        info_panel(
-            f"Not a git repository ({root}).\nRun: pip install --upgrade lirox"
-        )
+        info_panel(f"Not a git repository ({root}).\nRun: pip install --upgrade lirox")
         return
-
     try:
-        # 2. Stash uncommitted changes so pull succeeds
         stash_ok = _stash_changes(root)
         if not stash_ok:
-            error_panel(
-                "UPDATE FAILED",
-                "Could not stash local changes.\n\n"
-                "Your changes are conflicting with the repository.\n\n"
-                "Solutions:\n"
-                "  1. Run: git status  (inspect what changed)\n"
-                "  2. Run: git stash --include-untracked\n"
-                "  3. Run: git clean -fd\n"
-                "  4. Run: /update again",
-            )
+            error_panel("UPDATE FAILED", "Could not stash local changes.")
             return
-        log.debug("Stash check complete for %s", root)
-
-        # 3. Pull with retry / exponential backoff
         console.print("[dim]Pulling latest changes…[/]")
         pulled, stdout, pull_err = _git_pull_with_retry(root)
         if not pulled:
-            error_panel(
-                "UPDATE FAILED",
-                f"git pull failed:\n{pull_err}\n\n"
-                "Tip: ensure you have network access and the repo remote is reachable.",
-            )
-            log.error("git pull failed: %s", pull_err)
+            error_panel("UPDATE FAILED", f"git pull failed:\n{pull_err}")
             return
-
-        log.debug("git pull succeeded: %s", stdout)
-
         if "Already up to date." in stdout:
             success_message("Already up to date.")
             return
-
-        # Show what changed
         if stdout:
             console.print(f"[dim]{stdout}[/]")
-
-        # 4. Reinstall package (show output so user sees progress / errors)
         console.print("[dim]Reinstalling package…[/]")
         pip_result = subprocess.run(
             [sys.executable, "-m", "pip", "install", "-e", root],
@@ -601,37 +571,15 @@ def _run_update():
         )
         if pip_result.returncode != 0:
             pip_err = pip_result.stderr.strip() or pip_result.stdout.strip()
-            error_panel(
-                "UPDATE PARTIALLY FAILED",
-                f"git pull succeeded but pip install failed:\n{pip_err}",
-            )
-            log.error("pip install failed: %s", pip_err)
+            error_panel("UPDATE PARTIALLY FAILED", f"git pull succeeded but pip install failed:\n{pip_err}")
             return
-
-        if pip_result.stdout.strip():
-            console.print(f"[dim]{pip_result.stdout.strip()}[/]")
-
         success_message("Updated successfully. Please restart Lirox.")
-        log.info("Update complete for %s", root)
-
-    except subprocess.CalledProcessError as exc:
-        if exc.stderr:
-            err_msg = exc.stderr.strip()
-        elif exc.stdout:
-            err_msg = exc.stdout.strip()
-        else:
-            err_msg = str(exc)
-        error_panel("UPDATE FAILED", f"Git error:\n{err_msg}")
-        log.error("CalledProcessError during update: %s", err_msg)
-    except OSError as exc:
-        error_panel("UPDATE FAILED", f"OS error: {exc}")
-        log.error("OSError during update: %s", exc)
     except Exception as exc:
         error_panel("UPDATE FAILED", str(exc))
-        log.exception("Unexpected error during update")
 
 
 def _run_backup():
+    from lirox.ui.display import success_message, error_panel
     import shutil
     from lirox.config import DATA_DIR, PROJECT_ROOT
     from datetime import datetime
@@ -651,6 +599,7 @@ def _run_backup():
 
 
 def _export_memory():
+    from lirox.ui.display import success_message
     import json
     from datetime import datetime
     from lirox.config import PROJECT_ROOT, MIND_LEARN_FILE
@@ -673,6 +622,7 @@ def _export_memory():
 
 
 def _import_memory(file_path: str):
+    from lirox.ui.display import error_panel, success_message
     import json
     path = Path(file_path)
     if not path.exists():
@@ -687,13 +637,11 @@ def _import_memory(file_path: str):
     from lirox.mind.learnings import LearningsStore
     store = LearningsStore()
     facts_added = 0
-    # Handle Lirox export format
     if "learnings" in data and isinstance(data["learnings"], dict):
         for f in data["learnings"].get("user_facts", []):
             fact_text = f.get("fact") if isinstance(f, dict) else str(f)
             store.add_fact(fact_text, confidence=0.85, source="import")
             facts_added += 1
-    # Handle ChatGPT export format (list of conversations)
     elif isinstance(data, list):
         for conv in data[:50]:
             mapping = conv.get("mapping", {})

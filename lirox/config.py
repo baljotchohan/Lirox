@@ -1,4 +1,4 @@
-"""Lirox v3.0 — Central Configuration"""
+"""Lirox v3.1 — Central Configuration"""
 import os
 import tempfile
 from pathlib import Path
@@ -10,7 +10,7 @@ except ImportError:
     print("\n[!] pip install python-dotenv\n")
     sys.exit(1)
 
-APP_VERSION = "3.0.0"  # Unified to v3.0 Master Rebuild
+APP_VERSION = "3.1.0"
 
 _REPO_ROOT   = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
@@ -27,9 +27,6 @@ else:
     load_dotenv()
 
 # ── API Keys ──
-# Raw env-var reads kept for backward compatibility with code that accesses
-# these module-level names directly.  New code should prefer
-# lirox.utils.secure_keys.get_api_key() which masks values in logs.
 OPENAI_API_KEY     = os.getenv("OPENAI_API_KEY")
 GEMINI_API_KEY     = os.getenv("GEMINI_API_KEY")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -58,8 +55,6 @@ MAX_MEMORY_ENTRY_CHARS  = 800
 MAX_CONTEXT_CHARS       = 6000
 MAX_SEARCH_RESULT_CHARS = 10000
 
-# ── Workspace (where agent reads/writes files for the user) ──
-# This is the folder the agent operates in — like Claude Code / Gemini CLI
 WORKSPACE_DIR = os.getenv("LIROX_WORKSPACE", str(Path.home() / "Desktop"))
 
 # ── Shell Safety ──
@@ -81,9 +76,9 @@ BLOCK_PATTERNS = [
 ]
 
 _HOME = str(Path.home())
+# FIX-14: Removed _HOME itself — only specific subdirs are allowed
 SAFE_DIRS = [
     PROJECT_ROOT, OUTPUTS_DIR, DATA_DIR, WORKSPACE_DIR,
-    _HOME,
     os.path.join(_HOME, "Desktop"),
     os.path.join(_HOME, "Documents"),
     os.path.join(_HOME, "Downloads"),
@@ -109,39 +104,32 @@ MIND_DIR          = str(_REPO_ROOT / "data" / "mind")
 MIND_SOUL_FILE    = str(_REPO_ROOT / "data" / "mind" / "soul.json")
 MIND_LEARN_FILE   = str(_REPO_ROOT / "data" / "mind" / "learnings.json")
 
-# ── Self-awareness: path to own source code ──
 LIROX_SOURCE_DIR  = str(_REPO_ROOT / "lirox")
 
-# ── Auto-training ──
 AUTO_TRAIN_ENABLED          = os.getenv("AUTO_TRAIN_ENABLED", "true").lower() == "true"
 AUTO_TRAIN_AFTER_MESSAGES   = int(os.getenv("AUTO_TRAIN_AFTER_MESSAGES", "10"))
 
-# ── Directory creation ──
-def _make_dir_safe(path: str) -> None:
-    try:
-        os.makedirs(path, mode=0o700, exist_ok=True)
-        # Actually test write capability using a uniquely named temp file to
-        # avoid TOCTOU races between concurrent processes.
-        fd, test_file = tempfile.mkstemp(dir=path, prefix=".lirox_write_test_")
-        try:
-            os.close(fd)
-        finally:
-            try:
-                os.unlink(test_file)
-            except OSError:
-                pass
-    except PermissionError as exc:
-        raise PermissionError(
-            f"[Lirox] Cannot access directory: {path}\n  {exc}"
-        ) from exc
-    except OSError as exc:
-        raise OSError(
-            f"[Lirox] Failed to create directory: {path}\n  {exc}"
-        ) from exc
 
-for _d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, SESSIONS_DIR,
-           str(Path(MEMORY_DIR) / "daily"), MIND_DIR]:
-    _make_dir_safe(_d)
+# FIX-04: Deferred directory creation — called from main(), not at import
+_dirs_initialized = False
+
+def ensure_directories():
+    """Create data directories. Called once from main(), not at import time."""
+    global _dirs_initialized
+    if _dirs_initialized:
+        return
+    for d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, SESSIONS_DIR,
+              str(Path(MEMORY_DIR) / "daily"), MIND_DIR]:
+        try:
+            os.makedirs(d, mode=0o700, exist_ok=True)
+        except OSError as exc:
+            import logging
+            logging.getLogger("lirox.config").warning(f"Cannot create {d}: {exc}")
+    _dirs_initialized = True
+
+# Backwards compat: auto-init for imports that expect dirs to exist
+ensure_directories()
+
 
 def is_self_modification(path: str) -> bool:
     try:

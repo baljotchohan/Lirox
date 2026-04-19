@@ -59,7 +59,18 @@ class LearningsStore:
         return d
 
     def save(self) -> None:
-        self._path.write_text(json.dumps(self.data, indent=2, default=str))
+        """Atomic save: write to tmp then rename (FIX-07)."""
+        tmp_path = str(self._path) + ".tmp"
+        try:
+            with open(tmp_path, "w") as f:
+                json.dump(self.data, f, indent=2, default=str)
+            os.replace(tmp_path, str(self._path))
+        except Exception:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
         self._dirty = False
 
     # ── Add learnings ─────────────────────────────────────────────────────────

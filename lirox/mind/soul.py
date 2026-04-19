@@ -65,8 +65,20 @@ class LivingSoul:
         return state
 
     def save(self) -> None:
+        """Atomic save (FIX-07b)."""
+        import os
         self.state["last_updated"] = datetime.now().isoformat()
-        self._path.write_text(json.dumps(self.state, indent=2, default=str))
+        tmp_path = str(self._path) + ".tmp"
+        try:
+            with open(tmp_path, "w") as f:
+                json.dump(self.state, f, indent=2, default=str)
+            os.replace(tmp_path, str(self._path))
+        except Exception:
+            try:
+                os.remove(tmp_path)
+            except OSError:
+                pass
+            raise
 
     def get_name(self) -> str:
         return self.state.get("name", "Lirox")

@@ -48,9 +48,10 @@ def is_safe(cmd):
         if blocked in cmd_lower:
             return False, f"Blocked command/flag: '{blocked}'"
 
-    # 2. Check injection patterns (substitution, eval, device writes)
+    # 2. Check injection patterns — case-insensitive (FIX-05)
+    cmd_for_injection = cmd.lower()
     for pattern in INJECTION_PATTERNS:
-        if pattern in cmd:
+        if pattern.lower() in cmd_for_injection:
             return False, f"Blocked injection pattern: '{pattern}'"
 
     # 3. Comprehensive Chain/Pipe Parsing
