@@ -3,6 +3,7 @@ import re
 from rich.console import Console
 from rich.panel import Panel
 from rich.markup import escape
+from rich.table import Table
 from lirox.config import APP_VERSION
 
 console = Console()
@@ -61,6 +62,80 @@ def show_thinking(msg: str):
     console.print(Panel(f"[{CLR_THINK}]{escape(msg)}[/]",
                         title=f"[{CLR_THINK}]🧠 THINKING[/]",
                         border_style="#a78bfa", padding=(0, 1)))
+
+
+def show_thinking_phase(event: dict):
+    """Render a single thinking phase from a ``thinking_phase`` event dict.
+
+    Produces output like::
+
+      🔍 UNDERSTAND  [1/8]  ████████░░  88%
+        ✓ Intent detected: file operation
+        ✓ Query length: 7 words — complexity: medium
+        ✓ Ambiguity check: None detected
+    """
+    idx        = event.get("phase_index", 0)
+    name       = event.get("phase_name", "PHASE")
+    icon       = event.get("phase_icon", "•")
+    tagline    = event.get("phase_tagline", "")
+    total      = event.get("phase_total", 8)
+    steps      = event.get("steps", [])
+    confidence = event.get("confidence", 80)
+    complexity = event.get("complexity", "medium")
+
+    # ── Progress bar ──────────────────────────────────────────────────────────
+    filled   = round((idx + 1) / total * 10)
+    bar      = "█" * filled + "░" * (10 - filled)
+    phase_lbl = f"[{idx + 1}/{total}]"
+
+    # ── Confidence colour ─────────────────────────────────────────────────────
+    if confidence >= 90:
+        conf_color = "#10b981"   # green
+    elif confidence >= 75:
+        conf_color = "#FFC107"   # amber
+    else:
+        conf_color = "#ef4444"   # red
+
+    header = (
+        f"[bold #a78bfa]{icon} {name}[/]  "
+        f"[dim]{phase_lbl}[/]  "
+        f"[{conf_color}]{bar}[/]  "
+        f"[{conf_color}]{confidence}%[/]"
+    )
+    if tagline:
+        header += f"  [dim #94a3b8]— {escape(tagline)}[/]"
+
+    console.print(f"  {header}")
+    for step in steps:
+        console.print(f"    [{CLR_DIM}]✓ {escape(str(step)[:160])}[/]")
+
+
+def show_thinking_panel_open(complexity: str):
+    """Print the opening banner of the thinking panel."""
+    complexity_colors = {
+        "simple":   "#10b981",
+        "medium":   "#FFC107",
+        "complex":  "#a78bfa",
+        "creative": "#f472b6",
+    }
+    color = complexity_colors.get(complexity, "#a78bfa")
+    console.print()
+    console.print(
+        f"  [bold {color}]🧠 DEEP THINKING[/]  "
+        f"[dim]({complexity.upper()} — full cognitive pipeline)[/]"
+    )
+    console.print(f"  [{CLR_DIM}]{'─' * 55}[/]")
+
+
+def show_thinking_panel_close(total_ms: int, complexity: str):
+    """Print the closing summary line of the thinking panel."""
+    secs = total_ms / 1000
+    console.print(f"  [{CLR_DIM}]{'─' * 55}[/]")
+    console.print(
+        f"  [{CLR_DIM}]⏱  Reasoning complete in {secs:.2f}s · "
+        f"Complexity: {complexity.upper()}[/]"
+    )
+    console.print()
 
 
 def show_agent_event(agent: str, etype: str, msg: str):
