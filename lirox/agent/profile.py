@@ -99,7 +99,7 @@ class UserProfile:
                 self.data["learned_facts"].append(fact)
                 if len(self.data["learned_facts"]) > 50:
                     self.data["learned_facts"] = self.data["learned_facts"][-50:]
-        self.save()
+            self._save_locked()
 
     def add_goal(self, goal: str):
         if not goal:
@@ -109,7 +109,7 @@ class UserProfile:
                 self.data["goals"] = []
             if goal not in self.data["goals"]:
                 self.data["goals"].append(goal)
-        self.save()
+            self._save_locked()
 
     def add_learned_preference(self, category: str, preference: str):
         """Learn user preferences over time."""
@@ -123,7 +123,7 @@ class UserProfile:
                 if len(self.data["preferences"][category]) > 20:
                     self.data["preferences"][category] = \
                         self.data["preferences"][category][-20:]
-        self.save()
+            self._save_locked()
 
     def track_task_execution(self, task_description: str, success: bool,
                              duration_seconds: float):
@@ -139,7 +139,7 @@ class UserProfile:
             })
             if len(self.data["task_history"]) > 100:
                 self.data["task_history"] = self.data["task_history"][-100:]
-        self.save()
+            self._save_locked()
 
     def get_dominant_topics(self) -> list:
         """Identify topics user is most interested in."""
@@ -166,10 +166,27 @@ class UserProfile:
     # (soul.to_system_prompt() is used instead) and contained stale "jarves" references.
 
     def is_setup(self) -> bool:
-        return bool(
-            self.data.get("user_name") and
-            self.data["user_name"] not in ("Operator", self.DEFAULT["user_name"])
-        )
+        """Return True if the profile has been meaningfully configured.
+
+        Uses multiple signals rather than user_name alone so that users who
+        legitimately keep the name "Operator" are not forced into setup on
+        every launch (BUG-01 fix).
+        """
+        d = self.data
+        # Profile was saved at least once (created_at is set on first load/save)
+        if d.get("last_updated"):
+            return True
+        # Non-default values set for key identity fields
+        user_name = d.get("user_name", "")
+        niche = d.get("niche", "")
+        profession = d.get("profession", "")
+        if user_name and user_name != self.DEFAULT["user_name"]:
+            return True
+        if niche and niche != self.DEFAULT["niche"]:
+            return True
+        if profession and profession != self.DEFAULT["profession"]:
+            return True
+        return False
 
     def summary(self) -> str:
         d = self.data

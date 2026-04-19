@@ -2,8 +2,9 @@
 import json
 import os
 import threading
+from collections import deque
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, Deque, List, Optional
 
 from lirox.config import MEMORY_DIR, MEMORY_LIMIT, MAX_MEMORY_ENTRY_CHARS
 
@@ -12,7 +13,9 @@ class MemoryManager:
     def __init__(self, agent_name: str = "global"):
         self.agent_name         = agent_name
         self._lock               = threading.Lock()
-        self.conversation_buffer: List[Dict] = []
+        # RELIABILITY-01 fix: use a bounded deque so the buffer never grows
+        # past MEMORY_LIMIT * 2 entries without manual intervention.
+        self.conversation_buffer: Deque[Dict[str, str]] = deque(maxlen=MEMORY_LIMIT * 2)
         # Each agent gets its own long-term memory file
         self._safe_name = agent_name.replace("/", "_").replace("\\", "_")
         self.lt_path = os.path.join(MEMORY_DIR, f"long_term_{self._safe_name}.json")
@@ -23,8 +26,8 @@ class MemoryManager:
         with self._lock:
             self.conversation_buffer.append({"role": "user",      "content": user_msg, "ts": ts})
             self.conversation_buffer.append({"role": "assistant", "content": str(asst_msg)[:MAX_MEMORY_ENTRY_CHARS], "ts": ts})
-            if len(self.conversation_buffer) > MEMORY_LIMIT * 2:
-                self.conversation_buffer = self.conversation_buffer[-(MEMORY_LIMIT * 2):]
+            # No manual truncation needed — deque(maxlen=...) drops the oldest
+            # entries automatically when capacity is exceeded (RELIABILITY-01 fix).
 
         daily = os.path.join(
             MEMORY_DIR, "daily",

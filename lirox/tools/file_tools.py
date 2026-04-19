@@ -373,6 +373,13 @@ def create_directory(path: str) -> str:
 # ── List / tree / search (read-only, no state to verify beyond existence) ─
 
 def file_list(path: str = ".", pattern: str = "*", max_files: int = 100) -> str:
+    # SECURITY-03 fix: reject glob patterns that escape the directory via '..'
+    # (directory traversal) or begin with '/' (absolute patterns).
+    # Check for actual traversal sequences, not just any occurrence of '..'
+    # so that valid patterns like 'file..txt' are not falsely rejected.
+    norm_pattern = pattern.replace("\\", "/")
+    if any(seg == ".." for seg in norm_pattern.split("/")) or norm_pattern.startswith("/"):
+        return "Invalid glob pattern: '..' path components and leading '/' are not permitted."
     ok, info = _is_safe_path(path)
     if not ok:
         return info

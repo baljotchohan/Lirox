@@ -17,6 +17,23 @@ _OLLAMA_OPTIONS = {
     "num_predict": 2048, "num_keep": 64, "repeat_last_n": 64,
 }
 
+
+def _get_api_key(provider: str) -> Optional[str]:
+    """Return the API key for *provider*, with format validation.
+
+    SECURITY-01 fix: centralises all key access through secure_keys so that
+    key presence is audit-logged (via secure_keys.get_api_key) and basic
+    format checks are applied before use.  A warning is emitted if the key
+    does not match the expected format for the provider.
+    """
+    from lirox.utils.secure_keys import get_api_key, validate_key_format
+    key = get_api_key(provider)
+    if key:
+        valid, reason = validate_key_format(provider, key)
+        if not valid:
+            _logger.warning("API key for '%s' may be invalid: %s", provider, reason)
+    return key
+
 DEFAULT_SYSTEM = (
     "You are Lirox, a premium autonomous AI agent. Be direct, precise, and complete. "
     "CRITICAL: When writing code — write the COMPLETE implementation. Never truncate. "
@@ -65,7 +82,7 @@ def _hash_prompt(text: str) -> str:
 
 
 def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "gpt-4o") -> str:
-    api_key = os.getenv("OPENAI_API_KEY")
+    api_key = _get_api_key("openai")
     if not api_key:
         return "OpenAI API key missing."
     try:
@@ -83,7 +100,7 @@ def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "
 
 
 def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
+    api_key = _get_api_key("gemini")
     if not api_key:
         return "Gemini API key missing."
     try:
@@ -107,7 +124,7 @@ def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
 
 def groq_call(prompt: str, system_prompt: Optional[str] = None,
               model: str = "llama-3.3-70b-versatile") -> str:
-    api_key = os.getenv("GROQ_API_KEY")
+    api_key = _get_api_key("groq")
     if not api_key:
         return "Groq API key missing."
     try:
@@ -126,7 +143,7 @@ def groq_call(prompt: str, system_prompt: Optional[str] = None,
 
 def openrouter_call(prompt: str, system_prompt: Optional[str] = None,
                     model: str = "mistralai/mistral-7b-instruct:free") -> str:
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = _get_api_key("openrouter")
     if not api_key:
         return "OpenRouter API key missing."
     try:
@@ -146,7 +163,7 @@ def openrouter_call(prompt: str, system_prompt: Optional[str] = None,
 
 def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
                   model: str = "deepseek-chat") -> str:
-    api_key = os.getenv("DEEPSEEK_API_KEY")
+    api_key = _get_api_key("deepseek")
     if not api_key:
         return "DeepSeek API key missing."
     try:
@@ -165,7 +182,7 @@ def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
 
 def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
                 model: str = "meta/llama-3.1-405b-instruct") -> str:
-    api_key = os.getenv("NVIDIA_API_KEY")
+    api_key = _get_api_key("nvidia")
     if not api_key:
         return "NVIDIA API key missing."
     try:
@@ -224,7 +241,7 @@ def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
 
 def anthropic_call(prompt: str, system_prompt: Optional[str] = None,
                    model: str = "claude-3-5-haiku-20241022") -> str:
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    api_key = _get_api_key("anthropic")
     if not api_key:
         return "Anthropic API key missing."
     try:
@@ -435,6 +452,14 @@ def generate_response(prompt: str, provider: str = "auto",
         raise
     except ValueError as e:
         response = f"Error: Invalid request — {e}"
+    except RuntimeError as e:
+        # ISSUE-12 fix: explicit handler for RuntimeError (e.g. thread-pool shutdown)
+        _logger.error("Runtime error in LLM dispatch: %s", e)
+        response = f"Error: Runtime failure — {e}"
+    except AttributeError as e:
+        # ISSUE-12 fix: explicit handler for AttributeError (e.g. uninitialised provider)
+        _logger.error("Attribute error in LLM dispatch: %s", e)
+        response = f"Error: Internal error — {e}"
     except requests.RequestException as e:
         response = f"Error: Network failure — {e}"
     except Exception as e:
@@ -443,7 +468,8 @@ def generate_response(prompt: str, provider: str = "auto",
 
     if response is None or is_error_response(response):
         avail = available_providers()
-        # BUG-H5 FIX: respect rate limits and apply exponential backoff between fallbacks
+        # BUG-06 FIX: only increment `attempt` when we actually call a provider,
+        # not when we skip it due to rate limiting, so backoff is not wasted.
         attempt = 0
         for fb in [p for p in _PROVIDER_PRIORITY if p in avail and p != provider]:
             try:
@@ -451,11 +477,10 @@ def generate_response(prompt: str, provider: str = "auto",
                     time.sleep(2 ** (attempt - 1))  # exponential backoff: 1s, 2s, 4s…
                 from lirox.utils.rate_limiter import api_limiter
                 if not api_limiter.is_allowed(fb):
-                    attempt += 1
-                    continue  # skip rate-limited provider
+                    continue  # skip rate-limited provider WITHOUT incrementing attempt
                 future = _get_pool().submit(_call_provider, fb, prompt, system_prompt)
-                retry  = future.result(timeout=timeout)
-                attempt += 1
+                retry = future.result(timeout=timeout)
+                attempt += 1  # increment only after an actual call attempt
                 if not is_error_response(retry):
                     return retry
             except (SystemExit, KeyboardInterrupt):
