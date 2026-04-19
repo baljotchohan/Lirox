@@ -75,48 +75,15 @@ def _get_sys(profile_data: dict = None) -> str:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 def _extract_json(text: str) -> dict:
-    text = (text or "").strip()
-    from lirox.utils.regex_cache import JSON_FENCE
-    m = JSON_FENCE.search(text)
-    if m:
-        try:
-            return _json.loads(m.group(1))
-        except _json.JSONDecodeError:
-            pass
-    # Bracket matching with string tracking
-    for start_idx in range(len(text)):
-        if text[start_idx] != '{':
-            continue
-        depth = 0
-        in_string = False
-        i = start_idx
-        while i < len(text):
-            ch = text[i]
-            if ch == '"' and in_string:
-                num_bs = 0
-                j = i - 1
-                # Count ALL preceding backslashes, not just those from start_idx,
-                # so consecutive escaped backslashes (e.g. `\\\\"`) are handled
-                # correctly.  BUG-08 fix: was `j >= start_idx`.
-                while j >= 0 and text[j] == '\\':
-                    num_bs += 1
-                    j -= 1
-                if num_bs % 2 == 0:
-                    in_string = False
-            elif ch == '"' and not in_string:
-                in_string = True
-            if not in_string:
-                if ch == '{':
-                    depth += 1
-                elif ch == '}':
-                    depth -= 1
-                    if depth == 0:
-                        try:
-                            return _json.loads(text[start_idx:i + 1])
-                        except _json.JSONDecodeError:
-                            break
-            i += 1
-    raise ValueError("No JSON in LLM response")
+    """Extract the first JSON object from *text*.
+
+    Delegates to lirox.utils.llm_json which provides:
+    - O(n) single-pass scanning (no quadratic back-tracking — C-02 fix)
+    - Hard input size cap to prevent DoS on adversarially large responses
+    - Correct backslash-escape tracking without backward re-scanning
+    """
+    from lirox.utils.llm_json import extract_json
+    return extract_json(text)
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

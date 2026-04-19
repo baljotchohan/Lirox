@@ -64,6 +64,12 @@ def missing_packages(package_to_module: Dict[str, str]) -> List[str]:
 
 
 def run_pip_install(packages: List[str]) -> bool:
+    """Run `pip install <packages>` and return True on success.
+
+    C-10 fix: OSError / FileNotFoundError from subprocess.run (e.g. the
+    Python interpreter not being found) are now caught explicitly so that
+    callers receive a clean False rather than an unhandled exception.
+    """
     cmd = [sys.executable, "-m", "pip", "install", *packages]
     try:
         result = subprocess.run(
@@ -73,6 +79,9 @@ def run_pip_install(packages: List[str]) -> bool:
             timeout=PIP_INSTALL_TIMEOUT_SECONDS,
         )
     except subprocess.TimeoutExpired:
+        return False
+    except (OSError, FileNotFoundError):
+        # Python interpreter not found or permission denied — cannot install.
         return False
     if result.returncode == 0:
         return True
@@ -86,6 +95,8 @@ def run_pip_install(packages: List[str]) -> bool:
             )
         except subprocess.TimeoutExpired:
             return False
+        except (OSError, FileNotFoundError):
+            return False
         if ensure.returncode == 0:
             try:
                 retry = subprocess.run(
@@ -95,6 +106,8 @@ def run_pip_install(packages: List[str]) -> bool:
                     timeout=PIP_INSTALL_TIMEOUT_SECONDS,
                 )
             except subprocess.TimeoutExpired:
+                return False
+            except (OSError, FileNotFoundError):
                 return False
             return retry.returncode == 0
     return False

@@ -130,9 +130,6 @@ def ensure_directories():
             logging.getLogger("lirox.config").warning(f"Cannot create {d}: {exc}")
     _dirs_initialized = True
 
-# Backwards compat: auto-init for imports that expect dirs to exist
-ensure_directories()
-
 
 def is_self_modification(path: str) -> bool:
     try:
