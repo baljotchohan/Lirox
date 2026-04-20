@@ -526,6 +526,38 @@ class StrategyEngine:
                 tools_needed=[],
                 estimated_quality=0.92, estimated_time=5.0, risk_level=0.10, creativity_score=0.60,
             ))
+
+        elif intent == Intent.FILE_WRITE:
+            # Covers DOCX, XLSX, and general document creation
+            q_lower = analysis.get("raw_query", "").lower()
+            if any(w in q_lower for w in ["excel", "xlsx", "spreadsheet", "xls", "sheet", "table", "data"]):
+                strategies.append(Strategy(
+                    name="data_spreadsheet",
+                    description=f"Structured Excel spreadsheet on {topic} with headers and data rows",
+                    steps=[
+                        "Define columns and data schema",
+                        "Generate representative data rows",
+                        "Apply header styling and alternating row colors",
+                        "Auto-fit column widths",
+                        "Save and verify",
+                    ],
+                    tools_needed=["create_spreadsheet"],
+                    estimated_quality=0.92, estimated_time=4.0, risk_level=0.10, creativity_score=0.55,
+                ))
+            else:
+                strategies.append(Strategy(
+                    name="rich_word_document",
+                    description=f"Formatted Word document on {topic} with headings and prose",
+                    steps=[
+                        "Outline document structure",
+                        "Write introduction section",
+                        "Write body sections with supporting detail",
+                        "Add conclusion",
+                        "Save and verify",
+                    ],
+                    tools_needed=["create_document"],
+                    estimated_quality=0.91, estimated_time=5.0, risk_level=0.10, creativity_score=0.70,
+                ))
         
         if not strategies:
             strategies.append(Strategy(
@@ -596,6 +628,24 @@ class ToolPlanner:
                 purpose=f"Create PDF on {topic}",
                 estimated_duration=4.0,
             ))
+        elif intent == Intent.FILE_WRITE:
+            topic = analysis.get("topic", "Untitled")
+            user_name = analysis.get("personalization", {}).get("user_name", "")
+            q_lower = analysis.get("raw_query", "").lower()
+            if any(w in q_lower for w in ["excel", "xlsx", "spreadsheet", "xls", "sheet", "table", "data"]):
+                plan.append(ToolCall(
+                    tool_name="create_spreadsheet",
+                    parameters={"topic": topic, "user_name": user_name, "strategy": strategy.name},
+                    purpose=f"Create XLSX spreadsheet on {topic}",
+                    estimated_duration=3.0,
+                ))
+            else:
+                plan.append(ToolCall(
+                    tool_name="create_document",
+                    parameters={"topic": topic, "user_name": user_name, "strategy": strategy.name},
+                    purpose=f"Create DOCX document on {topic}",
+                    estimated_duration=4.0,
+                ))
         elif intent == Intent.CODE_GENERATION:
             plan.append(ToolCall(tool_name="write_file", parameters={"content": "", "path": analysis.get("target_path", "")}, purpose="Write generated code"))
         elif intent in (Intent.FILE_EDIT, Intent.CODE_DEBUG):
@@ -765,6 +815,205 @@ class CognitiveEngine:
         
     def _finalize(self, start_time: float):
         if self.display: self.display.finish()
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 9: CONTEXT AGGREGATOR — rich context passing between stages
+# ─────────────────────────────────────────────────────────────────────────────
+
+class ContextAggregator:
+    """Accumulates and merges context from multiple reasoning stages.
+
+    Keeps the most recent conversation history, tool results, and session
+    facts in a single object so that every downstream component has access
+    to everything the engine has learned so far.
+    """
+
+    def __init__(self, context: CognitiveContext):
+        self._ctx = context
+        self._stage_outputs: List[Dict[str, Any]] = []
+
+    def record_stage(self, stage: str, output: Any, metadata: Dict[str, Any] = None):
+        """Record the output of a named reasoning stage."""
+        self._stage_outputs.append({
+            "stage": stage,
+            "output": output,
+            "metadata": metadata or {},
+        })
+
+    def get_stage_output(self, stage: str) -> Optional[Any]:
+        """Return the most recent output of *stage*, or None if not recorded."""
+        for entry in reversed(self._stage_outputs):
+            if entry["stage"] == stage:
+                return entry["output"]
+        return None
+
+    def enrich_context(self, tool_results: List[Dict[str, Any]], response: str = ""):
+        """Feed tool results and partial response back into the context."""
+        self._ctx.recent_tool_results.extend(tool_results)
+        # Keep only the last 10 tool results to avoid ballooning context
+        self._ctx.recent_tool_results = self._ctx.recent_tool_results[-10:]
+        if response:
+            self._stage_outputs.append({"stage": "response_draft", "output": response, "metadata": {}})
+
+    def build_context_string(self, max_chars: int = 2000) -> str:
+        """Produce a concise text summary of accumulated context for LLM prompts."""
+        parts: List[str] = []
+        if self._ctx.user_name:
+            parts.append(f"User: {self._ctx.user_name}")
+        if self._ctx.workspace:
+            parts.append(f"Workspace: {self._ctx.workspace}")
+        for tr in self._ctx.recent_tool_results[-3:]:
+            tool = tr.get("tool", "?")
+            if tr.get("success"):
+                parts.append(f"Recent tool success: {tool} — {str(tr.get('result', ''))[:100]}")
+            else:
+                parts.append(f"Recent tool failure: {tool} — {tr.get('error', '?')[:80]}")
+        text = "\n".join(parts)
+        return text[:max_chars]
+
+    @property
+    def context(self) -> CognitiveContext:
+        return self._ctx
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 10: DEEP REASONING ENGINE — multi-pass reasoning with self-correction
+# ─────────────────────────────────────────────────────────────────────────────
+
+class DeepReasoningEngine:
+    """Multi-pass reasoning with iterative refinement and self-correction.
+
+    Algorithm:
+      1. Pass 1 — initial reasoning: classify, analyse, select strategy.
+      2. Pass 2 — verification:      check output against intent constraints.
+      3. Pass 3 — self-correction:   re-reason if Pass 2 found issues.
+
+    Designed to be used *instead of* the simple single-pass flow in
+    ``CognitiveEngine`` for EXPERT and RESEARCH complexity queries.
+    """
+
+    MAX_PASSES = 3
+
+    def __init__(self, context: CognitiveContext, llm_call: Callable):
+        self.context = context
+        self.llm_call = llm_call
+        self.aggregator = ContextAggregator(context)
+        self._pass_count = 0
+
+    def reason(self, query: str, intent: Intent, complexity: Complexity,
+               analysis: Dict[str, Any], strategy: Optional[Strategy],
+               tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Perform deep multi-pass reasoning.
+
+        Returns a dict with ``response``, ``passes``, ``corrections``, and
+        ``final_confidence``.
+        """
+        prompts = PromptComposer.compose(intent, complexity, analysis, strategy, self.context)
+
+        # Inject accumulated context
+        ctx_string = self.aggregator.build_context_string()
+        if ctx_string:
+            prompts["system"] = prompts["system"] + "\n\nCurrent context:\n" + ctx_string
+
+        # Inject tool results
+        if tool_results:
+            tool_ctx = "\n\nTool Results:\n" + "\n".join(
+                f"- {tr['tool']}: {'SUCCESS — ' + tr['summary'] if tr['success'] else 'FAILED — ' + tr['error']}"
+                for tr in tool_results
+            )
+            prompts["user"] = prompts["user"] + tool_ctx
+
+        passes: List[Dict[str, Any]] = []
+        corrections: List[str] = []
+        response_text = ""
+
+        for pass_num in range(1, self.MAX_PASSES + 1):
+            self._pass_count = pass_num
+            response_text = str(self.llm_call(
+                system_prompt=prompts["system"],
+                user_message=prompts["user"],
+                conversation_history=self.context.get_last_n_messages(),
+            ))
+
+            verification = VerificationEngine.verify_response(
+                query, intent, response_text, analysis, tool_results)
+            passes.append({"pass": pass_num, "verification": verification, "response": response_text})
+            self.aggregator.enrich_context(tool_results, response_text)
+
+            if verification["passed"] or pass_num == self.MAX_PASSES:
+                break
+
+            # Self-correction: build a correction prompt
+            issues = verification["issues"]
+            correction_hints = VerificationEngine.suggest_corrections(issues, response_text, intent)
+            corrections.extend(correction_hints)
+            correction_note = (
+                "The previous response had these issues:\n"
+                + "\n".join(f"- {i}" for i in issues)
+                + "\n\nPlease correct them: " + "; ".join(correction_hints)
+            )
+            prompts["user"] = prompts["user"] + "\n\n" + correction_note
+
+        quality = passes[-1]["verification"].get("quality_score", 1.0)
+        return {
+            "response": response_text,
+            "passes": len(passes),
+            "corrections": corrections,
+            "final_confidence": max(0.0, min(1.0, quality)),
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SECTION 11: VERIFICATION LOOP — post-generation quality checks
+# ─────────────────────────────────────────────────────────────────────────────
+
+class VerificationLoop:
+    """Post-generation verification loop that checks created artifacts.
+
+    For file-creation intents, uses ``FileVerificationEngine`` to confirm
+    files are on disk with adequate size.  For other intents, delegates to
+    ``VerificationEngine.verify_response``.
+    """
+
+    @staticmethod
+    def run(query: str, intent: Intent, response: str,
+            analysis: Dict[str, Any], tool_results: List[Dict[str, Any]],
+            files_created: Optional[List[str]] = None) -> Dict[str, Any]:
+        """Run the full post-generation verification loop.
+
+        Returns a dict with ``passed``, ``issues``, ``file_checks``,
+        and ``quality_score``.
+        """
+        result: Dict[str, Any] = {
+            "passed": True,
+            "issues": [],
+            "file_checks": [],
+            "quality_score": 1.0,
+        }
+
+        # 1. Response-level verification
+        resp_check = VerificationEngine.verify_response(
+            query, intent, response, analysis, tool_results)
+        result["quality_score"] = resp_check.get("quality_score", 1.0)
+        result["issues"].extend(resp_check.get("issues", []))
+        if not resp_check.get("passed", True):
+            result["passed"] = False
+
+        # 2. File-level verification (lazy import to avoid circular deps)
+        if files_created:
+            try:
+                from lirox.verify.file_verification import FileVerificationEngine
+                for fpath in files_created:
+                    check = FileVerificationEngine.verify(fpath)
+                    result["file_checks"].append({"path": fpath, **check})
+                    if not check["passed"]:
+                        result["passed"] = False
+                        result["issues"].extend(check["issues"])
+            except Exception as e:
+                result["issues"].append(f"File verification error: {e}")
+
+        return result
 
 # ─────────────────────────────────────────────────────────────────────────────
 # SECTION 9: THINKING DISPLAY
