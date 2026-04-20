@@ -196,6 +196,7 @@ def process_query(orch, query: str, verbose: bool = False):
     # Persist last thinking session for /expand thinking
     _last_thinking["steps"] = list(display._steps)
     _last_thinking["complexity"] = display.complexity.name.lower() if display.complexity else ""
+    _last_thinking["elapsed"] = display.elapsed
     _last_thinking["query"] = query
 
     from lirox.ui.display import show_answer
@@ -428,39 +429,41 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             success_message(f"Workspace set to: {expanded}")
 
     elif base == "/expand":
-        # /expand thinking  — show detailed steps from last reasoning session
+        # /expand thinking — show detailed steps from last reasoning session
         target = " ".join(parts[1:]).lower().strip() if len(parts) > 1 else ""
         if target in ("thinking", "think", "reason", "reasoning", ""):
-            steps = _last_thinking.get("steps", [])
-            cplx  = _last_thinking.get("complexity", "")
-            q     = _last_thinking.get("query", "")
+            steps   = _last_thinking.get("steps", [])
+            cplx    = _last_thinking.get("complexity", "")
+            q       = _last_thinking.get("query", "")
+            elapsed = _last_thinking.get("elapsed", 0.0)
             if not steps:
                 info_panel("No thinking session recorded yet.\nAsk a question first, then run /expand thinking.")
             else:
                 from rich.tree import Tree
                 from rich.panel import Panel as _P
-                t = Tree(
-                    f"[bold cyan]🧠 Thinking Details[/bold cyan]"
-                    + (f"  [dim]· {cplx}[/]" if cplx else ""),
-                    guide_style="dim cyan",
-                )
+                header = "[bold #a78bfa]⟳ Thinking Details[/]"
+                if cplx:
+                    header += f"  [dim]· {cplx}[/dim]"
+                if elapsed:
+                    header += f"  [dim]· {elapsed:.1f}s[/dim]"
+                t = Tree(header, guide_style="dim #a78bfa")
                 if q:
-                    t.add(f"[dim]Query: {q[:120]}[/]")
+                    t.add(f"[dim]Query: {q[:120]}[/dim]")
                 for s in steps:
                     icon = s.get("icon", "•")
                     msg  = s.get("message", "")
                     st   = s.get("status", "")
                     if st == "done":
-                        label = f"[green]✓[/green] {icon} {msg}"
+                        label = f"[#10b981]✓[/] {icon} {msg}"
                     elif st == "error":
-                        label = f"[red]✗[/red] {icon} [red]{msg}[/red]"
+                        label = f"[#ef4444]✗[/] {icon} [#ef4444]{msg}[/]"
                     elif st == "running":
-                        label = f"[yellow]{icon}[/yellow] {msg}"
+                        label = f"[#FFC107]⟳[/] {icon} {msg}"
                     else:
                         label = f"{icon} {msg}"
                     t.add(label)
-                console.print(_P(t, title="[bold cyan]Thinking Trace[/bold cyan]",
-                                 border_style="cyan", padding=(0, 2)))
+                console.print(_P(t, title="[bold #a78bfa]Thinking Trace[/]",
+                                  border_style="#a78bfa", padding=(0, 2)))
         else:
             info_panel("Usage: /expand thinking\nShows the detailed reasoning steps from your last query.")
 
