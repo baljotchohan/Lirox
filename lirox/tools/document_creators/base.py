@@ -19,6 +19,7 @@ _logger = logging.getLogger("lirox.document_creators")
 
 def ensure_dep(package: str, import_name: str = None):
     """Auto-install a Python package if it is not already importable."""
+    import importlib
     import_name = import_name or package.replace("-", "_")
     try:
         return __import__(import_name)
@@ -29,6 +30,7 @@ def ensure_dep(package: str, import_name: str = None):
              "--disable-pip-version-check"],
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
+        importlib.invalidate_caches()
         return __import__(import_name)
 
 
