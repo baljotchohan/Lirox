@@ -9,6 +9,12 @@ requests>=2.31.0
 duckduckgo-search>=6.1.0
 google-genai>=0.3.0
 
+# ── File generation (real PDF/PPTX/DOCX/XLSX creation) ───────────────────────
+reportlab>=4.0.0
+python-pptx>=0.6.21
+python-docx>=1.0.0
+openpyxl>=3.1.0
+
 # ── Optional LLM providers ────────────────────────────────────────────────────
 # anthropic>=0.21.0
 # openai>=1.0.0
