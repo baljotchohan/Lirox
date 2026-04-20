@@ -6,6 +6,7 @@ Dependencies are auto-installed on first use.
 """
 from __future__ import annotations
 
+import logging
 import os
 import subprocess
 import sys
@@ -14,6 +15,8 @@ import time
 from typing import Any, Dict, List, Optional
 
 from lirox.verify import FileReceipt
+
+_logger = logging.getLogger("lirox.file_generator")
 
 
 def _ensure_dep(package: str, import_name: str = None):
@@ -165,9 +168,19 @@ def _pick_palette(query: str, title: str = "") -> str:
 
 
 def _hex_to_rgb(hex_str: str):
-    """Convert hex color string to RGBColor."""
+    """Convert hex color string to RGBColor.
+
+    Validates that *hex_str* is exactly 6 hex characters before parsing so
+    that a truncated palette value cannot raise an IndexError or produce a
+    silent colour corruption (FIX: was missing length check).
+    """
     _ensure_dep("python-pptx", "pptx")
     from pptx.dml.color import RGBColor
+    # Normalise: strip leading '#' if present, ensure exactly 6 chars
+    hex_str = hex_str.lstrip("#")
+    if len(hex_str) != 6:
+        _logger.warning("Invalid hex colour '%s' — falling back to black (000000)", hex_str)
+        hex_str = (hex_str + "000000")[:6]  # fallback to black-padded value
     return RGBColor(int(hex_str[:2], 16), int(hex_str[2:4], 16), int(hex_str[4:6], 16))
 
 
@@ -687,7 +700,9 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
         def _safe(text: str) -> str:
             return (text.replace("&", "&amp;")
                        .replace("<", "&lt;")
-                       .replace(">", "&gt;"))
+                       .replace(">", "&gt;")
+                       .replace('"', "&quot;")
+                       .replace("'", "&#39;"))
 
         # ── Helper: accent horizontal rule ──
         def _accent_rule():

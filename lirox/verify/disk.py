@@ -46,14 +46,14 @@ def verify_file_content_matches(path: str, expected_content: str,
                 f"found {len(actual)} chars"
             )
 
-        # Large file: hash head+tail
+        # Large file: hash head+tail using SHA256 (FIX: was MD5 — cryptographically weak)
         def _h(s: str) -> str:
-            return hashlib.md5(s.encode("utf-8", errors="replace")).hexdigest()
+            return hashlib.sha256(s.encode("utf-8", errors="replace")).hexdigest()
 
         if (_h(actual[:sample_size]) == _h(expected_content[:sample_size])
                 and _h(actual[-sample_size:]) == _h(expected_content[-sample_size:])
                 and len(actual) == len(expected_content)):
-            return True, "Content hash-verified (head+tail+size)"
+            return True, "Content hash-verified (head+tail+size, SHA256)"
         return False, (
             f"Large-file content mismatch: "
             f"expected {len(expected_content)} chars, found {len(actual)} chars"

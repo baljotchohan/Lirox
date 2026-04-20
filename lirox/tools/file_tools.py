@@ -328,12 +328,13 @@ def file_patch_verified(path: str, old_text: str, new_text: str) -> FileReceipt:
             return r
         patched = original.replace(old_text, new_text, 1)
 
-        # Backup
+        # Backup — fail fast if we cannot protect the original (FIX: was silently skipping)
         backup = info + f".bak.{int(time.time())}"
         try:
             shutil.copy2(info, backup)
-        except Exception:
-            backup = ""
+        except Exception as e:
+            r.error = f"Backup failed — patch aborted: {e}"
+            return r
 
         with open(info, "w", encoding="utf-8") as f:
             f.write(patched)

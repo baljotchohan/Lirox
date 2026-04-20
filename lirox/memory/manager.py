@@ -1,8 +1,9 @@
 """3-Tier Memory: Buffer + Daily logs + Long-term facts. Per-agent isolated."""
 import json
 import os
+import re
 import threading
-from collections import deque
+from collections import Counter, deque
 from datetime import datetime
 from typing import Dict, Deque, List, Optional
 
@@ -103,8 +104,6 @@ class MemoryManager:
 
     def get_pattern_insights(self, limit: int = 3) -> List[str]:
         """Return the most frequently asked topics (for proactive suggestions)."""
-        from collections import Counter
-        import re
         with self._lock:
             buffer_snapshot = list(self.conversation_buffer)
         words = []

@@ -160,14 +160,21 @@ def show_answer(text: str, agent: str = "personal"):
     from rich.markdown import Markdown
     from rich.live import Live
     from lirox.utils.streaming import StreamingResponse
-    
+
     streamer = StreamingResponse()
     full_text = ""
-    with Live(Markdown(""), console=console, refresh_per_second=15) as live:
-        for chunk in streamer.stream_words(text, delay=0.01):
-            full_text += chunk
-            live.update(Markdown(full_text))
-            
+    try:
+        with Live(Markdown(""), console=console, refresh_per_second=15) as live:
+            for chunk in streamer.stream_words(text, delay=0.01):
+                full_text += chunk
+                try:
+                    live.update(Markdown(full_text))
+                except Exception:
+                    live.update(full_text)
+    except Exception:
+        # Fallback: plain print when Live/Markdown rendering is unsupported
+        console.print(text)
+
     console.print(f"  [{CLR_SUCCESS}]✓ Done[/]")
 
 
