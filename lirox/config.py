@@ -49,11 +49,11 @@ SHELL_TIMEOUT        = int(os.getenv("LIROX_SHELL_TIMEOUT", os.getenv("SHELL_TIM
 FILE_TIMEOUT         = int(os.getenv("LIROX_FILE_TIMEOUT", "30"))
 MAX_RETRIES          = 3
 
-MAX_LLM_PROMPT_CHARS    = 16000
-MAX_TOOL_RESULT_CHARS   = 4000
-MAX_MEMORY_ENTRY_CHARS  = 800
-MAX_CONTEXT_CHARS       = 6000
-MAX_SEARCH_RESULT_CHARS = 10000
+MAX_LLM_PROMPT_CHARS    = 16000  # ~4000 tokens: keeps prompts within typical model context windows
+MAX_TOOL_RESULT_CHARS   = 4000   # ~1000 tokens: tool results injected back into the LLM context
+MAX_MEMORY_ENTRY_CHARS  = 800    # ~200 tokens: per-message budget in the memory buffer
+MAX_CONTEXT_CHARS       = 6000   # ~1500 tokens: recent-context window injected into each prompt
+MAX_SEARCH_RESULT_CHARS = 10000  # ~2500 tokens: web/search results before summarisation
 
 WORKSPACE_DIR = os.getenv("LIROX_WORKSPACE", str(Path.home() / "Desktop"))
 
@@ -77,6 +77,8 @@ BLOCK_PATTERNS = [
 
 _HOME = str(Path.home())
 # FIX-14: Removed _HOME itself — only specific subdirs are allowed
+# NOTE: /tmp is intentionally excluded — it is world-writable and susceptible
+#       to symlink attacks.  Sandbox any /tmp usage outside SAFE_DIRS checks.
 SAFE_DIRS = [
     PROJECT_ROOT, OUTPUTS_DIR, DATA_DIR, WORKSPACE_DIR,
     os.path.join(_HOME, "Desktop"),
@@ -88,7 +90,6 @@ SAFE_DIRS = [
     os.path.join(_HOME, "workspace"),
     os.path.join(_HOME, "repos"),
     os.path.join(_HOME, "src"),
-    "/tmp",
 ]
 SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in SAFE_DIRS]
 

@@ -1,5 +1,6 @@
 """Lirox v1.1 — Master Orchestrator"""
 from __future__ import annotations
+import logging
 import os
 import time
 from dataclasses import dataclass, field
@@ -8,6 +9,8 @@ from typing import Any, Dict, Generator, Optional
 from lirox.config import THINKING_ENABLED
 from lirox.memory.manager import MemoryManager
 from lirox.memory.session_store import SessionStore
+
+_logger = logging.getLogger("lirox.orchestrator")
 
 
 @dataclass
@@ -109,10 +112,21 @@ class MasterOrchestrator:
             yield OrchestratorEvent(type="error", message=str(e))
             result_text = f"Error: {e}"
 
-        # Save exchange once (agent no longer saves separately)
-        self.global_memory.save_exchange(query, result_text)
-        session.add("assistant", result_text, agent="personal")
-        self.session_store.save_current()
+        # Save exchange once (agent no longer saves separately).
+        # Each persistence step is independent so a failure in one does not
+        # prevent the others from running (partial-failure resilience).
+        try:
+            self.global_memory.save_exchange(query, result_text)
+        except Exception as e:
+            _logger.warning("Memory save_exchange failed: %s", e)
+        try:
+            session.add("assistant", result_text, agent="personal")
+        except Exception as e:
+            _logger.warning("Session.add failed: %s", e)
+        try:
+            self.session_store.save_current()
+        except Exception as e:
+            _logger.warning("session_store.save_current failed: %s", e)
         yield OrchestratorEvent(
             type="done", agent="personal", message=result_text,
             data={"total_time": time.time() - start})

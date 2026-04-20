@@ -3,6 +3,7 @@ import logging
 import os
 import hashlib
 import time
+import threading
 import requests
 import concurrent.futures
 from collections import OrderedDict
@@ -293,24 +294,28 @@ RESEARCH_KEYWORDS = [
 
 _ollama_cache_ts = 0.0
 _ollama_cache_val = False
+_ollama_cache_lock = threading.Lock()
 _OLLAMA_CACHE_TTL = 10  # seconds
 
 
 def _is_ollama_available() -> bool:
-    """Check Ollama availability with 10s cache (FIX-16)."""
+    """Check Ollama availability with 10s cache (FIX-16, thread-safe)."""
     global _ollama_cache_ts, _ollama_cache_val
     import time as _t
     now = _t.time()
-    if now - _ollama_cache_ts < _OLLAMA_CACHE_TTL:
-        return _ollama_cache_val
+    with _ollama_cache_lock:
+        if now - _ollama_cache_ts < _OLLAMA_CACHE_TTL:
+            return _ollama_cache_val
     try:
         res = requests.get(
             f"{os.getenv('OLLAMA_ENDPOINT', 'http://localhost:11434')}/api/tags", timeout=2)
-        _ollama_cache_val = res.status_code == 200
+        result = res.status_code == 200
     except Exception:
-        _ollama_cache_val = False
-    _ollama_cache_ts = now
-    return _ollama_cache_val
+        result = False
+    with _ollama_cache_lock:
+        _ollama_cache_val = result
+        _ollama_cache_ts = _t.time()
+    return result
 
 
 def _is_hf_bnb_available() -> bool:

@@ -325,6 +325,13 @@ IMPORTANT:
                                 system_prompt="Document planner. Output ONLY the JSON object. No explanation.")
 
         # ── STEP 2: Parse the plan ──
+        # Check for provider error before attempting JSON extraction to surface
+        # a meaningful error message instead of a cryptic parse failure.
+        from lirox.utils.llm import is_error_response
+        if is_error_response(raw):
+            yield {"type": "error", "message": f"❌ LLM provider error: {raw[:200]}"}
+            yield from self._chat(query, context, sp)
+            return
         try:
             d = _extract_json(raw)
         except ValueError:
@@ -492,6 +499,11 @@ IMPORTANT:
                                 system_prompt="File planner. Output ONLY valid JSON.")
 
         receipt = None; text_result = None
+        # Check for provider error before JSON extraction for a clearer error message.
+        from lirox.utils.llm import is_error_response as _is_err
+        if _is_err(raw):
+            yield {"type": "error", "message": f"❌ LLM provider error: {raw[:200]}"}
+            return
         try:
             d = _extract_json(raw)
             op = (d.get("op") or "").lower()
