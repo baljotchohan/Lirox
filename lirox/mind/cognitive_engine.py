@@ -773,40 +773,72 @@ class CognitiveEngine:
 class ThinkingDisplay:
     def __init__(self, console):
         self.console = console
-        self.tree = None; self.live = None; self.start_time = None; self.complexity = None
+        self.tree = None
+        self.live = None
+        self.start_time = None
+        self.complexity = None
+        self._steps: list = []  # stored for /expand thinking
 
     def start(self, query: str, intent_name: str):
         from rich.tree import Tree
         from rich.live import Live
         self.start_time = time.time()
+        self._steps = []
         _, self.complexity = IntentClassifier.classify(query, CognitiveContext())
-        if self.complexity == Complexity.TRIVIAL: return
+        if self.complexity == Complexity.TRIVIAL:
+            return
         if self.complexity == Complexity.SIMPLE:
             self.console.print("  [dim]⟡ thinking...[/dim]", end="\r")
             return
-        self.tree = Tree(f"  [bold cyan]🧠 Reasoning[/bold cyan]  [dim]· {self.complexity.name.lower()}[/dim]", guide_style="dim cyan")
-        self.live = Live(self.tree, console=self.console, refresh_per_second=10)
+        self.tree = Tree(
+            f"  [bold cyan]🧠 Reasoning[/bold cyan]  [dim]· {self.complexity.name.lower()}[/dim]",
+            guide_style="dim cyan",
+        )
+        self.live = Live(self.tree, console=self.console, refresh_per_second=10, transient=True)
         self.live.start()
 
     def add_step(self, icon: str, message: str, status: str = "running"):
-        if not self.tree: return
-        if status == "running": label = f"  [yellow]{icon}[/yellow] [dim]{message}[/dim]"
-        elif status == "done": label = f"  [green]✓[/green] {icon} {message}"
-        elif status == "error": label = f"  [red]✗[/red] {icon} [red]{message}[/red]"
-        else: label = f"  {icon} {message}"
-        self.tree.add(label); self.live.refresh() if self.live else None
+        if not self.tree:
+            return
+        self._steps.append({"icon": icon, "message": message, "status": status})
+        if status == "running":
+            label = f"  [yellow]{icon}[/yellow] [dim]{message}[/dim]"
+        elif status == "done":
+            label = f"  [green]✓[/green] {icon} {message}"
+        elif status == "error":
+            label = f"  [red]✗[/red] {icon} [red]{message}[/red]"
+        else:
+            label = f"  {icon} {message}"
+        self.tree.add(label)
+        if self.live:
+            self.live.refresh()
 
-    def add_tool_call(self, tool_name: str, description: str): self.add_step("🔧", f"[bold]{tool_name}[/bold]: {description}", "running")
-    def add_tool_result(self, tool_name: str, res: str): self.add_step("📋", f"{tool_name} → {res}", "done")
-    def add_planning(self, strategy_name: str): self.add_step("📋", f"Strategy: [bold]{strategy_name}[/bold]", "done")
+    def add_tool_call(self, tool_name: str, description: str):
+        self.add_step("🔧", f"{tool_name}: {description}", "running")
+
+    def add_tool_result(self, tool_name: str, res: str):
+        self.add_step("📋", f"{tool_name} → {res}", "done")
+
+    def add_planning(self, strategy_name: str):
+        self.add_step("📋", f"Strategy: {strategy_name}", "done")
 
     def finish(self):
         if isinstance(self.complexity, Complexity) and self.complexity.value <= Complexity.SIMPLE.value:
-            self.console.print("  " * 40, end="\r"); return
-        if self.live and self.tree:
-            self.tree.add(f"  [dim]⏱ {time.time() - self.start_time:.1f}s[/dim]")
-            self.live.refresh(); time.sleep(0.2); self.live.stop()
-        self.tree = None; self.live = None
+            self.console.print("  " * 40, end="\r")
+            return
+        elapsed = time.time() - self.start_time if self.start_time else 0.0
+        if self.live:
+            self.live.stop()
+        # Print compact single-line summary (tree gone due to transient=True)
+        step_count = len(self._steps)
+        cplx = self.complexity.name.lower() if self.complexity else "moderate"
+        step_label = f"{step_count} step{'s' if step_count != 1 else ''}"
+        self.console.print(
+            f"  [bold cyan]🧠 Thinking[/bold cyan]  "
+            f"[dim]· {cplx} · {step_label} · {elapsed:.1f}s  — /expand thinking for details[/]"
+        )
+        self.tree = None
+        self.live = None
 
 class ReasoningPatterns: pass
 class SessionMemory: pass

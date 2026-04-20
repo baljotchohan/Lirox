@@ -199,7 +199,9 @@ def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
       - Shape-based visual elements on every slide
       - Professional typography with Georgia / Calibri
     """
-    r = FileReceipt(tool="file_generator", operation="create_pptx", path=path)
+    from pathlib import Path as _Path
+    out_path = _Path(path).resolve()
+    r = FileReceipt(tool="file_generator", operation="create_pptx", path=str(out_path))
     try:
         _ensure_dep("python-pptx", "pptx")
         from pptx import Presentation
@@ -208,7 +210,11 @@ def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
         from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
         from pptx.enum.shapes import MSO_SHAPE
 
-        os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+        out_dir = out_path.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if not os.access(str(out_dir), os.W_OK):
+            r.error = f"Output directory is not writable: {out_dir}"
+            return r
 
         palette_name = _pick_palette(query or title, title)
         pal = PALETTES[palette_name]
@@ -562,14 +568,14 @@ def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
                          _hex_to_rgb(pal["accent"]), C["text_light"])
 
         # ── Save ──
-        prs.save(path)
+        prs.save(str(out_path))
 
-        if os.path.exists(path):
+        if out_path.exists():
             r.ok = True
             r.verified = True
-            r.bytes_written = os.path.getsize(path)
+            r.bytes_written = out_path.stat().st_size
             total_slides = len(slides) + 2  # +title +closing
-            r.message = (f"Created PowerPoint: {path} "
+            r.message = (f"Created PowerPoint: {out_path} "
                          f"({r.bytes_written:,} bytes, {total_slides} slides, "
                          f"palette: {palette_name})")
         else:
@@ -588,7 +594,9 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
                query: str = "", user_name: str = "") -> FileReceipt:
     """Create a professionally styled PDF with cover page, colored headers,
     callout boxes, page numbers, and proper typography."""
-    r = FileReceipt(tool="file_generator", operation="create_pdf", path=path)
+    from pathlib import Path as _Path
+    out_path = _Path(path).resolve()
+    r = FileReceipt(tool="file_generator", operation="create_pdf", path=str(out_path))
     try:
         _ensure_dep("reportlab")
         from reportlab.lib.pagesizes import A4
@@ -602,13 +610,18 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
             HRFlowable, KeepTogether,
         )
 
-        os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+        # Ensure output directory exists and is writable
+        out_dir = out_path.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if not os.access(str(out_dir), os.W_OK):
+            r.error = f"Output directory is not writable: {out_dir}"
+            return r
 
         palette_name = _pick_palette(query or title, title)
         pal = PALETTES[palette_name]
 
         doc = SimpleDocTemplate(
-            path, pagesize=A4,
+            str(out_path), pagesize=A4,
             topMargin=0.75 * inch,
             bottomMargin=0.75 * inch,
             leftMargin=0.85 * inch,
@@ -844,11 +857,11 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
         doc.build(story, onFirstPage=_add_page_number,
                   onLaterPages=_add_page_number)
 
-        if os.path.exists(path):
+        if out_path.exists():
             r.ok = True
             r.verified = True
-            r.bytes_written = os.path.getsize(path)
-            r.message = (f"Created PDF: {path} "
+            r.bytes_written = out_path.stat().st_size
+            r.message = (f"Created PDF: {out_path} "
                          f"({r.bytes_written:,} bytes, "
                          f"{len(sections)} sections, palette: {palette_name})")
         else:
@@ -866,14 +879,20 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
 def create_docx(path: str, title: str, sections: List[Dict[str, Any]],
                 query: str = "", user_name: str = "") -> FileReceipt:
     """Create a Word document with headings, paragraphs, bullets, and tables."""
-    r = FileReceipt(tool="file_generator", operation="create_docx", path=path)
+    from pathlib import Path as _Path
+    out_path = _Path(path).resolve()
+    r = FileReceipt(tool="file_generator", operation="create_docx", path=str(out_path))
     try:
         _ensure_dep("python-docx", "docx")
         from docx import Document
         from docx.shared import Pt, Inches, RGBColor
         from docx.enum.text import WD_ALIGN_PARAGRAPH
 
-        os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+        out_dir = out_path.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if not os.access(str(out_dir), os.W_OK):
+            r.error = f"Output directory is not writable: {out_dir}"
+            return r
         palette_name = _pick_palette(query or title, title)
         pal = PALETTES[palette_name]
         primary_rgb = RGBColor(
@@ -931,13 +950,13 @@ def create_docx(path: str, title: str, sections: List[Dict[str, Any]],
                         for j, cell_val in enumerate(row_data):
                             table.cell(i, j).text = str(cell_val)
 
-        doc.save(path)
+        doc.save(str(out_path))
 
-        if os.path.exists(path):
+        if out_path.exists():
             r.ok = True
             r.verified = True
-            r.bytes_written = os.path.getsize(path)
-            r.message = f"Created Word doc: {path} ({r.bytes_written:,} bytes)"
+            r.bytes_written = out_path.stat().st_size
+            r.message = f"Created Word doc: {out_path} ({r.bytes_written:,} bytes)"
         else:
             r.error = "Word build completed but file not found on disk"
         return r
@@ -953,13 +972,19 @@ def create_docx(path: str, title: str, sections: List[Dict[str, Any]],
 def create_xlsx(path: str, title: str, sheets: List[Dict[str, Any]],
                 query: str = "", user_name: str = "") -> FileReceipt:
     """Create an Excel workbook with styled headers and data."""
-    r = FileReceipt(tool="file_generator", operation="create_xlsx", path=path)
+    from pathlib import Path as _Path
+    out_path = _Path(path).resolve()
+    r = FileReceipt(tool="file_generator", operation="create_xlsx", path=str(out_path))
     try:
         _ensure_dep("openpyxl")
         from openpyxl import Workbook
         from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 
-        os.makedirs(os.path.dirname(os.path.abspath(path)) or ".", exist_ok=True)
+        out_dir = out_path.parent
+        out_dir.mkdir(parents=True, exist_ok=True)
+        if not os.access(str(out_dir), os.W_OK):
+            r.error = f"Output directory is not writable: {out_dir}"
+            return r
 
         palette_name = _pick_palette(query or title, title)
         pal = PALETTES[palette_name]
@@ -1009,13 +1034,13 @@ def create_xlsx(path: str, title: str, sheets: List[Dict[str, Any]],
                         pass
                 ws.column_dimensions[col[0].column_letter].width = min(max_len + 4, 50)
 
-        wb.save(path)
+        wb.save(str(out_path))
 
-        if os.path.exists(path):
+        if out_path.exists():
             r.ok = True
             r.verified = True
-            r.bytes_written = os.path.getsize(path)
-            r.message = f"Created Excel: {path} ({r.bytes_written:,} bytes)"
+            r.bytes_written = out_path.stat().st_size
+            r.message = f"Created Excel: {out_path} ({r.bytes_written:,} bytes)"
         else:
             r.error = "Excel build completed but file not found on disk"
         return r
