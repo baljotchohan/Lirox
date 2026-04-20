@@ -23,6 +23,11 @@ def required_package_map() -> Dict[str, str]:
         "requests": "requests",
         "duckduckgo-search": "duckduckgo_search",
         "google-genai": "google.genai",
+        # File-generation libraries: pip name differs from importable module name
+        "reportlab": "reportlab",
+        "python-pptx": "pptx",
+        "python-docx": "docx",
+        "openpyxl": "openpyxl",
     }
 
     req_path = _repo_root / "requirements.txt"
