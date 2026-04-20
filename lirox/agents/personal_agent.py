@@ -1,4 +1,4 @@
-"""Lirox v1.1 — PersonalAgent
+"""Lirox v2.0 — PersonalAgent
 
 ARCHITECTURE:
   Every query goes through: CLASSIFY → PLAN → EXECUTE → VERIFY → RESPOND
@@ -10,6 +10,7 @@ ARCHITECTURE:
 from __future__ import annotations
 
 import json as _json
+import logging
 import os
 import re
 import time
@@ -22,6 +23,7 @@ from lirox.utils.streaming import StreamingResponse
 from lirox.verify import FileReceipt, ShellReceipt
 
 _STREAMER = StreamingResponse()
+_logger = logging.getLogger("lirox.personal_agent")
 
 
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -270,7 +272,9 @@ class PersonalAgent(BaseAgent):
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _filegen(self, query, context, sp=""):
-        from lirox.tools.file_generator import create_pdf, create_docx, create_xlsx, create_pptx
+        from lirox.tools.document_creators import create_pdf, create_docx, create_xlsx, create_pptx
+        from lirox.verify import FileVerificationEngine, ContentQualityVerifier
+        from lirox.tools.content_generator import ContentGenerator
         from lirox.config import WORKSPACE_DIR, OUTPUTS_DIR
 
         yield {"type": "agent_progress", "message": "📄 Planning document generation…"}
@@ -381,6 +385,21 @@ IMPORTANT:
         if not path.endswith(ext):
             path = path.rsplit('.', 1)[0] + ext if '.' in os.path.basename(path) else path + ext
 
+        # ── STEP 4b: Content quality check — enrich thin content via ContentGenerator ──
+        quality_check = ContentQualityVerifier.check(file_type, d)
+        if quality_check.get("issues"):
+            yield {"type": "agent_progress", "message": "📝 Enriching document content…"}
+            try:
+                gen = ContentGenerator()
+                topic = title or query[:80]
+                enriched = gen.generate(file_type, topic, query=query)
+                # Merge enriched content, preferring generated if original is thin
+                for key in ("slides", "sections", "sheets"):
+                    if enriched.get(key) and (not d.get(key) or quality_check.get("issues")):
+                        d[key] = enriched[key]
+            except Exception as _ce:
+                _logger.warning("ContentGenerator failed: %s", _ce)
+
         yield {"type": "tool_call", "message": f"📄 Creating {file_type.upper()}: {os.path.basename(path)}"}
 
         # ── STEP 5: EXECUTE — Actually create the file ──
@@ -420,13 +439,21 @@ IMPORTANT:
             receipt = FileReceipt(tool="file_generator", operation="error",
                                   error=f"File creation error: {e}")
 
-        # ── STEP 6: VERIFY — Check the file actually exists ──
+        # ── STEP 6: VERIFY — Check the file actually exists and has real content ──
         if receipt.ok and receipt.verified:
-            yield {"type": "tool_result", "message": f"✅ Created {file_type.upper()}: {path} ({receipt.bytes_written:,} bytes)"}
-            answer = (f"Done! Created **{os.path.basename(path)}** "
-                      f"({receipt.bytes_written:,} bytes) at:\n\n"
-                      f"`{path}`\n\n"
-                      f"The {file_type.upper()} has {self._count_content(d, file_type)} of content.")
+            fv = FileVerificationEngine.verify(path)
+            if fv["passed"]:
+                yield {"type": "tool_result", "message": f"✅ Created {file_type.upper()}: {path} ({receipt.bytes_written:,} bytes)"}
+                answer = (f"Done! Created **{os.path.basename(path)}** "
+                          f"({receipt.bytes_written:,} bytes) at:\n\n"
+                          f"`{path}`\n\n"
+                          f"The {file_type.upper()} has {self._count_content(d, file_type)} of content.")
+            else:
+                issues_str = "; ".join(fv["issues"])
+                yield {"type": "tool_result", "message": f"⚠️ File created but verification flagged issues: {issues_str}"}
+                answer = (f"Created **{os.path.basename(path)}** at `{path}` "
+                          f"({receipt.bytes_written:,} bytes). "
+                          f"Note: {issues_str}")
         else:
             yield {"type": "tool_result", "message": f"❌ {receipt.error}"}
             answer = f"Failed to create the file: {receipt.error}"
