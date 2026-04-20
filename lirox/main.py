@@ -110,6 +110,7 @@ def main():
         "/train": "Extract learnings from conversations",
         "/recall": "Show everything Lirox knows about you",
         "/workspace": "Show or change workspace directory",
+        "/expand": "Expand last thinking trace (/expand thinking)",
         "/backup": "Backup all data",
         "/export-memory": "Export profile + learnings as JSON",
         "/import-memory": "Import from ChatGPT/Claude/Gemini/Lirox export",
@@ -155,6 +156,10 @@ def main():
             error_panel("KERNEL ERROR", str(e))
 
 
+# Module-level storage for the last thinking session (used by /expand thinking)
+_last_thinking: dict = {"steps": [], "complexity": "", "elapsed": 0.0, "query": ""}
+
+
 def process_query(orch, query: str, verbose: bool = False):
     from lirox.ui.display import console
     from lirox.mind.cognitive_engine import CognitiveEngine, CognitiveContext, ThinkingDisplay
@@ -177,7 +182,7 @@ def process_query(orch, query: str, verbose: bool = False):
         available_tools=["list_files", "read_file", "write_file", "edit_file", "create_presentation", "create_pdf"],
         conversation_history=history
     )
-    
+
     display = ThinkingDisplay(console)
     engine = CognitiveEngine(
         context=context,
@@ -185,13 +190,17 @@ def process_query(orch, query: str, verbose: bool = False):
         tool_executor=cognitive_tool_executor,
         display=display
     )
-    
+
     result = engine.process(query)
-    
-    console.print("\n⚡ Response:")
-    console.print(result["response"])
-    console.print("✓ Done")
-    
+
+    # Persist last thinking session for /expand thinking
+    _last_thinking["steps"] = list(display._steps)
+    _last_thinking["complexity"] = display.complexity.name.lower() if display.complexity else ""
+    _last_thinking["query"] = query
+
+    from lirox.ui.display import show_answer
+    show_answer(result["response"])
+
     # Store assistant response and auto train
     orch.global_memory.save_exchange(query, result["response"])
     session.add("assistant", result["response"], agent="personal")
@@ -242,6 +251,7 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             ("/train",              "Extract learnings from conversations"),
             ("/recall",             "Show everything Lirox knows about you"),
             ("/workspace [path]",   "Show or change workspace directory"),
+            ("/expand thinking",    "Show detailed reasoning from last query"),
             ("/backup",             "Backup all data"),
             ("/export-memory",      "Export profile + learnings as JSON"),
             ("/import-memory",      "Import from ChatGPT/Claude/Gemini/Lirox export"),
@@ -416,6 +426,43 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             _cfg.SAFE_DIRS = [d for d in _cfg.SAFE_DIRS if d != _cfg.WORKSPACE_DIR] + [expanded]
             _cfg.SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in _cfg.SAFE_DIRS]
             success_message(f"Workspace set to: {expanded}")
+
+    elif base == "/expand":
+        # /expand thinking  — show detailed steps from last reasoning session
+        target = " ".join(parts[1:]).lower().strip() if len(parts) > 1 else ""
+        if target in ("thinking", "think", "reason", "reasoning", ""):
+            steps = _last_thinking.get("steps", [])
+            cplx  = _last_thinking.get("complexity", "")
+            q     = _last_thinking.get("query", "")
+            if not steps:
+                info_panel("No thinking session recorded yet.\nAsk a question first, then run /expand thinking.")
+            else:
+                from rich.tree import Tree
+                from rich.panel import Panel as _P
+                t = Tree(
+                    f"[bold cyan]🧠 Thinking Details[/bold cyan]"
+                    + (f"  [dim]· {cplx}[/]" if cplx else ""),
+                    guide_style="dim cyan",
+                )
+                if q:
+                    t.add(f"[dim]Query: {q[:120]}[/]")
+                for s in steps:
+                    icon = s.get("icon", "•")
+                    msg  = s.get("message", "")
+                    st   = s.get("status", "")
+                    if st == "done":
+                        label = f"[green]✓[/green] {icon} {msg}"
+                    elif st == "error":
+                        label = f"[red]✗[/red] {icon} [red]{msg}[/red]"
+                    elif st == "running":
+                        label = f"[yellow]{icon}[/yellow] {msg}"
+                    else:
+                        label = f"{icon} {msg}"
+                    t.add(label)
+                console.print(_P(t, title="[bold cyan]Thinking Trace[/bold cyan]",
+                                 border_style="cyan", padding=(0, 2)))
+        else:
+            info_panel("Usage: /expand thinking\nShows the detailed reasoning steps from your last query.")
 
     elif base == "/backup":
         _run_backup()

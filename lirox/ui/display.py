@@ -119,25 +119,21 @@ def show_thinking_phase(event: dict):
 
 
 def show_thinking_panel_open(complexity: str):
-    """Print the opening banner of the thinking panel."""
+    """Print a single-line thinking indicator."""
     color = COMPLEXITY_COLORS.get(complexity, "#a78bfa")
-    console.print()
     console.print(
-        f"  [bold {color}]🧠 DEEP THINKING[/]  "
-        f"[dim]({complexity.upper()} — full cognitive pipeline)[/]"
+        f"  [bold {color}]🧠 Thinking[/]  "
+        f"[dim]· {complexity}[/]",
+        end="  ",
     )
-    console.print(f"  [{CLR_DIM}]{'─' * 55}[/]")
 
 
 def show_thinking_panel_close(total_ms: int, complexity: str):
-    """Print the closing summary line of the thinking panel."""
+    """Print the closing summary inline with the open indicator."""
     secs = total_ms / 1000
-    console.print(f"  [{CLR_DIM}]{'─' * 55}[/]")
     console.print(
-        f"  [{CLR_DIM}]⏱  Reasoning complete in {secs:.2f}s · "
-        f"Complexity: {complexity.upper()}[/]"
+        f"[dim]⏱ {secs:.1f}s — /expand thinking for details[/]"
     )
-    console.print()
 
 
 def show_agent_event(agent: str, etype: str, msg: str):

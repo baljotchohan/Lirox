@@ -50,9 +50,17 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         return file_tools.file_write(path, content)
         
     elif tool_name == "create_presentation":
-        path = "presentation.pptx"
+        import os
+        from pathlib import Path as _Path
+        from lirox.config import WORKSPACE_DIR
+        workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
+        raw_name = parameters.get("filename", "presentation.pptx")
+        # Use only the final filename component to avoid path traversal
+        stem = _Path(raw_name).stem or "presentation"
+        filename = stem + ".pptx"
+        path = str(_Path(workspace) / filename)
         topic = parameters.get("topic", "Untitled")
-        
+
         # We need to generate slides inline because the planner doesn't provide them
         sys_prompt = "You are a slide generator. Output ONLY raw JSON matching: [{'title': '...', 'content': ['...', '...']}] for 8+ slides."
         slides_json = generate_response(f"Topic: {topic}. Generate 8 slides.", system_prompt=sys_prompt)
@@ -66,11 +74,19 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         except:
             # fallback
             slides = [{"title": topic, "content": ["Slide 1 content", "More content"]}]
-            
+
         return file_generator.create_pptx(path, topic, slides)
         
     elif tool_name == "create_pdf":
-        path = "document.pdf"
+        import os
+        from pathlib import Path as _Path
+        from lirox.config import WORKSPACE_DIR
+        workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
+        raw_name = parameters.get("filename", "document.pdf")
+        # Use only the final filename component to avoid path traversal
+        stem = _Path(raw_name).stem or "document"
+        filename = stem + ".pdf"
+        path = str(_Path(workspace) / filename)
         topic = parameters.get("topic", "Untitled")
         # Likewise, inline generation of paragraph blocks
         sys_prompt = "You are a PDF content generator. Output ONLY raw JSON matching: [{'title': '...', 'blocks': [{'type': 'paragraph', 'text': '...'}]}]"
@@ -83,7 +99,7 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
             else: sections = json.loads(pdf_json)
         except:
             sections = [{"title": topic, "blocks": [{"type": "paragraph", "text": "Content"}]}]
-            
+
         return file_generator.create_pdf(path, topic, sections)
     
     elif tool_name == "run_command":
