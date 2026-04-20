@@ -771,47 +771,49 @@ class CognitiveEngine:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ThinkingDisplay:
+    _MAX_STATUS_LEN = 70  # max chars shown in the inline status line
+
     def __init__(self, console):
         self.console = console
-        self.tree = None
         self.live = None
         self.start_time = None
         self.complexity = None
         self._steps: list = []  # stored for /expand thinking
+        self.elapsed: float = 0.0  # stored for /expand thinking
 
     def start(self, query: str, intent_name: str):
-        from rich.tree import Tree
         from rich.live import Live
+        from rich.text import Text
         self.start_time = time.time()
         self._steps = []
+        self.elapsed = 0.0
         _, self.complexity = IntentClassifier.classify(query, CognitiveContext())
         if self.complexity == Complexity.TRIVIAL:
             return
-        if self.complexity == Complexity.SIMPLE:
-            self.console.print("  [dim]⟡ thinking...[/dim]", end="\r")
-            return
-        self.tree = Tree(
-            f"  [bold cyan]🧠 Reasoning[/bold cyan]  [dim]· {self.complexity.name.lower()}[/dim]",
-            guide_style="dim cyan",
+        # Single animated line for all non-trivial queries
+        self.live = Live(
+            Text("  ⟳ thinking...", style="dim #a78bfa"),
+            console=self.console,
+            refresh_per_second=10,
+            transient=True,
         )
-        self.live = Live(self.tree, console=self.console, refresh_per_second=10, transient=True)
         self.live.start()
 
     def add_step(self, icon: str, message: str, status: str = "running"):
-        if not self.tree:
+        if self.live is None:
             return
         self._steps.append({"icon": icon, "message": message, "status": status})
+        from rich.text import Text
+        short_msg = message[:self._MAX_STATUS_LEN]
         if status == "running":
-            label = f"  [yellow]{icon}[/yellow] [dim]{message}[/dim]"
+            self.live.update(Text(f"  ⟳ {icon} {short_msg}...", style="dim #a78bfa"))
         elif status == "done":
-            label = f"  [green]✓[/green] {icon} {message}"
+            self.live.update(Text(f"  ✓ {icon} {short_msg}", style="dim #10b981"))
         elif status == "error":
-            label = f"  [red]✗[/red] {icon} [red]{message}[/red]"
+            self.live.update(Text(f"  ✗ {icon} {short_msg}", style="dim #ef4444"))
         else:
-            label = f"  {icon} {message}"
-        self.tree.add(label)
-        if self.live:
-            self.live.refresh()
+            self.live.update(Text(f"  · {icon} {short_msg}", style="dim"))
+        self.live.refresh()
 
     def add_tool_call(self, tool_name: str, description: str):
         self.add_step("🔧", f"{tool_name}: {description}", "running")
@@ -823,22 +825,23 @@ class ThinkingDisplay:
         self.add_step("📋", f"Strategy: {strategy_name}", "done")
 
     def finish(self):
-        if isinstance(self.complexity, Complexity) and self.complexity.value <= Complexity.SIMPLE.value:
-            self.console.print("  " * 40, end="\r")
+        self.elapsed = time.time() - self.start_time if self.start_time else 0.0
+        if self.complexity == Complexity.TRIVIAL:
             return
-        elapsed = time.time() - self.start_time if self.start_time else 0.0
         if self.live:
             self.live.stop()
-        # Print compact single-line summary (tree gone due to transient=True)
+            self.live = None
+        # Print compact single-line summary (Claude-style collapsible hint)
         step_count = len(self._steps)
         cplx = self.complexity.name.lower() if self.complexity else "moderate"
-        step_label = f"{step_count} step{'s' if step_count != 1 else ''}"
+        detail = f"· {cplx}"
+        if step_count > 0:
+            detail += f" · {step_count} step{'s' if step_count != 1 else ''}"
+        detail += f" · {self.elapsed:.1f}s"
         self.console.print(
-            f"  [bold cyan]🧠 Thinking[/bold cyan]  "
-            f"[dim]· {cplx} · {step_label} · {elapsed:.1f}s  — /expand thinking for details[/]"
+            f"  [bold #a78bfa]⟳ Thinking[/]  "
+            f"[dim]{detail}  — /expand thinking for details[/dim]"
         )
-        self.tree = None
-        self.live = None
 
 class ReasoningPatterns: pass
 class SessionMemory: pass
