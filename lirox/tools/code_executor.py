@@ -16,6 +16,7 @@ import textwrap
 from typing import Optional
 
 from lirox.config import MAX_TOOL_RESULT_CHARS
+from lirox.safety.audit import log_audit_event
 
 
 class CodeExecutor:
@@ -51,7 +52,9 @@ class CodeExecutor:
             * ``exit_code`` (int)
         """
         if not code.strip():
-            return {"success": False, "output": "", "error": "Empty code.", "exit_code": -1}
+            out = {"success": False, "output": "", "error": "Empty code.", "exit_code": -1}
+            log_audit_event("code_exec", "python", status="error", detail=out["error"])
+            return out
 
         try:
             result = subprocess.run(
@@ -63,26 +66,37 @@ class CodeExecutor:
             )
             stdout = result.stdout[:MAX_TOOL_RESULT_CHARS]
             stderr = result.stderr[:MAX_TOOL_RESULT_CHARS]
-            return {
+            out = {
                 "success":   result.returncode == 0,
                 "output":    stdout,
                 "error":     stderr,
                 "exit_code": result.returncode,
             }
+            log_audit_event(
+                "code_exec",
+                "python",
+                status="ok" if out["success"] else "error",
+                detail=(stderr or stdout)[:1000],
+            )
+            return out
         except subprocess.TimeoutExpired:
-            return {
+            out = {
                 "success":   False,
                 "output":    "",
                 "error":     f"Execution timed out after {timeout} seconds.",
                 "exit_code": -1,
             }
+            log_audit_event("code_exec", "python", status="error", detail=out["error"])
+            return out
         except Exception as exc:
-            return {
+            out = {
                 "success":   False,
                 "output":    "",
                 "error":     f"Execution error: {exc}",
                 "exit_code": -1,
             }
+            log_audit_event("code_exec", "python", status="error", detail=out["error"])
+            return out
 
     # ── Syntax validation ─────────────────────────────────────────────────────
 

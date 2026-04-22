@@ -17,6 +17,7 @@ from typing import Any, Dict, List
 
 from lirox.verify import FileReceipt
 from lirox.tools.document_creators.base import ensure_dep, pick_palette, hex_to_rgb, PALETTES
+from lirox.safety.audit import log_audit_event
 
 _logger = logging.getLogger("lirox.document_creators.pptx")
 
@@ -365,7 +366,14 @@ def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
             r.details["palette"] = palette_name
         else:
             r.error = "PowerPoint build completed but file not found on disk"
+        log_audit_event(
+            "document_create_pptx",
+            str(out_path),
+            status="ok" if (r.ok and r.verified) else "error",
+            detail=r.message or r.error,
+        )
         return r
     except Exception as e:
         r.error = f"PowerPoint creation error: {e}"
+        log_audit_event("document_create_pptx", str(out_path), status="error", detail=r.error)
         return r

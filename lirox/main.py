@@ -107,6 +107,7 @@ def main():
         "/profile": "Show your profile",
         "/reset": "Reset session memory",
         "/test": "Run diagnostics",
+        "/health": "Run subsystem health checks",
         "/train": "Extract learnings from conversations",
         "/recall": "Show everything Lirox knows about you",
         "/workspace": "Show or change workspace directory",
@@ -254,6 +255,7 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             ("/profile",            "Show your profile"),
             ("/reset",              "Reset session memory"),
             ("/test",               "Run diagnostics"),
+            ("/health",             "Run subsystem health checks"),
             ("/train",              "Extract learnings from conversations"),
             ("/recall",             "Show everything Lirox knows about you"),
             ("/workspace [path]",   "Show or change workspace directory"),
@@ -351,6 +353,15 @@ def _handle(orch, profile, cmd, base, parts, verbose):
                 _diag_log.debug("Diagnostic check '%s' failed", name, exc_info=True)
                 console.print(f"  [red]✖[/] {name:22}: {e}")
         success_message("Diagnostics complete.")
+
+    elif base == "/health":
+        from lirox.core.health import run_health_checks
+        info_panel("Running health checks…")
+        report = run_health_checks(strict=False)
+        for c in report.checks:
+            mark = "[green]✓[/]" if c.ok else "[red]✖[/]"
+            console.print(f"  {mark} {c.name:22}: {c.message}")
+        success_message("Health check complete." if report.ok else "Health check found issues.")
 
     elif base == "/train":
         from lirox.mind.trainer import TrainingEngine

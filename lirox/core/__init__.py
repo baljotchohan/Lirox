@@ -11,6 +11,7 @@ from lirox.core.errors import (
 from lirox.core.logger import get_logger
 from lirox.core.transaction import atomic_write, AtomicTransaction
 from lirox.core.config_validator import validate_config
+from lirox.core.health import run_health_checks, HealthReport, HealthCheck
 
 __all__ = [
     "LiroxError",
@@ -24,4 +25,7 @@ __all__ = [
     "atomic_write",
     "AtomicTransaction",
     "validate_config",
+    "run_health_checks",
+    "HealthReport",
+    "HealthCheck",
 ]

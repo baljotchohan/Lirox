@@ -15,6 +15,7 @@ from pathlib import Path
 
 from lirox.tools.terminal import is_safe
 from lirox.verify import ShellReceipt
+from lirox.safety.audit import log_audit_event
 
 
 def shell_run_verified(command: str, cwd: str = "", timeout: int = None) -> ShellReceipt:
@@ -27,6 +28,7 @@ def shell_run_verified(command: str, cwd: str = "", timeout: int = None) -> Shel
     safe, reason = is_safe(command)
     if not safe:
         r.error = f"Blocked: {reason}"
+        log_audit_event("shell_exec", command, status="blocked", detail=r.error)
         return r
 
     # Resolve cwd strictly
@@ -35,6 +37,7 @@ def shell_run_verified(command: str, cwd: str = "", timeout: int = None) -> Shel
         cwd_expanded = os.path.expanduser(cwd)
         if not os.path.isdir(cwd_expanded):
             r.error = f"Requested cwd does not exist: {cwd_expanded}"
+            log_audit_event("shell_exec", command, status="error", detail=r.error)
             return r
         cwd_used = cwd_expanded
     r.cwd_used = cwd_used or os.getcwd()
@@ -44,9 +47,11 @@ def shell_run_verified(command: str, cwd: str = "", timeout: int = None) -> Shel
         parts = shlex.split(command)
     except ValueError as e:
         r.error = f"Parse error: {e}"
+        log_audit_event("shell_exec", command, status="error", detail=r.error)
         return r
     if not parts:
         r.error = "Empty command"
+        log_audit_event("shell_exec", command, status="error", detail=r.error)
         return r
 
     # Redirect python/python3 to the current interpreter
@@ -73,11 +78,19 @@ def shell_run_verified(command: str, cwd: str = "", timeout: int = None) -> Shel
         if not r.ok:
             r.error = f"Exit {proc.returncode}. Stderr: {r.stderr[:600]}"
         r.details["returncode"] = proc.returncode
+        log_audit_event(
+            "shell_exec",
+            command,
+            status="ok" if r.ok else "error",
+            detail=(r.stderr or r.stdout or "")[:1000],
+        )
         return r
     except subprocess.TimeoutExpired:
         r.timed_out = True
         r.error = f"Command timed out after {timeout}s"
+        log_audit_event("shell_exec", command, status="error", detail=r.error)
         return r
     except Exception as e:
         r.error = f"Shell error: {e}"
+        log_audit_event("shell_exec", command, status="error", detail=r.error)
         return r
