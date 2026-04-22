@@ -36,7 +36,7 @@ from typing import Optional
 _MAX_INPUT_CHARS: int = 32_768  # 32 KiB
 
 # Pre-compiled regex for the ```json ... ``` fast-path.
-_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
+_FENCE_RE = re.compile(r"```(?:json)?\s*(\{.*?\}|\[.*?\])\s*```", re.DOTALL)
 
 # Regex for a bare JSON object not wrapped in code fences.
 # Used as a lightweight pre-filter before the full O(n) scan.
@@ -47,35 +47,13 @@ _BARE_JSON_HINT = re.compile(r"\{", re.DOTALL)
 # Public API
 # ---------------------------------------------------------------------------
 
-def extract_json(text: str, max_chars: int = _MAX_INPUT_CHARS) -> dict:
-    """Extract the first JSON object from *text* using an O(n) scanner.
-
-    Parameters
-    ----------
-    text : str
-        Raw LLM output, possibly containing prose, code fences, and JSON.
-    max_chars : int
-        Hard limit on the number of characters scanned.  Inputs longer than
-        this are truncated *before* scanning so the caller's timeout budget
-        is not exhausted by adversarial input.
-
-    Returns
-    -------
-    dict
-        The first valid JSON object found in *text*.
-
-    Raises
-    ------
-    ValueError
-        If no valid JSON object can be found in *text*.
-    """
+def extract_json(text: str, max_chars: int = _MAX_INPUT_CHARS):
+    """Extract the first JSON object OR array from text."""
     text = (text or "").strip()
-
-    # ── Bounds check (DoS protection) ────────────────────────────────────────
     if len(text) > max_chars:
         text = text[:max_chars]
 
-    # ── Fast-path: fenced ```json { ... } ``` block ──────────────────────────
+    # Fast-path: fenced ```json ... ``` block
     m = _FENCE_RE.search(text)
     if m:
         candidate = m.group(1)
@@ -83,12 +61,17 @@ def extract_json(text: str, max_chars: int = _MAX_INPUT_CHARS) -> dict:
         if parsed is not None:
             return parsed
 
-    # ── Single-pass O(n) bracket scanner ─────────────────────────────────────
+    # Try scanning for a JSON object {...}
     result = _scan_for_object(text)
     if result is not None:
         return result
 
-    raise ValueError("No valid JSON object found in LLM response")
+    # Try scanning for a JSON array [...]
+    result = _scan_for_array(text)
+    if result is not None:
+        return result
+
+    raise ValueError("No valid JSON found in LLM response")
 
 
 def try_extract_json(text: str, max_chars: int = _MAX_INPUT_CHARS) -> Optional[dict]:
@@ -103,11 +86,11 @@ def try_extract_json(text: str, max_chars: int = _MAX_INPUT_CHARS) -> Optional[d
 # Internal helpers
 # ---------------------------------------------------------------------------
 
-def _try_parse(candidate: str) -> Optional[dict]:
-    """Attempt json.loads; return the dict or None on any error."""
+def _try_parse(candidate: str):
+    """Attempt json.loads; return dict or list, or None on error."""
     try:
         result = json.loads(candidate)
-        if isinstance(result, dict):
+        if isinstance(result, (dict, list)):
             return result
     except (json.JSONDecodeError, ValueError):
         pass
@@ -168,4 +151,41 @@ def _scan_for_object(text: str) -> Optional[dict]:
 
         i += 1
 
+    return None
+
+def _scan_for_array(text: str):
+    """Single O(n) pass that locates the outermost [...] JSON array."""
+    n = len(text)
+    depth = 0
+    in_string = False
+    escaped = False
+    start = -1
+
+    i = 0
+    while i < n:
+        ch = text[i]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        else:
+            if ch == '"':
+                in_string = True
+                escaped = False
+            elif ch == "[":
+                if depth == 0:
+                    start = i
+                depth += 1
+            elif ch == "]" and depth > 0:
+                depth -= 1
+                if depth == 0 and start >= 0:
+                    candidate = text[start : i + 1]
+                    parsed = _try_parse(candidate)
+                    if parsed is not None:
+                        return parsed
+                    start = -1
+        i += 1
     return None

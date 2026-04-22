@@ -96,6 +96,11 @@ def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"OpenAI Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"OpenAI Error: {e}"
     except Exception as e:
         return f"OpenAI Error: {e}"
 
@@ -110,13 +115,15 @@ def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
         client   = genai.Client(api_key=api_key)
         config   = types.GenerateContentConfig(
             system_instruction=system_prompt or DEFAULT_SYSTEM, temperature=0.7)
-        for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+        last_error = None
+        for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
                 return client.models.generate_content(
                     model=model_name, contents=prompt, config=config).text
-            except Exception:
+            except Exception as e:
+                last_error = e
                 continue
-        return "Gemini Error: All models failed"
+        return f"Gemini Error: All models failed. Last error: {last_error}"
     except ImportError:
         return "google-genai not installed. Run: pip install google-genai"
     except Exception as e:
@@ -138,6 +145,11 @@ def groq_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"Groq Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"Groq Error: {e}"
     except Exception as e:
         return f"Groq Error: {e}"
 
@@ -158,6 +170,11 @@ def openrouter_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"OpenRouter Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"OpenRouter Error: {e}"
     except Exception as e:
         return f"OpenRouter Error: {e}"
 
@@ -177,6 +194,11 @@ def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"DeepSeek Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"DeepSeek Error: {e}"
     except Exception as e:
         return f"DeepSeek Error: {e}"
 
@@ -196,6 +218,11 @@ def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"NVIDIA Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"NVIDIA Error: {e}"
     except Exception as e:
         return f"NVIDIA Error: {e}"
 
@@ -215,6 +242,11 @@ def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
         return res.json().get("response", "Ollama Error: empty response")
     except requests.exceptions.ConnectionError:
         return "Ollama Error: server not running. Start with: ollama serve"
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"Ollama Error: {e.response.json().get('error', str(e))}"
+        except Exception:
+            return f"Ollama Error: {e}"
     except Exception as e:
         return f"Ollama Error: {e}"
     finally:
@@ -268,6 +300,11 @@ def anthropic_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["content"][0]["text"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"Anthropic Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"Anthropic Error: {e}"
     except Exception as e:
         return f"Anthropic Error: {e}"
 
@@ -379,7 +416,7 @@ def is_error_response(text: str) -> bool:
     if any(s in lowered for s in error_indicators):
         return True
     error_prefixes = [
-        "openai error", "gemini error", "groq error", "anthropic error",
+        "openai error", "gemini error", "groq error", "anthropic error", "anthropic sdk error",
         "deepseek error", "nvidia error", "openrouter error", "ollama error",
         "hf bnb error", "unknown provider",
     ]

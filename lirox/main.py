@@ -179,7 +179,12 @@ def process_query(orch, query: str, verbose: bool = False):
     context = CognitiveContext(
         user_name=orch.profile_data.get("name", ""),
         workspace=os.getenv("LIROX_WORKSPACE", str(Path.home() / "Desktop")),
-        available_tools=["list_files", "read_file", "write_file", "edit_file", "create_presentation", "create_pdf"],
+        available_tools=[
+            "list_files", "read_file", "write_file", "edit_file",
+            "create_presentation", "create_pdf",
+            "create_document", "create_spreadsheet",
+            "execute_code",
+        ],
         conversation_history=history
     )
 

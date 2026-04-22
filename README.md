@@ -4,7 +4,7 @@
 
 **Intelligence as an Operating System**
 
-[![Version](https://img.shields.io/badge/version-3.2.0-blue.svg)](https://github.com/baljotchohan/Lirox)
+[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/baljotchohan/Lirox)
 [![Python](https://img.shields.io/badge/python-3.9+-yellow.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 

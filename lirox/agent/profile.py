@@ -46,6 +46,9 @@ class UserProfile:
                         data = json.load(f)
                         merged = dict(self.DEFAULT)
                         merged.update(data)
+                        # Sanitize user_name on load (BUG-01 fix)
+                        if "user_name" in merged:
+                            merged["user_name"] = merged["user_name"].strip().replace("\\n", "").rstrip("\r\n")
                         return merged
                 except (json.JSONDecodeError, IOError) as e:
                     import logging
