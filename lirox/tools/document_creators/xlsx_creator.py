@@ -21,7 +21,7 @@ _logger = logging.getLogger("lirox.document_creators.xlsx")
 
 
 def create_xlsx(path: str, title: str, sheets: List[Dict[str, Any]],
-                query: str = "", user_name: str = "") -> FileReceipt:
+                query: str = "", user_name: str = "", user_expertise: str = "intermediate") -> FileReceipt:
     """Create an Excel workbook with styled headers and data.
 
     Parameters
@@ -64,7 +64,7 @@ def create_xlsx(path: str, title: str, sheets: List[Dict[str, Any]],
             r.error = f"Output directory is not writable: {out_dir}"
             return r
 
-        palette_name = pick_palette(query or title, title)
+        palette_name = pick_palette(query or title, title, user_expertise=user_expertise)
         pal = PALETTES[palette_name]
 
         wb = Workbook()

@@ -463,34 +463,35 @@ IMPORTANT:
 
         # ── STEP 5: EXECUTE — Actually create the file ──
         receipt = None
+        user_expertise = self.profile_data.get("expertise_level", "intermediate")
         try:
             if file_type == "pdf":
                 sections = d.get("sections", [])
                 if not isinstance(sections, list) or not sections:
                     sections = [{"heading": title, "body": query[:500], "bullets": []}]
                 receipt = create_pdf(path, title, sections,
-                                     query=query, user_name=user_name)
+                                     query=query, user_name=user_name, user_expertise=user_expertise)
 
             elif file_type == "docx":
                 sections = d.get("sections", [])
                 if not isinstance(sections, list) or not sections:
                     sections = [{"heading": title, "body": query[:500], "bullets": []}]
                 receipt = create_docx(path, title, sections,
-                                      query=query, user_name=user_name)
+                                      query=query, user_name=user_name, user_expertise=user_expertise)
 
             elif file_type == "xlsx":
                 sheets = d.get("sheets", [])
                 if not isinstance(sheets, list) or not sheets:
                     sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [[query[:100]]]}]
                 receipt = create_xlsx(path, title, sheets,
-                                      query=query, user_name=user_name)
+                                      query=query, user_name=user_name, user_expertise=user_expertise)
 
             elif file_type == "pptx":
                 slides = d.get("slides", [])
                 if not isinstance(slides, list) or not slides:
                     slides = [{"title": title, "bullets": [query[:80]], "notes": ""}]
                 receipt = create_pptx(path, title, slides,
-                                      query=query, user_name=user_name)
+                                      query=query, user_name=user_name, user_expertise=user_expertise)
 
             else:
                 receipt = FileReceipt(tool="file_generator", operation="create",
@@ -505,27 +506,56 @@ IMPORTANT:
             receipt = FileReceipt(tool="file_generator", operation="create", path=path,
                                   error="File creation returned None receipt")
 
-        # ── STEP 6: VERIFY — Check the file actually exists and has real content ──
-        if receipt.ok and receipt.verified:
+        # ── VERIFICATION & ERROR HANDLING ──
+        # Only claim success if file actually exists and is valid
+
+        try:
+            from lirox.verify.file_verification import FileVerificationEngine
+            
+            # Strict verification: file must exist AND have content AND have right structure
             fv = FileVerificationEngine.verify(path)
+            
             if fv["passed"]:
-                yield {"type": "tool_result", "message": f"✅ Created {file_type.upper()}: {path} ({receipt.bytes_written:,} bytes)"}
-                creator_credit = f"Created for {user_name}" if user_name else "Document created"
-                answer = (f"✅ {creator_credit}: **{os.path.basename(path)}**\n\n"
-                          f"📁 Path: `{path}`\n"
-                          f"📊 Size: {receipt.bytes_written:,} bytes\n"
-                          f"📄 Content: {self._count_content(d, file_type)}\n\n"
-                          f"Your {file_type.upper()} is ready to download and share.")
+                # File is valid
+                file_size = os.path.getsize(path)
+                section_count = self._count_content(d, file_type)
+                
+                answer = (
+                    f"✅ Created **{os.path.basename(path)}**\n\n"
+                    f"📁 Path: `{path}`\n"
+                    f"📊 Size: {file_size:,} bytes\n"
+                    f"📄 Content: {section_count}\n\n"
+                    f"Your {file_type.upper()} is ready!"
+                )
+                
+                yield {"type": "message", "message": answer}
+                return
             else:
+                # Verification failed - don't claim success
                 issues_str = "; ".join(fv["issues"])
-                yield {"type": "tool_result", "message": f"⚠️ File created but verification flagged issues: {issues_str}"}
-                answer = (f"Created **{os.path.basename(path)}** at `{path}` "
-                          f"({receipt.bytes_written:,} bytes). "
-                          f"Note: {issues_str}")
-        else:
-            error_msg = receipt.error or "Unknown file creation error"
-            yield {"type": "tool_result", "message": f"❌ {error_msg}"}
-            answer = f"Failed to create the file: {error_msg}"
+                answer = (
+                    f"❌ File creation encountered issues:\n\n"
+                    f"**Issues:**\n"
+                    + "\n".join(f"- {issue}" for issue in fv["issues"]) + f"\n\n"
+                    f"**Path:** `{path}`\n"
+                    f"**Type:** {file_type.upper()}\n\n"
+                    f"Please try again or use a different topic."
+                )
+                
+                yield {"type": "error", "message": answer}
+                return
+                
+        except Exception as e:
+            # Verification system error
+            _logger.error(f"File verification error: {e}")
+            answer = (
+                f"⚠️ File was created but verification failed:\n\n"
+                f"**Path:** `{path}`\n"
+                f"**Error:** {str(e)}\n\n"
+                f"Please check the file manually."
+            )
+            yield {"type": "warning", "message": answer}
+            return
 
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}

@@ -23,7 +23,7 @@ _logger = logging.getLogger("lirox.document_creators.pptx")
 
 
 def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
-                query: str = "", user_name: str = "") -> FileReceipt:
+                query: str = "", user_name: str = "", user_expertise: str = "intermediate") -> FileReceipt:
     """Create a professionally designed PowerPoint presentation.
 
     Parameters
@@ -70,7 +70,7 @@ def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
             r.error = f"Output directory is not writable: {out_dir}"
             return r
 
-        palette_name = pick_palette(query or title, title)
+        palette_name = pick_palette(query or title, title, user_expertise=user_expertise)
         pal = PALETTES[palette_name]
         C = {k: hex_to_rgb(v) for k, v in pal.items()}
 

@@ -22,7 +22,7 @@ _logger = logging.getLogger("lirox.document_creators.pdf")
 
 
 def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
-               query: str = "", user_name: str = "") -> FileReceipt:
+               query: str = "", user_name: str = "", user_expertise: str = "intermediate") -> FileReceipt:
     """Create a professionally styled PDF.
 
     Parameters
@@ -73,7 +73,7 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
             r.error = f"Output directory is not writable: {out_dir}"
             return r
 
-        palette_name = pick_palette(query or title, title)
+        palette_name = pick_palette(query or title, title, user_expertise=user_expertise)
         pal = PALETTES[palette_name]
 
         doc = SimpleDocTemplate(

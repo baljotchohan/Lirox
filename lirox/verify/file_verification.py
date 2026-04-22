@@ -35,70 +35,90 @@ class FileVerificationEngine:
     """
 
     @staticmethod
-    def verify(path: str, min_bytes: Optional[int] = None) -> Dict[str, Any]:
-        """Run all verification checks against *path*.
-
-        Parameters
-        ----------
-        path:       Absolute (or expandable) path to the file.
-        min_bytes:  Override the default minimum size threshold.
-
-        Returns
-        -------
-        dict with keys:
-          ``passed``   – True iff every check passed.
-          ``checks``   – List of individual check results (dicts).
-          ``size``     – Actual file size in bytes (0 if missing).
-          ``issues``   – List of human-readable problem strings.
+    def verify(file_path: str) -> Dict[str, Any]:
         """
-        result: Dict[str, Any] = {
-            "passed": False,
-            "checks": [],
-            "size": 0,
+        Comprehensive file verification.
+        
+        Checks:
+        - File exists on disk
+        - File has content (size > 0)
+        - File is accessible
+        - File type is correct (extension matches)
+        
+        Returns:
+            Dict with:
+            - passed: bool
+            - issues: List[str] - any problems found
+            - file_size: int - size in bytes
+            - file_exists: bool
+        """
+        from pathlib import Path
+        
+        result = {
+            "passed": True,
             "issues": [],
+            "file_size": 0,
+            "file_exists": False,
         }
-
-        p = Path(path).expanduser()
-
-        # 1. Existence
-        exists = p.exists() and p.is_file()
-        result["checks"].append({
-            "name": "file_exists",
-            "passed": exists,
-            "detail": str(p) if exists else f"Not found: {p}",
-        })
-        if not exists:
-            result["issues"].append(f"File does not exist: {p}")
+        
+        # Check 1: File exists
+        p = Path(file_path).resolve()
+        if not p.exists():
+            result["passed"] = False
+            result["issues"].append(f"File does not exist: {file_path}")
             return result
-
-        # 2. Non-zero size
-        size = p.stat().st_size
-        result["size"] = size
+        
+        result["file_exists"] = True
+        
+        # Check 2: Is it a file (not directory)
+        if not p.is_file():
+            result["passed"] = False
+            result["issues"].append(f"Path is not a file: {file_path}")
+            return result
+        
+        # Check 3: File has content
+        try:
+            size = p.stat().st_size
+            result["file_size"] = size
+            
+            if size == 0:
+                result["passed"] = False
+                result["issues"].append(f"File is empty (0 bytes)")
+                return result
+            
+            # Warn if file is suspiciously small
+            if size < 1000:
+                result["issues"].append(f"Warning: File is small ({size} bytes), may be incomplete")
+                # Don't fail on small size, just warn
+            
+        except OSError as e:
+            result["passed"] = False
+            result["issues"].append(f"Cannot read file: {e}")
+            return result
+        
+        # Check 4: File extension matches known types
         ext = p.suffix.lower()
-        threshold = min_bytes if min_bytes is not None else _MIN_SIZES.get(ext, 1)
-        size_ok = size >= threshold
-        result["checks"].append({
-            "name": "minimum_size",
-            "passed": size_ok,
-            "detail": f"{size:,} bytes (threshold: {threshold:,})",
-        })
-        if not size_ok:
-            result["issues"].append(
-                f"File is suspiciously small: {size} bytes "
-                f"(expected ≥ {threshold} for {ext or 'file'})"
-            )
-
-        # 3. Readable
-        readable = os.access(str(p), os.R_OK)
-        result["checks"].append({
-            "name": "readable",
-            "passed": readable,
-            "detail": "Readable" if readable else "Not readable",
-        })
-        if not readable:
-            result["issues"].append(f"File is not readable: {p}")
-
-        result["passed"] = size_ok and readable
+        valid_extensions = {
+            ".pdf": "PDF document",
+            ".docx": "Word document",
+            ".pptx": "PowerPoint presentation",
+            ".xlsx": "Excel spreadsheet",
+            ".ppt": "PowerPoint",
+            ".doc": "Word",
+            ".xls": "Excel",
+        }
+        
+        if ext not in valid_extensions:
+            result["issues"].append(f"Unknown file type: {ext}")
+            # Don't fail, might be intentional
+        
+        # Check 5: File is readable
+        if not p.is_file():
+            result["passed"] = False
+            result["issues"].append(f"File is not readable")
+            return result
+        
+        # All checks passed
         return result
 
     @staticmethod

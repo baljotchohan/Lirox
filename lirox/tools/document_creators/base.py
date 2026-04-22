@@ -9,6 +9,7 @@ import logging
 import subprocess
 import sys
 from typing import Any, Dict, List
+from lirox.tools.document_creators.design_system import DesignSystem, get_palette_name_from_design
 
 _logger = logging.getLogger("lirox.document_creators")
 
@@ -153,8 +154,32 @@ _PALETTE_KEYWORDS: Dict[str, List[str]] = {
 }
 
 
-def pick_palette(query: str, title: str = "") -> str:
-    """Auto-select a color palette based on topic keywords in *query*/*title*."""
+def pick_palette(query: str, title: str = "", user_expertise: str = "intermediate") -> str:
+    """
+    Pick a palette for document using design system.
+    
+    Uses multi-agent design thinking instead of simple keyword matching.
+    """
+    topic = f"{title} {query}".strip()
+    
+    try:
+        decision = DesignSystem.decide_design(
+            topic=topic,
+            doc_type="presentation",
+            user_expertise=user_expertise,
+            user_preferences=None
+        )
+        palette_name = get_palette_name_from_design(decision)
+        _logger.info(f"Design system chose palette: {palette_name} for topic '{topic}'")
+        return palette_name
+    except Exception as e:
+        _logger.warning(f"Design system failed: {e}, falling back to simple matching")
+        # Fallback to simple logic if design system fails
+        return _pick_palette_simple(query, title)
+
+
+def _pick_palette_simple(query: str, title: str = "") -> str:
+    """Simple fallback palette selection."""
     combined = (query + " " + title).lower()
     best_match = "default"
     best_score = 0
