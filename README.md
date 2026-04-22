@@ -4,7 +4,7 @@
 
 **Intelligence as an Operating System**
 
-[![Version](https://img.shields.io/badge/version-2.0-blue.svg)](https://github.com/baljotchohan/Lirox)
+[![Version](https://img.shields.io/badge/version-1.0-blue.svg)](https://github.com/baljotchohan/Lirox)
 [![Python](https://img.shields.io/badge/python-3.9+-yellow.svg)](https://www.python.org/downloads/)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 
@@ -35,13 +35,17 @@ graph TD;
 Lirox is packed with native capabilities to serve as your ultimate daily driver AI:
 
 - 🧠 **Autonomous Reasoning Engine** – Powered by ReAct architecture, ensuring logical plan-execute-verify pipelines.
-- 💾 **Living Memory & Soul** – Continuously extracts learnings from your conversations. It remembers preferences, projects, and facts using a robust `.json` driven local state.
+- 💾 **Living Memory & Soul** – Continuously extracts learnings from your conversations. It remembers preferences, projects, and facts using a robust `.json` driven local state backed by SQLite.
+- 🗄️ **SQLite Database** – Production-grade persistence for profiles, sessions, facts, projects, usage stats, and an immutable audit trail.
 - 💻 **Verified Desktop Control** – Can create, edit, move, and track files on disk securely. 
 - 🐚 **Safe Shell Execution** – Runs terminal commands gracefully with built-in sandbox-style protection (allow/blocklists).
 - 🌐 **Web Searching** – Pulls real-time information via DuckDuckGo seamlessly.
-- 🔌 **Dynamic Multi-Provider** – Toggle effortlessly between Groq, Gemini, OpenRouter, Ollama, OpenAI, Anthropic, and more.
+- 🔌 **Dynamic Multi-Provider** – Toggle effortlessly between Groq, Gemini, OpenRouter, Ollama, OpenAI, Anthropic, DeepSeek, and more.
 - 🛠 **Zero-Friction Dependencies** – Boots up and auto-installs missing Python packages natively without breaking your flow.
 - 🪄 **Beautiful UI** – Terminal interactions with a clean layout, streaming response rendering, word-by-word animation, and syntax highlighting.
+- 📄 **Document Generation** – Create professional PDF, PPTX, DOCX, and XLSX files with genuine AI-designed content and styling.
+- 🖥️ **Code Generation** – Full-stack developer mode: generate, run, fix, and test code across Python, JavaScript, TypeScript, Go, Rust, and more.
+- 📚 **Self-Learning** – Extracts structured knowledge (facts, preferences, topics, projects) from every conversation and persists it across sessions.
 
 ---
 

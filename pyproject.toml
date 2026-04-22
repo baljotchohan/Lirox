@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "lirox"
-version = "1.1.0"
+version = "1.0.0"
 description = "Intelligence as an Operating System. Terminal-first autonomous personal AI agent."
 readme = "README.md"
 requires-python = ">=3.9"
@@ -53,3 +53,7 @@ lirox = "lirox.main:main"
 
 [tool.setuptools.packages.find]
 include = ["lirox*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
