@@ -44,25 +44,23 @@ class ContentGenerator:
 
     def generate_slides(self, topic: str, num_slides: int = 8,
                         context: str = "") -> List[Dict[str, Any]]:
-        """Generate *num_slides* content slides for a PPTX presentation.
+        """Generate *num_slides* content slides for a PPTX presentation dynamically.
 
-        Each slide dict has ``title``, ``bullets`` (4-6 items), and
+        Each slide dict has ``title``, ``bullets`` (3-6 items), and
         ``notes`` (speaker notes).
         """
-        prompt = f"""Generate exactly {num_slides} presentation slides for the topic: "{topic}"
+        prompt = f"""Design a dynamic presentation structure for the topic: "{topic}"
 {('Additional context: ' + context) if context else ''}
 
 Rules:
-- Each slide must have a UNIQUE, specific, descriptive title (not generic like "Overview")
-- Each slide must have 4-6 DETAILED bullet points
-- Each bullet must be a COMPLETE sentence with specific facts, numbers, or examples
-- Include at least 3 real statistics or data points across all slides
-- Vary the content type: history, key concepts, real-world examples, data/stats, challenges, future trends
-- Speaker notes should add 2-3 sentences of context not shown on the slide
-- Do NOT use generic filler like "This is important" or "Many people use this"
-- Be SPECIFIC: use real company names, real numbers, real dates, real examples
+- Adapt the number of slides and their progression entirely based on what is most appropriate for this specific topic (e.g., around {num_slides} slides, but plan whatever is best).
+- Do NOT use a fixed template.
+- Each slide must have a UNIQUE, specific, descriptive title.
+- Each slide must have 3-6 DETAILED bullet points (complete sentences with specific facts, numbers, or examples).
+- Include real statistics or data points across the slides.
+- Speaker notes should add 2-3 sentences of context not shown on the slide.
 
-Output as a JSON array with {num_slides} objects, each:
+Output as a JSON array of objects, where each object represents a slide:
 {{"title": "Specific Descriptive Title", "bullets": ["Detailed point with specific fact...", "Another detailed point..."], "notes": "Speaker note with extra context..."}}
 
 Output ONLY the JSON array, no other text."""
@@ -77,26 +75,24 @@ Output ONLY the JSON array, no other text."""
 
     def generate_sections(self, topic: str, num_sections: int = 5,
                           context: str = "") -> List[Dict[str, Any]]:
-        """Generate *num_sections* content sections for a PDF or DOCX.
+        """Generate *num_sections* content sections for a PDF or DOCX dynamically.
 
-        Each section dict has ``heading``, ``body`` (3-5 sentences), and
+        Each section dict has ``heading``, ``body`` (3-6 sentences), and
         ``bullets`` (0-4 supporting points).
         """
-        prompt = f"""Generate exactly {num_sections} document sections for the topic: "{topic}"
+        prompt = f"""Design a comprehensive, dynamic document structure for the topic: "{topic}"
 {('Additional context: ' + context) if context else ''}
 
 Rules:
-- Section 1 must be "Introduction" — set context, define the topic, explain why it matters
-- Last section must be "Conclusion" — summarize key points and future outlook
-- Each section body must be 4-6 FULL SENTENCES of substantive prose (not bullet lists)
-- Use specific facts, dates, statistics, named examples, and real data
-- Write in professional academic/report style with proper paragraph structure
-- Bullets should only be used for concrete lists of items (not every section needs them)
-- Do NOT start any section body by restating the heading
-- Include at least 5 real data points or statistics across all sections
+- Adapt the number of sections and their focus entirely based on what is most appropriate for this specific topic (e.g., around {num_sections} sections, but plan whatever is best).
+- Do NOT use a fixed template.
+- Each section body must be substantive (3-6 full sentences) providing real facts, details, and examples.
+- Include specific data points, dates, named examples, and statistics where relevant.
+- Write in a professional style with proper paragraph structure.
+- Bullets can be used for concrete lists of items, but not every section needs them.
 
-Output as a JSON array with {num_sections} objects, each:
-{{"heading": "Section Title", "body": "Full multi-sentence paragraph...", "bullets": ["optional items"]}}
+Output as a JSON array of objects, where each object represents a section:
+{{"heading": "Descriptive Section Title", "body": "Full multi-sentence paragraph...", "bullets": ["optional", "items"]}}
 
 Output ONLY the JSON array, no other text."""
 
@@ -110,20 +106,21 @@ Output ONLY the JSON array, no other text."""
 
     def generate_sheets(self, topic: str, num_sheets: int = 1,
                         context: str = "") -> List[Dict[str, Any]]:
-        """Generate *num_sheets* worksheet definitions for an XLSX workbook.
+        """Generate *num_sheets* worksheet definitions for an XLSX workbook dynamically.
 
         Each sheet dict has ``name``, ``headers``, and ``rows``.
         """
-        prompt = f"""Generate exactly {num_sheets} spreadsheet worksheet(s) for the topic: "{topic}"
+        prompt = f"""Design a dynamic spreadsheet structure for the topic: "{topic}"
 {('Additional context: ' + context) if context else ''}
 
 Rules:
-- Each sheet should have 5-8 meaningful column headers relevant to the topic
-- Each sheet should have at least 8 data rows with realistic sample values
-- Use concrete, varied values (not placeholder text like "value1")
-- If multiple sheets, give each a distinct focus area
+- Adapt the number of sheets, column headers, and rows entirely based on what is most appropriate for this specific topic (e.g., around {num_sheets} sheets, but use what fits).
+- Do NOT use a fixed template. Create as many sheets as necessary to organize the data logically.
+- Each sheet should have meaningful column headers relevant to its focus.
+- Each sheet should have realistic sample data rows (at least 5-10 rows).
+- Use concrete, varied values (not placeholder text like "value1").
 
-Output as a JSON array with {num_sheets} objects, each:
+Output as a JSON array of objects, where each object represents a sheet:
 {{"name": "Sheet Name", "headers": ["Col1", "Col2", "..."], "rows": [["v1", "v2", "..."], ...]}}
 
 Output ONLY the JSON array, no other text."""

@@ -54,14 +54,28 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from pathlib import Path as _Path
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
-        raw_name = parameters.get("filename", "presentation.pptx")
-        if not str(raw_name).lower().endswith(".pptx"):
-            raw_name = str(raw_name) + ".pptx"
+        
+        topic = parameters.get("topic", "Untitled")
+        provided_name = parameters.get("filename")
+        
+        import re
+        if not provided_name or str(provided_name).lower() in ("presentation.pptx", "presentation", "document.pptx", "document", "untitled.pptx", "untitled", "none", ""):
+            safe_topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '_')[:50]
+            if safe_topic and safe_topic.lower() != "untitled":
+                raw_name = f"{safe_topic}.pptx"
+            else:
+                raw_name = "presentation.pptx"
+        else:
+            raw_name = str(provided_name)
+            
+        if not raw_name.lower().endswith(".pptx"):
+            raw_name = raw_name + ".pptx"
+            
         if os.path.isabs(raw_name):
             path = str(raw_name)
         else:
             path = str(_Path(workspace) / raw_name)
-        topic = parameters.get("topic", "Untitled")
+            
         user_name = parameters.get("user_name", "")
 
         # Use ContentGenerator for rich, structured content
@@ -85,14 +99,28 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from pathlib import Path as _Path
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
-        raw_name = parameters.get("filename", "document.pdf")
-        if not str(raw_name).lower().endswith(".pdf"):
-            raw_name = str(raw_name) + ".pdf"
+        
+        topic = parameters.get("topic", "Untitled")
+        provided_name = parameters.get("filename")
+        
+        import re
+        if not provided_name or str(provided_name).lower() in ("document.pdf", "document", "untitled.pdf", "untitled", "none", ""):
+            safe_topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '_')[:50]
+            if safe_topic and safe_topic.lower() != "untitled":
+                raw_name = f"{safe_topic}.pdf"
+            else:
+                raw_name = "document.pdf"
+        else:
+            raw_name = str(provided_name)
+            
+        if not raw_name.lower().endswith(".pdf"):
+            raw_name = raw_name + ".pdf"
+            
         if os.path.isabs(raw_name):
             path = str(raw_name)
         else:
             path = str(_Path(workspace) / raw_name)
-        topic = parameters.get("topic", "Untitled")
+            
         user_name = parameters.get("user_name", "")
 
         from lirox.tools.content_generator import ContentGenerator
@@ -110,14 +138,28 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from pathlib import Path as _Path
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
-        raw_name = parameters.get("filename", "document.docx")
-        if not str(raw_name).lower().endswith(".docx"):
-            raw_name = str(raw_name) + ".docx"
+        
+        topic = parameters.get("topic", "Untitled")
+        provided_name = parameters.get("filename")
+        
+        import re
+        if not provided_name or str(provided_name).lower() in ("document.docx", "document", "untitled.docx", "untitled", "none", ""):
+            safe_topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '_')[:50]
+            if safe_topic and safe_topic.lower() != "untitled":
+                raw_name = f"{safe_topic}.docx"
+            else:
+                raw_name = "document.docx"
+        else:
+            raw_name = str(provided_name)
+            
+        if not raw_name.lower().endswith(".docx"):
+            raw_name = raw_name + ".docx"
+            
         if os.path.isabs(raw_name):
             path = str(raw_name)
         else:
             path = str(_Path(workspace) / raw_name)
-        topic = parameters.get("topic", "Untitled")
+            
         user_name = parameters.get("user_name", "")
 
         from lirox.tools.content_generator import ContentGenerator
@@ -134,14 +176,28 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from pathlib import Path as _Path
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
-        raw_name = parameters.get("filename", "spreadsheet.xlsx")
-        if not str(raw_name).lower().endswith(".xlsx"):
-            raw_name = str(raw_name) + ".xlsx"
+        
+        topic = parameters.get("topic", "Untitled")
+        provided_name = parameters.get("filename")
+        
+        import re
+        if not provided_name or str(provided_name).lower() in ("spreadsheet.xlsx", "spreadsheet", "untitled.xlsx", "untitled", "none", ""):
+            safe_topic = re.sub(r'[^\w\s-]', '', topic).strip().replace(' ', '_')[:50]
+            if safe_topic and safe_topic.lower() != "untitled":
+                raw_name = f"{safe_topic}.xlsx"
+            else:
+                raw_name = "spreadsheet.xlsx"
+        else:
+            raw_name = str(provided_name)
+            
+        if not raw_name.lower().endswith(".xlsx"):
+            raw_name = raw_name + ".xlsx"
+            
         if os.path.isabs(raw_name):
             path = str(raw_name)
         else:
             path = str(_Path(workspace) / raw_name)
-        topic = parameters.get("topic", "Untitled")
+            
         user_name = parameters.get("user_name", "")
 
         from lirox.tools.content_generator import ContentGenerator
