@@ -42,6 +42,20 @@ def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
     from pathlib import Path as _Path
     out_path = _Path(path).resolve()
     r = FileReceipt(tool="pptx_creator", operation="create_pptx", path=str(out_path))
+
+    # ── PRE-FLIGHT VALIDATION (v1.1 fix) ──
+    if not path:
+        r.error = "Path cannot be empty"
+        return r
+    if not title:
+        title = "Untitled Presentation"
+    if user_name is None:
+        user_name = ""
+    if slides is None or not isinstance(slides, list):
+        slides = [{"title": title, "bullets": [], "notes": ""}]
+    if not slides:
+        slides = [{"title": title, "bullets": [], "notes": ""}]
+
     try:
         ensure_dep("python-pptx", "pptx")
         from pptx import Presentation
@@ -153,7 +167,8 @@ def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
         top_bar.fill.fore_color.rgb = C["accent"]
         top_bar.line.fill.background()
 
-        _add_text(sl, 1.5, 2.0, 10.3, 1.5, title,
+        safe_title = str(title).strip() if title else "Presentation"
+        _add_text(sl, 1.5, 2.0, 10.3, 1.5, safe_title,
                   font_name="Georgia", font_size=Pt(44),
                   font_color=C["text_light"], bold=True,
                   alignment=PP_ALIGN.LEFT)
@@ -174,7 +189,12 @@ def create_pptx(path: str, title: str, slides: List[Dict[str, Any]],
 
         for idx, sd in enumerate(slides):
             slide_title = sd.get("title", f"Slide {idx + 2}")
+            if not slide_title:
+                slide_title = f"Slide {idx + 2}"
+            slide_title = str(slide_title).strip()  # Ensure it's always a string
             bullets     = sd.get("bullets", [])
+            if not isinstance(bullets, list):
+                bullets = []
             notes       = sd.get("notes", "")
             layout      = layout_cycle[idx % len(layout_cycle)]
             sl          = _blank()

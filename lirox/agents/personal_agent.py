@@ -336,19 +336,24 @@ IMPORTANT:
             yield {"type": "error", "message": f"❌ LLM provider error: {raw[:200]}"}
             yield from self._chat(query, context, sp)
             return
+        d = None
         try:
             d = _extract_json(raw)
+            if not d or not isinstance(d, dict):
+                raise ValueError("JSON extraction returned None or non-dict")
         except ValueError:
-            yield {"type": "error", "message": "❌ Could not parse document plan from LLM."}
-            # Fallback: try to infer and create a basic document
+            _logger.warning("JSON extraction failed, attempting fallback")
             d = self._filegen_fallback(query)
             if not d:
+                yield {"type": "error", "message": "❌ Could not parse document plan from LLM."}
                 yield from self._chat(query, context, sp)
                 return
 
         file_type = (d.get("file_type") or "").lower().strip()
-        path = d.get("path", "")
-        title = d.get("title", "Untitled Document")
+        path = (d.get("path") or "").strip()
+        title = (d.get("title") or "").strip()
+        if not title:
+            title = f"Generated {file_type.upper() if file_type else 'Document'}"
 
         # ── STEP 3: Resolve file type if missing ──
         if not file_type:
@@ -383,7 +388,18 @@ IMPORTANT:
 
         # Ensure correct extension
         if not path.endswith(ext):
-            path = path.rsplit('.', 1)[0] + ext if '.' in os.path.basename(path) else path + ext
+            base = path.rsplit('.', 1)[0] if '.' in os.path.basename(path) else path
+            path = base + ext
+
+        # Validate path before proceeding
+        try:
+            path = _resolve_path(path, query)
+        except (PermissionError, ValueError) as pe:
+            yield {"type": "error", "message": f"❌ Path validation failed: {pe}"}
+            return
+
+        # Ensure parent directory exists
+        os.makedirs(os.path.dirname(path), exist_ok=True)
 
         # ── STEP 4b: Content quality check — enrich thin content via ContentGenerator ──
         quality_check = ContentQualityVerifier.check(file_type, d)
@@ -403,41 +419,49 @@ IMPORTANT:
         yield {"type": "tool_call", "message": f"📄 Creating {file_type.upper()}: {os.path.basename(path)}"}
 
         # ── STEP 5: EXECUTE — Actually create the file ──
+        receipt = None
         try:
             if file_type == "pdf":
                 sections = d.get("sections", [])
-                if not sections:
-                    sections = [{"heading": title, "body": d.get("body", query), "bullets": []}]
+                if not isinstance(sections, list) or not sections:
+                    sections = [{"heading": title, "body": d.get("body", query[:500]), "bullets": []}]
                 receipt = create_pdf(path, title, sections,
                                      query=query, user_name=user_name)
 
             elif file_type == "docx":
                 sections = d.get("sections", [])
-                if not sections:
-                    sections = [{"heading": title, "body": d.get("body", query), "bullets": []}]
+                if not isinstance(sections, list) or not sections:
+                    sections = [{"heading": title, "body": d.get("body", query[:500]), "bullets": []}]
                 receipt = create_docx(path, title, sections,
                                       query=query, user_name=user_name)
 
             elif file_type == "xlsx":
                 sheets = d.get("sheets", [])
-                if not sheets:
-                    sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [["No data provided"]]}]
+                if not isinstance(sheets, list) or not sheets:
+                    sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [[query[:100]]]}]
                 receipt = create_xlsx(path, title, sheets,
                                       query=query, user_name=user_name)
 
             elif file_type == "pptx":
                 slides = d.get("slides", [])
-                if not slides:
-                    slides = [{"title": title, "bullets": ["Content pending"], "notes": ""}]
+                if not isinstance(slides, list) or not slides:
+                    slides = [{"title": title, "bullets": [query[:80]], "notes": ""}]
                 receipt = create_pptx(path, title, slides,
                                       query=query, user_name=user_name)
 
             else:
-                receipt = FileReceipt(tool="file_generator", error=f"Unknown file type: {file_type}")
+                receipt = FileReceipt(tool="file_generator", operation="create",
+                                      error=f"Unknown file type: {file_type}")
 
         except Exception as e:
-            receipt = FileReceipt(tool="file_generator", operation="error",
-                                  error=f"File creation error: {e}")
+            _logger.exception("File creation exception: %s", e)
+            receipt = FileReceipt(tool="file_generator", operation="create",
+                                  path=path, error=f"File creation error: {e}")
+
+        # Ensure receipt is never None
+        if receipt is None:
+            receipt = FileReceipt(tool="file_generator", operation="create", path=path,
+                                  error="File creation returned None receipt")
 
         # ── STEP 6: VERIFY — Check the file actually exists and has real content ──
         if receipt.ok and receipt.verified:
@@ -464,34 +488,52 @@ IMPORTANT:
 
     def _count_content(self, d: dict, file_type: str) -> str:
         """Human-readable content summary."""
+        if not d or not isinstance(d, dict):
+            return "unknown amount"
+
         if file_type == "pptx":
-            n = len(d.get("slides", []))
+            slides = d.get("slides", [])
+            if not isinstance(slides, list):
+                return "unknown amount"
+            n = len(slides)
             return f"{n} slide{'s' if n != 1 else ''}"
         elif file_type == "xlsx":
             sheets = d.get("sheets", [])
-            total_rows = sum(len(s.get("rows", [])) for s in sheets)
+            if not isinstance(sheets, list):
+                return "unknown amount"
+            total_rows = sum(len(s.get("rows", []) if isinstance(s, dict) else []) for s in sheets)
             return f"{len(sheets)} sheet{'s' if len(sheets) != 1 else ''}, {total_rows} rows"
         else:
-            n = len(d.get("sections", []))
+            sections = d.get("sections", [])
+            if not isinstance(sections, list):
+                return "unknown amount"
+            n = len(sections)
             return f"{n} section{'s' if n != 1 else ''}"
 
     def _filegen_fallback(self, query: str) -> dict:
-        """Last-resort: build a minimal plan from the query itself."""
+        """Last-resort: build a complete, valid plan from the query itself.
+
+        CRITICAL: This dict MUST have all keys that creators expect.
+        """
         q = query.lower()
         file_type = "pdf"
-        if any(w in q for w in ["ppt", "powerpoint", "presentation", "slide"]):
+        if any(w in q for w in ["ppt", "powerpoint", "presentation", "slide", "deck"]):
             file_type = "pptx"
-        elif any(w in q for w in ["excel", "xlsx", "spreadsheet"]):
+        elif any(w in q for w in ["excel", "xlsx", "spreadsheet", "xls"]):
             file_type = "xlsx"
-        elif any(w in q for w in ["word", "docx"]):
+        elif any(w in q for w in ["word", "docx", "doc"]):
             file_type = "docx"
+
+        title = query[:80] if query else "Untitled Document"
 
         return {
             "file_type": file_type,
-            "title": query[:80],
-            "sections": [{"heading": "Content", "body": query, "bullets": []}],
-            "slides": [{"title": query[:60], "bullets": ["Content based on: " + query], "notes": ""}],
-            "sheets": [{"name": "Sheet1", "headers": ["Info"], "rows": [[query]]}],
+            "title": title,
+            "path": "",  # Will be resolved by caller
+            # Ensure all three keys exist so creators don't fail
+            "sections": [{"heading": "Content", "body": query[:500], "bullets": []}],
+            "slides": [{"title": title, "bullets": ["Content based on: " + query[:60]], "notes": ""}],
+            "sheets": [{"name": "Sheet1", "headers": ["Info"], "rows": [[query[:100]]]}],
         }
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

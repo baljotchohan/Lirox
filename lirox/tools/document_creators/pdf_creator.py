@@ -40,6 +40,20 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
     from pathlib import Path as _Path
     out_path = _Path(path).resolve()
     r = FileReceipt(tool="pdf_creator", operation="create_pdf", path=str(out_path))
+
+    # ── PRE-FLIGHT VALIDATION (v1.1 fix) ──
+    if not path:
+        r.error = "Path cannot be empty"
+        return r
+    if not title:
+        title = "Untitled Document"
+    if user_name is None:
+        user_name = ""
+    if sections is None or not isinstance(sections, list):
+        sections = [{"heading": title, "body": "", "bullets": []}]
+    if not sections:
+        sections = [{"heading": title, "body": "", "bullets": []}]
+
     try:
         ensure_dep("reportlab")
         from reportlab.lib.pagesizes import A4

@@ -53,7 +53,7 @@ class FileReceipt(ExecutionReceipt):
     bytes_written: int = 0
     bytes_read: int = 0
     lines: int = 0
-    operation: str = ""  # write / read / delete / append / patch / list / tree / mkdir
+    operation: str = "unknown"  # write / read / delete / append / patch / list / tree / mkdir
 
 
 @dataclass

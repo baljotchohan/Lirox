@@ -39,6 +39,20 @@ def create_xlsx(path: str, title: str, sheets: List[Dict[str, Any]],
     from pathlib import Path as _Path
     out_path = _Path(path).resolve()
     r = FileReceipt(tool="xlsx_creator", operation="create_xlsx", path=str(out_path))
+
+    # ── PRE-FLIGHT VALIDATION (v1.1 fix) ──
+    if not path:
+        r.error = "Path cannot be empty"
+        return r
+    if not title:
+        title = "Untitled Spreadsheet"
+    if user_name is None:
+        user_name = ""
+    if sheets is None or not isinstance(sheets, list):
+        sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": []}]
+    if not sheets:
+        sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": []}]
+
     try:
         ensure_dep("openpyxl")
         from openpyxl import Workbook
@@ -82,7 +96,8 @@ def create_xlsx(path: str, title: str, sheets: List[Dict[str, Any]],
 
             for ri, row_data in enumerate(rows, 2):
                 for ci, val in enumerate(row_data, 1):
-                    cell = ws.cell(row=ri, column=ci, value=val)
+                    safe_val = str(val) if val is not None else ""
+                    cell = ws.cell(row=ri, column=ci, value=safe_val)
                     cell.border = thin_border
                     if ri % 2 == 0:
                         cell.fill = alt_fill

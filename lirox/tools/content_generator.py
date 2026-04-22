@@ -296,17 +296,33 @@ Output ONLY the JSON array, no other text."""
 
         Returns a dict with the appropriate content key populated:
         ``slides`` for pptx, ``sections`` for pdf/docx, ``sheets`` for xlsx.
+        Always includes all three keys so callers can safely access any.
         """
         combined_context = (query + " " + context).strip()
 
-        if file_type == "pptx":
-            slides = self.generate_slides(topic, num_slides=8, context=combined_context)
-            return {"slides": slides}
-        elif file_type in ("pdf", "docx"):
-            sections = self.generate_sections(topic, num_sections=5, context=combined_context)
-            return {"sections": sections}
-        elif file_type == "xlsx":
-            sheets = self.generate_sheets(topic, num_sheets=2, context=combined_context)
-            return {"sheets": sheets}
-        return {}
+        # Ensure result dict always has all keys (v1.1 fix)
+        result: Dict[str, Any] = {
+            "file_type": file_type,
+            "title": topic or "Untitled",
+            "sections": [],
+            "slides": [],
+            "sheets": [],
+        }
+
+        try:
+            if file_type == "pptx":
+                result["slides"] = self.generate_slides(topic, num_slides=8, context=combined_context) or []
+            elif file_type in ("pdf", "docx"):
+                result["sections"] = self.generate_sections(topic, num_sections=5, context=combined_context) or []
+            elif file_type == "xlsx":
+                result["sheets"] = self.generate_sheets(topic, num_sheets=2, context=combined_context) or []
+        except Exception as e:
+            _logger.warning("ContentGenerator.generate failed: %s", e)
+
+        # ENSURE all three keys exist before returning (v1.1 critical fix)
+        result.setdefault("sections", [])
+        result.setdefault("slides", [])
+        result.setdefault("sheets", [])
+
+        return result
 
