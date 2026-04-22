@@ -21,7 +21,8 @@ _logger = logging.getLogger("lirox.document_creators.docx")
 
 
 def create_docx(path: str, title: str, sections: List[Dict[str, Any]],
-                query: str = "", user_name: str = "", user_expertise: str = "intermediate") -> FileReceipt:
+                query: str = "", user_name: str = "", user_expertise: str = "intermediate",
+                design_plan=None) -> FileReceipt:
     """Create a Word document with headings, paragraphs, bullets, and tables.
 
     Parameters
@@ -66,8 +67,14 @@ def create_docx(path: str, title: str, sections: List[Dict[str, Any]],
             r.error = f"Output directory is not writable: {out_dir}"
             return r
 
-        palette_name = pick_palette(query or title, title, user_expertise=user_expertise)
-        pal = PALETTES[palette_name]
+        # Use design_plan palette if provided, otherwise fallback to old system
+        if design_plan and hasattr(design_plan, 'palette'):
+            palette_name = design_plan.palette
+            _logger.info("Using design plan palette: %s", palette_name)
+        else:
+            palette_name = pick_palette(query or title, title, user_expertise=user_expertise)
+            _logger.info("Using fallback palette: %s", palette_name)
+        pal = PALETTES.get(palette_name, PALETTES.get("default", {}))
         primary_rgb = RGBColor(
             int(pal["primary"][:2], 16),
             int(pal["primary"][2:4], 16),

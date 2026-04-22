@@ -401,21 +401,25 @@ class PersonalAgent(BaseAgent):
                 receipt = create_pdf(
                     path, title, content["sections"],
                     query=query, user_name=user_name, user_expertise=user_expertise,
+                    design_plan=design,
                 )
             elif file_type == "docx":
                 receipt = create_docx(
                     path, title, content["sections"],
                     query=query, user_name=user_name, user_expertise=user_expertise,
+                    design_plan=design,
                 )
             elif file_type == "pptx":
                 receipt = create_pptx(
                     path, title, content["slides"],
                     query=query, user_name=user_name, user_expertise=user_expertise,
+                    design_plan=design,
                 )
             elif file_type == "xlsx":
                 receipt = create_xlsx(
                     path, title, content["sheets"],
                     query=query, user_name=user_name, user_expertise=user_expertise,
+                    design_plan=design,
                 )
             else:
                 receipt = FileReceipt(
