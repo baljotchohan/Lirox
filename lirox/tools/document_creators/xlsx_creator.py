@@ -69,6 +69,8 @@ def create_xlsx(path: str, title: str, sheets: List[Dict[str, Any]],
 
         wb = Workbook()
         wb.remove(wb.active)
+        if hasattr(wb, "properties"):
+            wb.properties.creator = user_name or "Generated Document"
 
         header_font = Font(bold=True, color="FFFFFF", size=11)
         header_fill = PatternFill(

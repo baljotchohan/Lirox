@@ -276,13 +276,14 @@ class PersonalAgent(BaseAgent):
         from lirox.verify import FileVerificationEngine, ContentQualityVerifier
         from lirox.tools.content_generator import ContentGenerator
         from lirox.config import WORKSPACE_DIR, OUTPUTS_DIR
+        from lirox.utils.input_sanitizer import sanitize_user_name
+        from datetime import datetime
 
         yield {"type": "agent_progress", "message": "📄 Planning document generation…"}
 
-        user_name = self.profile_data.get("user_name", "")
+        user_name = sanitize_user_name(self.profile_data.get("user_name", ""))
 
         # ── STEP 1: Determine file type, path, and content via LLM ──
-
         plan_prompt = f"""You are a document generation planner. The user wants a file created.
 
 USER REQUEST: {query}
@@ -328,14 +329,13 @@ IMPORTANT:
         raw = generate_response(plan_prompt, provider="auto",
                                 system_prompt="Document planner. Output ONLY the JSON object. No explanation.")
 
-        # ── STEP 2: Parse the plan ──
-        # Check for provider error before attempting JSON extraction to surface
-        # a meaningful error message instead of a cryptic parse failure.
+        # ── STEP 2: Parse the plan with triple-layer fallback ──
         from lirox.utils.llm import is_error_response
         if is_error_response(raw):
             yield {"type": "error", "message": f"❌ LLM provider error: {raw[:200]}"}
             yield from self._chat(query, context, sp)
             return
+        
         d = None
         try:
             d = _extract_json(raw)
@@ -349,24 +349,28 @@ IMPORTANT:
                 yield from self._chat(query, context, sp)
                 return
 
+        # ── STEP 3: Validate and normalize plan dict ──
         file_type = (d.get("file_type") or "").lower().strip()
         path = (d.get("path") or "").strip()
         title = (d.get("title") or "").strip()
-        if not title:
-            title = f"Generated {file_type.upper() if file_type else 'Document'}"
 
-        # ── STEP 3: Resolve file type if missing ──
         if not file_type:
             q = query.lower()
-            if any(w in q for w in ["pdf"]):                                    file_type = "pdf"
-            elif any(w in q for w in ["word", "docx", "doc", "document"]):      file_type = "docx"
-            elif any(w in q for w in ["excel", "xlsx", "spreadsheet", "xls"]):  file_type = "xlsx"
+            if any(w in q for w in ["pdf"]):
+                file_type = "pdf"
+            elif any(w in q for w in ["word", "docx", "doc", "document"]):
+                file_type = "docx"
+            elif any(w in q for w in ["excel", "xlsx", "spreadsheet", "xls"]):
+                file_type = "xlsx"
             elif any(w in q for w in ["ppt", "pptx", "powerpoint", "presentation", "slide", "deck"]):
                 file_type = "pptx"
             else:
                 file_type = "pdf"
 
-        # ── STEP 4: Resolve output path ──
+        if not title:
+            title = f"Generated {file_type.upper()}"
+
+        # ── STEP 4: Resolve output path with safety checks ──
         ext_map = {"pdf": ".pdf", "docx": ".docx", "xlsx": ".xlsx", "pptx": ".pptx"}
         ext = ext_map.get(file_type, ".pdf")
 
@@ -385,13 +389,11 @@ IMPORTANT:
             if not safe_name:
                 safe_name = f"document_{int(time.time())}"
             path = os.path.join(base_dir, safe_name + ext)
-
-        # Ensure correct extension
+        
         if not path.endswith(ext):
             base = path.rsplit('.', 1)[0] if '.' in os.path.basename(path) else path
             path = base + ext
 
-        # Validate path before proceeding
         try:
             path = _resolve_path(path, query)
         except (PermissionError, ValueError) as pe:
@@ -401,7 +403,32 @@ IMPORTANT:
         # Ensure parent directory exists
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        # ── STEP 4b: Content quality check — enrich thin content via ContentGenerator ──
+        # ── STEP 4b: Ensure sections/slides/sheets are proper lists ──
+        if file_type in ("pdf", "docx"):
+            sections = d.get("sections", [])
+            if not isinstance(sections, list):
+                sections = []
+            if not sections:
+                sections = [{"heading": "Content", "body": query[:500], "bullets": []}]
+            d["sections"] = sections
+
+        elif file_type == "xlsx":
+            sheets = d.get("sheets", [])
+            if not isinstance(sheets, list):
+                sheets = []
+            if not sheets:
+                sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [[query[:100]]]}]
+            d["sheets"] = sheets
+
+        elif file_type == "pptx":
+            slides = d.get("slides", [])
+            if not isinstance(slides, list):
+                slides = []
+            if not slides:
+                slides = [{"title": title, "bullets": [query[:80]], "notes": ""}]
+            d["slides"] = slides
+
+        # ── STEP 4c: Content quality check — enrich thin content via ContentGenerator ──
         quality_check = ContentQualityVerifier.check(file_type, d)
         if quality_check.get("issues"):
             yield {"type": "agent_progress", "message": "📝 Enriching document content…"}
@@ -409,12 +436,28 @@ IMPORTANT:
                 gen = ContentGenerator()
                 topic = title or query[:80]
                 enriched = gen.generate(file_type, topic, query=query)
-                # Merge enriched content, preferring generated if original is thin
                 for key in ("slides", "sections", "sheets"):
                     if enriched.get(key) and (not d.get(key) or quality_check.get("issues")):
                         d[key] = enriched[key]
             except Exception as _ce:
                 _logger.warning("ContentGenerator failed: %s", _ce)
+
+        # ── STEP 4d: Add user context to content ──
+        context_header = ""
+        if user_name and user_name.lower() not in ("lirox", "lirox ai", "", "unknown"):
+            context_header = (
+                f"Document prepared for {user_name}\n"
+                f"Topic: {query}\n"
+                f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}\n\n"
+            )
+
+        if file_type in ("pdf", "docx") and context_header:
+            if d.get("sections") and len(d["sections"]) > 0:
+                first_section = d["sections"][0]
+                if first_section.get("body"):
+                    first_section["body"] = context_header + first_section["body"]
+                else:
+                    first_section["body"] = context_header
 
         yield {"type": "tool_call", "message": f"📄 Creating {file_type.upper()}: {os.path.basename(path)}"}
 
@@ -424,14 +467,14 @@ IMPORTANT:
             if file_type == "pdf":
                 sections = d.get("sections", [])
                 if not isinstance(sections, list) or not sections:
-                    sections = [{"heading": title, "body": d.get("body", query[:500]), "bullets": []}]
+                    sections = [{"heading": title, "body": query[:500], "bullets": []}]
                 receipt = create_pdf(path, title, sections,
                                      query=query, user_name=user_name)
 
             elif file_type == "docx":
                 sections = d.get("sections", [])
                 if not isinstance(sections, list) or not sections:
-                    sections = [{"heading": title, "body": d.get("body", query[:500]), "bullets": []}]
+                    sections = [{"heading": title, "body": query[:500], "bullets": []}]
                 receipt = create_docx(path, title, sections,
                                       query=query, user_name=user_name)
 
@@ -458,7 +501,6 @@ IMPORTANT:
             receipt = FileReceipt(tool="file_generator", operation="create",
                                   path=path, error=f"File creation error: {e}")
 
-        # Ensure receipt is never None
         if receipt is None:
             receipt = FileReceipt(tool="file_generator", operation="create", path=path,
                                   error="File creation returned None receipt")
@@ -468,10 +510,12 @@ IMPORTANT:
             fv = FileVerificationEngine.verify(path)
             if fv["passed"]:
                 yield {"type": "tool_result", "message": f"✅ Created {file_type.upper()}: {path} ({receipt.bytes_written:,} bytes)"}
-                answer = (f"Done! Created **{os.path.basename(path)}** "
-                          f"({receipt.bytes_written:,} bytes) at:\n\n"
-                          f"`{path}`\n\n"
-                          f"The {file_type.upper()} has {self._count_content(d, file_type)} of content.")
+                creator_credit = f"Created for {user_name}" if user_name else "Document created"
+                answer = (f"✅ {creator_credit}: **{os.path.basename(path)}**\n\n"
+                          f"📁 Path: `{path}`\n"
+                          f"📊 Size: {receipt.bytes_written:,} bytes\n"
+                          f"📄 Content: {self._count_content(d, file_type)}\n\n"
+                          f"Your {file_type.upper()} is ready to download and share.")
             else:
                 issues_str = "; ".join(fv["issues"])
                 yield {"type": "tool_result", "message": f"⚠️ File created but verification flagged issues: {issues_str}"}
@@ -479,8 +523,9 @@ IMPORTANT:
                           f"({receipt.bytes_written:,} bytes). "
                           f"Note: {issues_str}")
         else:
-            yield {"type": "tool_result", "message": f"❌ {receipt.error}"}
-            answer = f"Failed to create the file: {receipt.error}"
+            error_msg = receipt.error or "Unknown file creation error"
+            yield {"type": "tool_result", "message": f"❌ {error_msg}"}
+            answer = f"Failed to create the file: {error_msg}"
 
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
@@ -490,7 +535,7 @@ IMPORTANT:
         """Human-readable content summary."""
         if not d or not isinstance(d, dict):
             return "unknown amount"
-
+        
         if file_type == "pptx":
             slides = d.get("slides", [])
             if not isinstance(slides, list):
@@ -511,10 +556,7 @@ IMPORTANT:
             return f"{n} section{'s' if n != 1 else ''}"
 
     def _filegen_fallback(self, query: str) -> dict:
-        """Last-resort: build a complete, valid plan from the query itself.
-
-        CRITICAL: This dict MUST have all keys that creators expect.
-        """
+        """Last-resort: build a complete, valid plan from the query itself."""
         q = query.lower()
         file_type = "pdf"
         if any(w in q for w in ["ppt", "powerpoint", "presentation", "slide", "deck"]):
@@ -525,16 +567,17 @@ IMPORTANT:
             file_type = "docx"
 
         title = query[:80] if query else "Untitled Document"
-
-        return {
+        
+        fallback = {
             "file_type": file_type,
             "title": title,
-            "path": "",  # Will be resolved by caller
-            # Ensure all three keys exist so creators don't fail
+            "path": "",  
             "sections": [{"heading": "Content", "body": query[:500], "bullets": []}],
             "slides": [{"title": title, "bullets": ["Content based on: " + query[:60]], "notes": ""}],
             "sheets": [{"name": "Sheet1", "headers": ["Info"], "rows": [[query[:100]]]}],
         }
+        
+        return fallback
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # FILE OPERATIONS — Read/Write/List existing files

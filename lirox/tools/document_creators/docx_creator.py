@@ -83,12 +83,12 @@ def create_docx(path: str, title: str, sections: List[Dict[str, Any]],
             run.font.color.rgb = primary_rgb
 
         # Cover: author
-        if user_name:
-            p = doc.add_paragraph()
-            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = p.add_run(f"By {user_name}")
-            run.font.size = Pt(12)
-            run.font.italic = True
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        author_text = f"Prepared for: {user_name}" if user_name else "Generated Document"
+        run = p.add_run(author_text)
+        run.font.size = Pt(12)
+        run.font.italic = True
 
         # Cover: date
         from datetime import datetime

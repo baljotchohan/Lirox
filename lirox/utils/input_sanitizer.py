@@ -75,6 +75,25 @@ def sanitize_path(path: str) -> str:
     return path[:4096]
 
 
+def sanitize_user_name(user_name: str) -> str:
+    """Ensure user_name is never 'Lirox' or branded language.
+    
+    This prevents files from claiming to be created BY Lirox
+    when they should be created FOR the user.
+    """
+    if not user_name:
+        return ""
+    
+    name = user_name.strip().lower()
+    
+    # Replace Lirox branding with generic placeholder
+    if name in ("lirox", "lirox ai", "lirox-ai", "lirox compact"):
+        return ""
+    
+    # Return original (unsanitized) user_name
+    return user_name.strip()
+
+
 def is_safe_input(text: str) -> tuple[bool, Optional[str]]:
     """Return (True, None) if *text* is acceptable, or (False, reason) otherwise."""
     if not text:

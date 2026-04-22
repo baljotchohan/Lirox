@@ -83,7 +83,7 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
             leftMargin=0.85 * inch,
             rightMargin=0.85 * inch,
             title=title,
-            author=user_name or "Lirox AI",
+            author=user_name or "Generated Document",
         )
 
         styles = getSampleStyleSheet()
@@ -211,9 +211,9 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
         ))
         story.append(Paragraph(_safe(title), styles["CoverTitle"]))
         story.append(Spacer(1, 8))
-        author_text = user_name or "Lirox AI"
+        author_text = f"Prepared for: {user_name}" if user_name else "Generated Document"
         date_str    = datetime.now().strftime("%B %d, %Y")
-        story.append(Paragraph(f"By {_safe(author_text)}", styles["CoverSubtitle"]))
+        story.append(Paragraph(_safe(author_text), styles["CoverSubtitle"]))
         story.append(Paragraph(date_str, styles["CoverSubtitle"]))
         story.append(Spacer(1, 0.5 * inch))
         story.append(HRFlowable(
