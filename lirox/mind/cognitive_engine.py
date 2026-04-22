@@ -932,17 +932,35 @@ class DeepReasoningEngine:
     def reason(self, query: str, intent: Intent, complexity: Complexity,
                analysis: Dict[str, Any], strategy: Optional[Strategy],
                tool_results: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Perform deep multi-pass reasoning.
+        """Perform deep multi-pass reasoning WITH REAL CONTEXT.
 
         Returns a dict with ``response``, ``passes``, ``corrections``, and
         ``final_confidence``.
+        
+        NOW INCLUDES: Real context integration, learned preferences, user expertise
         """
+        
+        # ── PHASE 1: GET REAL CONTEXT ──
+        try:
+            from lirox.context.real_context import RealContextBrain
+            context_brain = RealContextBrain(user_id=getattr(self.context, 'user_name', 'default'))
+            real_context = context_brain.get_current_context()
+            context_string = real_context.to_context_string()
+        except Exception as e:
+            _logger.warning(f"Could not load real context: {e}")
+            real_context = None
+            context_string = ""
+        
         prompts = PromptComposer.compose(intent, complexity, analysis, strategy, self.context)
 
         # Inject accumulated context
         ctx_string = self.aggregator.build_context_string()
         if ctx_string:
-            prompts["system"] = prompts["system"] + "\n\nCurrent context:\n" + ctx_string
+            prompts["system"] = prompts["system"] + "\n\nConversation context:\n" + ctx_string
+        
+        # ── PHASE 2: INJECT REAL CONTEXT ──
+        if context_string:
+            prompts["system"] = prompts["system"] + "\n\n" + context_string
 
         # Inject tool results
         if tool_results:
@@ -984,6 +1002,22 @@ class DeepReasoningEngine:
             prompts["user"] = prompts["user"] + "\n\n" + correction_note
 
         quality = passes[-1]["verification"].get("quality_score", 1.0)
+        
+        # ── PHASE 3: TRIGGER BACKGROUND LEARNING ──
+        try:
+            from lirox.learning.background_learner import BackgroundLearner
+            if real_context:
+                learner = BackgroundLearner(context_brain)
+                learning_result = learner.process_exchange(
+                    query=query,
+                    response=response_text,
+                    tools_used=getattr(analysis, 'tools', []),
+                    files_created=getattr(analysis, 'files', []),
+                )
+                _logger.info(f"Background learning: {learning_result}")
+        except Exception as e:
+            _logger.warning(f"Background learning failed: {e}")
+        
         return {
             "response": response_text,
             "passes": len(passes),
