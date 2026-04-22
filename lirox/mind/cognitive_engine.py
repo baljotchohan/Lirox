@@ -683,7 +683,10 @@ class VerificationEngine:
         if tool_results and not any(tr.get("summary", "") in response for tr in tool_results):
             results["suggestions"].append("Tool results missing")
         if intent in (Intent.PRESENTATION, Intent.PDF_CREATION, Intent.FILE_WRITE):
-            file_results = [tr for tr in tool_results if "path" in tr or "file" in str(tr)]
+            file_results = []
+            for tr in tool_results:
+                if "path" in tr or "file" in str(tr).lower() or tr.get("tool", "") in ("create_pdf", "create_document", "create_presentation", "create_spreadsheet", "create_xlsx", "create_docx"):
+                    file_results.append(tr)
             if not file_results:
                 results["passed"] = False
                 results["issues"].append("File creation failed")

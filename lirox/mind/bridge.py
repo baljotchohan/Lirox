@@ -55,9 +55,12 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
         raw_name = parameters.get("filename", "presentation.pptx")
-        stem = _Path(raw_name).stem or "presentation"
-        filename = stem + ".pptx"
-        path = str(_Path(workspace) / filename)
+        if not str(raw_name).lower().endswith(".pptx"):
+            raw_name = str(raw_name) + ".pptx"
+        if os.path.isabs(raw_name):
+            path = str(raw_name)
+        else:
+            path = str(_Path(workspace) / raw_name)
         topic = parameters.get("topic", "Untitled")
         user_name = parameters.get("user_name", "")
 
@@ -83,9 +86,12 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
         raw_name = parameters.get("filename", "document.pdf")
-        stem = _Path(raw_name).stem or "document"
-        filename = stem + ".pdf"
-        path = str(_Path(workspace) / filename)
+        if not str(raw_name).lower().endswith(".pdf"):
+            raw_name = str(raw_name) + ".pdf"
+        if os.path.isabs(raw_name):
+            path = str(raw_name)
+        else:
+            path = str(_Path(workspace) / raw_name)
         topic = parameters.get("topic", "Untitled")
         user_name = parameters.get("user_name", "")
 
@@ -105,9 +111,12 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
         raw_name = parameters.get("filename", "document.docx")
-        stem = _Path(raw_name).stem or "document"
-        filename = stem + ".docx"
-        path = str(_Path(workspace) / filename)
+        if not str(raw_name).lower().endswith(".docx"):
+            raw_name = str(raw_name) + ".docx"
+        if os.path.isabs(raw_name):
+            path = str(raw_name)
+        else:
+            path = str(_Path(workspace) / raw_name)
         topic = parameters.get("topic", "Untitled")
         user_name = parameters.get("user_name", "")
 
@@ -126,9 +135,12 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
         raw_name = parameters.get("filename", "spreadsheet.xlsx")
-        stem = _Path(raw_name).stem or "spreadsheet"
-        filename = stem + ".xlsx"
-        path = str(_Path(workspace) / filename)
+        if not str(raw_name).lower().endswith(".xlsx"):
+            raw_name = str(raw_name) + ".xlsx"
+        if os.path.isabs(raw_name):
+            path = str(raw_name)
+        else:
+            path = str(_Path(workspace) / raw_name)
         topic = parameters.get("topic", "Untitled")
         user_name = parameters.get("user_name", "")
 
