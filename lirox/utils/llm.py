@@ -96,6 +96,11 @@ def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"OpenAI Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"OpenAI Error: {e}"
     except Exception as e:
         return f"OpenAI Error: {e}"
 
@@ -140,6 +145,11 @@ def groq_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"Groq Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"Groq Error: {e}"
     except Exception as e:
         return f"Groq Error: {e}"
 
@@ -160,6 +170,11 @@ def openrouter_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"OpenRouter Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"OpenRouter Error: {e}"
     except Exception as e:
         return f"OpenRouter Error: {e}"
 
@@ -179,6 +194,11 @@ def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"DeepSeek Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"DeepSeek Error: {e}"
     except Exception as e:
         return f"DeepSeek Error: {e}"
 
@@ -198,6 +218,11 @@ def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"NVIDIA Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"NVIDIA Error: {e}"
     except Exception as e:
         return f"NVIDIA Error: {e}"
 
@@ -275,6 +300,11 @@ def anthropic_call(prompt: str, system_prompt: Optional[str] = None,
             timeout=_LLM_TIMEOUT)
         res.raise_for_status()
         return res.json()["content"][0]["text"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"Anthropic Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"Anthropic Error: {e}"
     except Exception as e:
         return f"Anthropic Error: {e}"
 
@@ -386,7 +416,7 @@ def is_error_response(text: str) -> bool:
     if any(s in lowered for s in error_indicators):
         return True
     error_prefixes = [
-        "openai error", "gemini error", "groq error", "anthropic error",
+        "openai error", "gemini error", "groq error", "anthropic error", "anthropic sdk error",
         "deepseek error", "nvidia error", "openrouter error", "ollama error",
         "hf bnb error", "unknown provider",
     ]
