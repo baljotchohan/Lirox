@@ -7,7 +7,6 @@ This module covers a mix of behaviors, including:
   4. Independent FileVerificationEngine checks in dedicated verification tests.
 """
 import os
-import tempfile
 
 import pytest
 
