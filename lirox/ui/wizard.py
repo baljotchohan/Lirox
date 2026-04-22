@@ -63,7 +63,7 @@ def run_setup_wizard(profile) -> None:
     console.print()
     user_name = Prompt.ask("  [bold #FFC107]What should I call you?[/]",
                             default=profile.data.get("user_name", "") or "Boss")
-    user_name = user_name.strip() or "Boss"
+    user_name = user_name.strip().replace("\\n", "").rstrip("\r\n") or "Boss"
     profile.update("user_name", user_name)
     console.print(f"\n  [bold green]Nice to meet you, {user_name}. 🤝[/]\n")
 

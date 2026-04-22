@@ -159,7 +159,7 @@ class LivingSoul:
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━"
             )
 
-        return f"""You are {name} — a personal AI advisor, not a generic assistant.
+        prompt_text = f"""You are {name} — a personal AI advisor, not a generic assistant.
 
 CORE IDENTITY
 You are a {p.get("core", "direct, insightful")} advisor.
@@ -201,6 +201,11 @@ PERSONALITY
 • Never pad responses with disclaimers, "Great question!", or "I hope this helps".
 • If you don't know something, say "I don't know" — then suggest how to find out.
 {learnings_section}"""
+
+        # Add date awareness so the LLM doesn't hallucinate old dates
+        from datetime import datetime as _dt
+        current_date = _dt.now().strftime("%B %d, %Y")
+        return prompt_text + f"\n\nCurrent date: {current_date}. Always use up-to-date information."
 
     def display_summary(self) -> str:
         """For /soul command."""

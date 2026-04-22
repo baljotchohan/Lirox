@@ -195,14 +195,22 @@ class IntentClassifier:
         "powerpoint": Intent.PRESENTATION,
         "pdf": Intent.PDF_CREATION,
         "document": Intent.FILE_WRITE,
+        "docx": Intent.FILE_WRITE,
+        "word": Intent.FILE_WRITE,
         "report": Intent.FILE_WRITE,
         "file": Intent.FILE_WRITE,
+        "spreadsheet": Intent.FILE_WRITE,
+        "xlsx": Intent.FILE_WRITE,
+        "excel": Intent.FILE_WRITE,
     }
     
     CODE_KEYWORDS = {
         "code", "function", "class", "script", "program", "algorithm",
         "implement", "develop", "api", "endpoint", "database",
         "python", "javascript", "typescript", "react", "html", "css",
+        "java", "rust", "go", "ruby", "php", "swift", "kotlin",
+        "app", "application", "website", "server", "cli", "tool",
+        "module", "package", "library", "framework",
     }
     
     DEBUG_KEYWORDS = {
@@ -779,9 +787,22 @@ class CognitiveEngine:
                     if self.display: self.display.add_step("🔧", f"{tc.tool_name} FAILED: {e}", "error")
             
             if tool_results:
-                tool_context = "\n\nTool Results:\n"
+                tool_context = "\n\nTool Execution Results:\n"
                 for tr in tool_results:
-                    tool_context += f"- {tr['tool']}: {'SUCCESS - ' + tr['summary'] if tr['success'] else 'FAILED - ' + tr['error']}\n"
+                    if tr["success"]:
+                        result = tr.get("result")
+                        # FileReceipt objects have structured fields
+                        if hasattr(result, 'message'):
+                            tool_context += f"✓ {tr['tool']}: {result.message}\n"
+                            if hasattr(result, 'path'):
+                                tool_context += f"  File: {result.path}\n"
+                            if hasattr(result, 'bytes_written'):
+                                tool_context += f"  Size: {result.bytes_written:,} bytes\n"
+                        else:
+                            tool_context += f"✓ {tr['tool']}: {str(result)[:200]}\n"
+                    else:
+                        tool_context += f"✗ {tr['tool']}: FAILED — {tr.get('error', 'unknown')}\n"
+                tool_context += "\nBased on these results, give the user a clear confirmation of what was done."
                 prompts["user"] += tool_context
                 
             if self.display: self.display.add_step("🤖", "Generating...", "running")

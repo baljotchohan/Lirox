@@ -55,56 +55,124 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
         raw_name = parameters.get("filename", "presentation.pptx")
-        # Use only the final filename component to avoid path traversal
         stem = _Path(raw_name).stem or "presentation"
         filename = stem + ".pptx"
         path = str(_Path(workspace) / filename)
         topic = parameters.get("topic", "Untitled")
+        user_name = parameters.get("user_name", "")
 
-        # We need to generate slides inline because the planner doesn't provide them
-        sys_prompt = "You are a slide generator. Output ONLY raw JSON matching: [{'title': '...', 'content': ['...', '...']}] for 8+ slides."
-        slides_json = generate_response(f"Topic: {topic}. Generate 8 slides.", system_prompt=sys_prompt)
-        import json
-        try:
-            # very naive extraction
-            import re
-            m = re.search(r'\[\s*\{.*\}\s*\]', slides_json, re.DOTALL)
-            if m: slides = json.loads(m.group(0))
-            else: slides = json.loads(slides_json)
-        except:
-            # fallback
-            slides = [{"title": topic, "content": ["Slide 1 content", "More content"]}]
+        # Use ContentGenerator for rich, structured content
+        from lirox.tools.content_generator import ContentGenerator
+        gen = ContentGenerator()
+        content_data = gen.generate("pptx", topic, query=topic)
+        slides = content_data.get("slides", [])
 
-        return file_generator.create_pptx(path, topic, slides)
-        
+        # Fallback if generation failed
+        if not slides:
+            slides = [
+                {"title": f"Introduction to {topic}", "bullets": [f"Overview of {topic}"], "notes": ""},
+                {"title": "Key Concepts", "bullets": ["Concept 1", "Concept 2", "Concept 3"], "notes": ""},
+                {"title": "Conclusion", "bullets": [f"Summary of {topic}"], "notes": ""},
+            ]
+
+        return file_generator.create_pptx(path, topic, slides, query=topic, user_name=user_name)
+
     elif tool_name == "create_pdf":
         import os
         from pathlib import Path as _Path
         from lirox.config import WORKSPACE_DIR
         workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
         raw_name = parameters.get("filename", "document.pdf")
-        # Use only the final filename component to avoid path traversal
         stem = _Path(raw_name).stem or "document"
         filename = stem + ".pdf"
         path = str(_Path(workspace) / filename)
         topic = parameters.get("topic", "Untitled")
-        # Likewise, inline generation of paragraph blocks
-        sys_prompt = "You are a PDF content generator. Output ONLY raw JSON matching: [{'title': '...', 'blocks': [{'type': 'paragraph', 'text': '...'}]}]"
-        pdf_json = generate_response(f"Topic: {topic}. Generate 5 sections.", system_prompt=sys_prompt)
-        import json
-        try:
-            import re
-            m = re.search(r'\[\s*\{.*\}\s*\]', pdf_json, re.DOTALL)
-            if m: sections = json.loads(m.group(0))
-            else: sections = json.loads(pdf_json)
-        except:
-            sections = [{"title": topic, "blocks": [{"type": "paragraph", "text": "Content"}]}]
+        user_name = parameters.get("user_name", "")
 
-        return file_generator.create_pdf(path, topic, sections)
-    
+        from lirox.tools.content_generator import ContentGenerator
+        gen = ContentGenerator()
+        content_data = gen.generate("pdf", topic, query=topic)
+        sections = content_data.get("sections", [])
+
+        if not sections:
+            sections = [{"heading": topic, "body": "Content", "bullets": []}]
+
+        return file_generator.create_pdf(path, topic, sections, query=topic, user_name=user_name)
+
+    elif tool_name in ("create_document", "create_docx"):
+        import os
+        from pathlib import Path as _Path
+        from lirox.config import WORKSPACE_DIR
+        workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
+        raw_name = parameters.get("filename", "document.docx")
+        stem = _Path(raw_name).stem or "document"
+        filename = stem + ".docx"
+        path = str(_Path(workspace) / filename)
+        topic = parameters.get("topic", "Untitled")
+        user_name = parameters.get("user_name", "")
+
+        from lirox.tools.content_generator import ContentGenerator
+        gen = ContentGenerator()
+        content_data = gen.generate("docx", topic, query=topic)
+        sections = content_data.get("sections", [])
+        if not sections:
+            sections = [{"heading": topic, "body": "Content", "bullets": []}]
+
+        return file_generator.create_docx(path, topic, sections, query=topic, user_name=user_name)
+
+    elif tool_name in ("create_spreadsheet", "create_xlsx"):
+        import os
+        from pathlib import Path as _Path
+        from lirox.config import WORKSPACE_DIR
+        workspace = os.getenv("LIROX_WORKSPACE", WORKSPACE_DIR)
+        raw_name = parameters.get("filename", "spreadsheet.xlsx")
+        stem = _Path(raw_name).stem or "spreadsheet"
+        filename = stem + ".xlsx"
+        path = str(_Path(workspace) / filename)
+        topic = parameters.get("topic", "Untitled")
+        user_name = parameters.get("user_name", "")
+
+        from lirox.tools.content_generator import ContentGenerator
+        gen = ContentGenerator()
+        content_data = gen.generate("xlsx", topic, query=topic)
+        sheets = content_data.get("sheets", [])
+        if not sheets:
+            sheets = [{"name": "Sheet1", "headers": ["A", "B"], "rows": [["1", "2"]]}]
+
+        return file_generator.create_xlsx(path, topic, sheets, query=topic, user_name=user_name)
+
+    elif tool_name == "execute_code":
+        from lirox.tools.code_executor import CodeExecutor
+        executor = CodeExecutor()
+        code = parameters.get("code", "")
+        language = parameters.get("language", "python")
+        timeout = parameters.get("timeout", 15)
+        if language == "python":
+            return executor.execute_python(code, timeout=timeout)
+        else:
+            valid, msg = executor.validate_syntax(code, language)
+            return {"success": valid, "output": msg}
+
+    elif tool_name == "edit_file":
+        path = parameters.get("path", "")
+        changes = parameters.get("changes", [])
+        if not path:
+            raise ValueError("edit_file requires a path")
+        content = file_tools.file_read(path)
+        if isinstance(content, dict) and content.get("error"):
+            raise FileNotFoundError(content["error"])
+        # Apply changes (list of {"old": "...", "new": "..."} dicts)
+        text = content if isinstance(content, str) else str(content)
+        for change in changes:
+            old = change.get("old", "")
+            new = change.get("new", "")
+            if old and old in text:
+                text = text.replace(old, new, 1)
+        return file_tools.file_write(path, text)
+
     elif tool_name == "run_command":
         # System command execution
         return "Command blocked in cognitive abstraction."
-        
+
     else:
         raise ValueError(f"Unsupported tool: {tool_name}")

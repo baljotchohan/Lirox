@@ -53,7 +53,7 @@ def show_welcome():
     from lirox.agent.profile import UserProfile
     p = UserProfile()
     if p.is_setup():
-        user  = p.data.get("user_name", "")
+        user  = p.data.get("user_name", "").strip().replace("\\n", "").rstrip("\r\n")
         agent = p.data.get("agent_name", "Lirox")
         if user:
             console.print(f"  [bold #FFC107]Welcome back, {user}! 👋  {agent} is ready.[/]\n")
@@ -61,7 +61,7 @@ def show_welcome():
 
 def show_status_card(profile_data: dict, providers: list):
     agent = profile_data.get("agent_name", "Lirox")
-    user  = profile_data.get("user_name", "")
+    user  = profile_data.get("user_name", "").strip().replace("\\n", "").rstrip("\r\n")
     prov  = ", ".join(providers[:3]) if providers else "None (run /setup)"
     console.print(f"  [{CLR_DIM}]Agent: {agent}  ·  User: {user or '?'}  ·  Providers: {prov}[/]")
 
