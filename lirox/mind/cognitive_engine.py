@@ -779,12 +779,16 @@ class CognitiveEngine:
             prompts = PromptComposer.compose(intent, complexity, analysis, strategy, self.context)
             
             tool_results = []
+            files_created = []  # FIX-3: track files created by tools
             for tc in tool_plan:
                 if self.display: self.display.add_tool_call(tc.tool_name, tc.purpose)
                 try:
                     result = self.tool_executor(tc.tool_name, tc.parameters)
                     tool_results.append({"tool": tc.tool_name, "success": True, "result": result, "summary": str(result)[:200]})
                     if self.display: self.display.add_tool_result(tc.tool_name, str(result)[:100])
+                    # FIX-3: collect file paths from receipts
+                    if hasattr(result, 'path') and result.path:
+                        files_created.append(str(result.path))
                 except Exception as e:
                     tool_results.append({"tool": tc.tool_name, "success": False, "error": str(e)})
                     if self.display: self.display.add_step("🔧", f"{tc.tool_name} FAILED: {e}", "error")
@@ -826,7 +830,7 @@ class CognitiveEngine:
                     response_text = str(corrected)
             
             self._finalize(start_time)
-            return {"response": response_text, "trace": self.trace, "tools_used": [tr["tool"] for tr in tool_results if tr["success"]], "files_created": []}
+            return {"response": response_text, "trace": self.trace, "tools_used": [tr["tool"] for tr in tool_results if tr["success"]], "files_created": files_created}
             
         except Exception as e:
             self._finalize(start_time)

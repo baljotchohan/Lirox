@@ -53,15 +53,22 @@ def run_health_checks(strict: bool = False) -> HealthReport:
 
 
 def _check_config(strict: bool) -> HealthCheck:
-    cfg = validate_config(strict=strict)
-    ok = cfg.is_valid
-    msg = "Configuration valid" if ok else "Configuration issues found"
-    return HealthCheck(
-        name="config",
-        ok=ok,
-        message=msg,
-        details={"errors": cfg.errors, "warnings": cfg.warnings, "info": cfg.info},
-    )
+    try:
+        cfg = validate_config(strict=strict)
+        ok = cfg.is_valid
+        msg = "Configuration valid" if ok else "Configuration issues found"
+        return HealthCheck(
+            name="config",
+            ok=ok,
+            message=msg,
+            details={"errors": cfg.errors, "warnings": cfg.warnings, "info": cfg.info},
+        )
+    except Exception as exc:
+        return HealthCheck(
+            name="config",
+            ok=False,
+            message=f"Config validation error: {exc}",
+        )
 
 
 def _check_workspace() -> HealthCheck:

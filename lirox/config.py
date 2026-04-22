@@ -6,9 +6,10 @@ from pathlib import Path
 try:
     from dotenv import load_dotenv
 except ImportError:
-    import sys
-    print("\n[!] pip install python-dotenv\n")
-    sys.exit(1)
+    # Graceful fallback: define a no-op stub so the module still loads.
+    # Health checks will surface the missing dependency instead of crashing.
+    def load_dotenv(*a, **kw):
+        pass
 
 APP_VERSION = "1.0.0"
 

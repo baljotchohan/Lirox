@@ -545,10 +545,22 @@ IMPORTANT:
                 else: op = "list_files"
 
             path = _resolve_path(d.get("path", ""), query)
+            # FIX-1C: If path is still empty, try extracting a filename from the query
+            if not path:
+                import re as _re
+                _fname_match = _re.search(
+                    r'\b([\w\-./\\]+\.(?:html|py|js|ts|css|json|txt|md|csv|yaml|yml|xml|sh|bash|go|rs|java|c|cpp|h|rb|php|sql|log|ini|cfg|toml|env))\b',
+                    query, _re.IGNORECASE,
+                )
+                if _fname_match:
+                    path = _resolve_path(_fname_match.group(1), query)
             content = d.get("content", "")
             yield {"type": "tool_call", "message": f"📁 {op}: {path or '(workspace)'}"}
 
             if op == "read_file":
+                if not path:
+                    yield {"type": "error", "message": "❌ No file path specified. Please include a filename."}
+                    return
                 receipt = file_read_verified(path)
                 if receipt.ok and receipt.verified:
                     file_content = receipt.details.get("content", "")

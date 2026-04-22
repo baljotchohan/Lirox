@@ -46,7 +46,13 @@ class LearningsStore:
         self._dirty = False   # BUG-4 FIX: track unsaved topic changes
         self._bump_count = 0  # BUG-H2 FIX: track bumps for periodic auto-save
         # BUG-H2 FIX: register atexit flush so dirty data is never lost on exit
-        atexit.register(self.flush)
+        # Wrapped in _safe_flush to handle partial module teardown at exit
+        def _safe_flush():
+            try:
+                self.flush()
+            except Exception:
+                pass  # modules may be partially unloaded at shutdown
+        atexit.register(_safe_flush)
 
     def _load(self) -> Dict:
         if self._path.exists():
