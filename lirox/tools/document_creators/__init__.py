@@ -10,7 +10,7 @@ from lirox.tools.document_creators.pdf_creator  import create_pdf
 from lirox.tools.document_creators.pptx_creator import create_pptx
 from lirox.tools.document_creators.docx_creator import create_docx
 from lirox.tools.document_creators.xlsx_creator import create_xlsx
-from lirox.tools.document_creators.design_system import DesignSystem
+from lirox.tools.file_generation.design_engine import DesignEngine
 from lirox.tools.document_creators.base import (
     PALETTES,
     pick_palette,
@@ -23,7 +23,7 @@ __all__ = [
     "create_pptx",
     "create_docx",
     "create_xlsx",
-    "DesignSystem",
+    "DesignEngine",
     "PALETTES",
     "pick_palette",
     "hex_to_rgb",

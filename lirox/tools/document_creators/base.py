@@ -1,15 +1,9 @@
-"""Shared design system and utilities for all document creators.
-
-Contains: color palettes, palette-picker, hex-to-RGB helper, and the
-auto-install dependency helper used by every creator module.
-"""
 from __future__ import annotations
 
 import logging
 import subprocess
 import sys
 from typing import Any, Dict, List
-from lirox.tools.document_creators.design_system import DesignSystem, get_palette_name_from_design
 
 _logger = logging.getLogger("lirox.document_creators")
 
@@ -155,27 +149,31 @@ _PALETTE_KEYWORDS: Dict[str, List[str]] = {
 
 
 def pick_palette(query: str, title: str = "", user_expertise: str = "intermediate") -> str:
+    """Pick a colour palette using the DesignEngine.
+
+    The new engine performs multi-signal topic analysis and always returns
+    a palette name that exists in ``PALETTES``.  If anything goes wrong
+    we fall back to the simple keyword matcher, then to ``"default"``.
     """
-    Pick a palette for document using design system.
-    
-    Uses multi-agent design thinking instead of simple keyword matching.
-    """
-    topic = f"{title} {query}".strip()
-    
     try:
-        decision = DesignSystem.decide_design(
-            topic=topic,
-            doc_type="presentation",
-            user_expertise=user_expertise,
-            user_preferences=None
+        from lirox.tools.file_generation.design_engine import DesignEngine
+
+        plan = DesignEngine.plan_document(
+            query=query,
+            title=title or "",
+            file_type=DesignEngine.detect_file_type(query),
         )
-        palette_name = get_palette_name_from_design(decision)
-        _logger.info(f"Design system chose palette: {palette_name} for topic '{topic}'")
-        return palette_name
+        palette_name = plan.palette          # e.g. "technology", "education"
+        if palette_name in PALETTES:
+            _logger.info("DesignEngine chose palette: %s for '%s'", palette_name, query[:60])
+            return palette_name
+
+        # Palette name isn't in PALETTES dict — should not happen, but guard
+        _logger.warning("DesignEngine returned unknown palette '%s', falling back", palette_name)
     except Exception as e:
-        _logger.warning(f"Design system failed: {e}, falling back to simple matching")
-        # Fallback to simple logic if design system fails
-        return _pick_palette_simple(query, title)
+        _logger.warning("DesignEngine failed: %s, falling back to keyword matching", e)
+
+    return _pick_palette_simple(query, title)
 
 
 def _pick_palette_simple(query: str, title: str = "") -> str:
