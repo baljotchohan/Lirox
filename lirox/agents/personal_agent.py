@@ -180,7 +180,16 @@ _FILE_OP_SIGNALS = [
     "list files", "show files", "what files", "find files",
     "on my desktop", "in downloads", "in documents",
     "tree", "structure", "folder", "directory",
+    "open in browser", "launch in browser", "view in browser",
 ]
+
+# Website / HTML project creation patterns
+_WEBSITE_PATTERN = re.compile(
+    r'\b(?:create|make|build|generate|write|design)\b'
+    r'.*\b(?:website|web\s*app|webpage|html\s*file|css\s*file|portfolio|'
+    r'landing\s*page|html\s*page|front\s*end|frontend)\b',
+    re.IGNORECASE,
+)
 
 
 def _classify(query: str) -> str:
@@ -219,7 +228,16 @@ def _classify(query: str) -> str:
         if re.search(r'\b(read|write|create|edit|open|show|cat|save|delete|find)\b', q):
             return "file"
 
-    # 8. Default: conversational chat
+    # 8. "open X.pdf/docx/pptx" — open a document file
+    if re.search(r'\b\w+\.(pdf|docx?|xlsx?|pptx?)\b', q):
+        if re.search(r'\b(open|launch|view|show)\b', q):
+            return "file"
+
+    # 9. Website / HTML project creation
+    if _WEBSITE_PATTERN.search(q):
+        return "file"
+
+    # 10. Default: conversational chat
     return "chat"
 
 
@@ -347,8 +365,13 @@ IMPORTANT:
                 return
 
         file_type = (d.get("file_type") or "").lower().strip()
-        path = d.get("path", "")
-        title = d.get("title", "Untitled Document")
+        # Defensive casts: JSON may return null/non-string for path/title
+        # (e.g. {"path": null} → d.get("path") == None, causing NoneType+str crash)
+        _raw_path = d.get("path")
+        path = _raw_path if isinstance(_raw_path, str) else ""
+        _raw_title = d.get("title")
+        title = _raw_title if isinstance(_raw_title, str) and _raw_title.strip() \
+            else "Untitled Document"
 
         # ── STEP 3: Resolve file type if missing ──
         if not file_type:
@@ -435,9 +458,14 @@ IMPORTANT:
             else:
                 receipt = FileReceipt(tool="file_generator", error=f"Unknown file type: {file_type}")
 
+        except TypeError as e:
+            receipt = FileReceipt(tool="file_generator", operation="error",
+                                  error=(f"Content type error creating {file_type.upper()}: {e} — "
+                                         f"path='{path}', title type={type(title).__name__}"))
         except Exception as e:
             receipt = FileReceipt(tool="file_generator", operation="error",
-                                  error=f"File creation error: {e}")
+                                  error=f"File creation error ({type(e).__name__}): {e} — "
+                                        f"file={file_type}, path='{path}'")
 
         # ── STEP 6: VERIFY — Check the file actually exists and has real content ──
         if receipt.ok and receipt.verified:
@@ -503,7 +531,7 @@ IMPORTANT:
             file_read_verified, file_write_verified, file_list,
             file_delete_verified, file_search, file_patch_verified,
             file_read_lines, create_directory_verified,
-            file_append_verified, list_directory_tree,
+            file_append_verified, list_directory_tree, file_open_verified,
         )
         yield {"type": "agent_progress", "message": "📁 Planning file operation…"}
 
@@ -512,10 +540,11 @@ IMPORTANT:
             f"Task: {query}\n"
             f"Default workspace: {WORKSPACE_DIR}\n\n"
             "Determine the EXACT file operation. For write/create: include COMPLETE content.\n"
-            "Use absolute paths or ~/relative. Reflect user intent (desktop, downloads, etc).\n\n"
+            "Use absolute paths or ~/relative. Reflect user intent (desktop, downloads, etc).\n"
+            "For 'open', 'launch', 'view in browser', 'open in browser': use op='open_file'.\n\n"
             'Output ONLY JSON:\n'
             '{"op":"read_file|write_file|append_file|patch_file|list_files|tree|'
-            'delete_file|search_files|create_dir",'
+            'delete_file|search_files|create_dir|open_file",'
             '"path":"absolute or ~/path",'
             '"content":"complete file content if writing",'
             '"old_text":"text to replace (patch)",'
@@ -534,10 +563,14 @@ IMPORTANT:
         try:
             d = _extract_json(raw)
             op = (d.get("op") or "").lower()
+            # Normalise aliases that the LLM might return
+            if op == "open":
+                op = "open_file"
             if not op:
                 q2 = query.lower()
                 if any(w in q2 for w in ["create","write","make","save"]): op = "write_file"
-                elif any(w in q2 for w in ["read","show","open","cat"]): op = "read_file"
+                elif any(w in q2 for w in ["read","show","cat","contents"]): op = "read_file"
+                elif any(w in q2 for w in ["open","launch","view"]): op = "open_file"
                 elif any(w in q2 for w in ["list","ls","files in"]): op = "list_files"
                 elif any(w in q2 for w in ["tree","structure"]): op = "tree"
                 elif any(w in q2 for w in ["delete","remove"]): op = "delete_file"
@@ -548,7 +581,17 @@ IMPORTANT:
             content = d.get("content", "")
             yield {"type": "tool_call", "message": f"📁 {op}: {path or '(workspace)'}"}
 
-            if op == "read_file":
+            if op == "open_file":
+                receipt = file_open_verified(path)
+                if receipt.ok and receipt.verified:
+                    yield {"type": "tool_result", "message": f"✅ Opened {path}"}
+                    answer = f"Opened **{os.path.basename(path)}** (`{path}`)."
+                    for chunk in _STREAMER.stream_words(answer, delay=0.025):
+                        yield {"type": "streaming", "message": chunk}
+                    yield {"type": "done", "answer": answer}
+                    return
+
+            elif op == "read_file":
                 receipt = file_read_verified(path)
                 if receipt.ok and receipt.verified:
                     file_content = receipt.details.get("content", "")
