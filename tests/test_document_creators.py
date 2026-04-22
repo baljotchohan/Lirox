@@ -1,10 +1,10 @@
 """Tests for real file creation via document_creators.
 
-Each test verifies that:
-  1. The creator function returns ok=True and verified=True.
-  2. The file actually exists on disk.
-  3. The file has a non-zero size that meets the minimum threshold.
-  4. FileVerificationEngine independently confirms the file is valid.
+This module covers a mix of behaviors, including:
+  1. Creator functions returning successful receipts.
+  2. Files being created on disk, including in nested directories.
+  3. Basic receipt metadata such as bytes written or section counts.
+  4. Independent FileVerificationEngine checks in dedicated verification tests.
 """
 import os
 import tempfile
