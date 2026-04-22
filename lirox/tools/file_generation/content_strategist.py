@@ -29,6 +29,7 @@ class ContentStrategist:
                  file_type: str = "pdf",
                  audience: str = "intermediate",
                  structure_hints: Optional[List[str]] = None,
+                 design_context: str = "",
                  ) -> Dict[str, Any]:
         """
         Generate rich document content for *topic*.
@@ -50,7 +51,7 @@ class ContentStrategist:
 
             # Tell the generator how many sections/slides to produce
             section_count = len(structure_hints) if structure_hints else 7
-            result = gen.generate(file_type, topic, query=query)
+            result = gen.generate(file_type, topic, query=query, context=design_context)
 
             # Check if we got real content
             content_key = {

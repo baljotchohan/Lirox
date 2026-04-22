@@ -318,12 +318,14 @@ class PersonalAgent(BaseAgent):
         yield {"type": "agent_progress", "message": "📝 Generating rich content…"}
 
         try:
+            design_context = f"Design Plan:\n- Theme: {design.theme.value}\n- Audience: {audience_level}\n- Structure: {len(design.structure)} sections on {design.topic}\n- Palette: {design.palette}"
             content = ContentStrategist.generate(
                 topic=design.topic,
                 query=query,
                 file_type=file_type,
                 audience=audience_level,
                 structure_hints=design.structure,
+                design_context=design_context,
             )
         except Exception as e:
             _logger.warning("Content generation failed: %s", e)
