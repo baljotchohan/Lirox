@@ -110,13 +110,15 @@ def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
         client   = genai.Client(api_key=api_key)
         config   = types.GenerateContentConfig(
             system_instruction=system_prompt or DEFAULT_SYSTEM, temperature=0.7)
-        for model_name in ["gemini-2.0-flash", "gemini-1.5-flash"]:
+        last_error = None
+        for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
             try:
                 return client.models.generate_content(
                     model=model_name, contents=prompt, config=config).text
-            except Exception:
+            except Exception as e:
+                last_error = e
                 continue
-        return "Gemini Error: All models failed"
+        return f"Gemini Error: All models failed. Last error: {last_error}"
     except ImportError:
         return "google-genai not installed. Run: pip install google-genai"
     except Exception as e:
@@ -215,6 +217,11 @@ def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
         return res.json().get("response", "Ollama Error: empty response")
     except requests.exceptions.ConnectionError:
         return "Ollama Error: server not running. Start with: ollama serve"
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"Ollama Error: {e.response.json().get('error', str(e))}"
+        except Exception:
+            return f"Ollama Error: {e}"
     except Exception as e:
         return f"Ollama Error: {e}"
     finally:
