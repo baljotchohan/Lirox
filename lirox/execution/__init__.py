@@ -8,6 +8,7 @@ Provides:
 from lirox.execution.generator import CodeGenerator, GeneratedCode
 from lirox.execution.runner import CodeRunner, RunResult
 from lirox.execution.fullstack import FullStackGenerator, StackSpec
+from lirox.execution.vertical_slice import VerticalSliceRequest, VerticalSliceResult, execute_vertical_slice
 
 __all__ = [
     "CodeGenerator",
@@ -16,4 +17,7 @@ __all__ = [
     "RunResult",
     "FullStackGenerator",
     "StackSpec",
+    "VerticalSliceRequest",
+    "VerticalSliceResult",
+    "execute_vertical_slice",
 ]

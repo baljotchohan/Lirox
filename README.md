@@ -169,6 +169,7 @@ Lirox provides an extensive set of slash-commands to manage its operating system
 | `/models` | List all available LLM providers |
 | `/use-model <n>` | Pin a specific provider (groq, gemini, ollama…) |
 | `/test` | Run system diagnostics |
+| `/health` | Run subsystem health checks (config, db, execution, docs, llm) |
 | `/restart` | Restart the Lirox engine |
 | `/update` | Auto-update repository via git pull & reinstall |
 | `/exit` | Gracefully shutdown Lirox |
