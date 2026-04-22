@@ -272,127 +272,85 @@ class PersonalAgent(BaseAgent):
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _filegen(self, query, context, sp=""):
-        from lirox.tools.document_creators import create_pdf, create_docx, create_xlsx, create_pptx
-        from lirox.verify import FileVerificationEngine, ContentQualityVerifier
-        from lirox.tools.content_generator import ContentGenerator
-        from lirox.config import WORKSPACE_DIR, OUTPUTS_DIR
-        from lirox.utils.input_sanitizer import sanitize_user_name
-        from datetime import datetime
+        """
+        COMPLETE FILE GENERATION WITH REAL DESIGN THINKING.
 
-        yield {"type": "agent_progress", "message": "📄 Planning document generation…"}
+        Pipeline:
+        1. DESIGN:   Analyze topic → Create design plan
+        2. CONTENT:  Generate rich content → Structure for audience
+        3. PATH:     Determine safe output path
+        4. CREATE:   Build actual file → Verify on disk
+        5. REPORT:   Show user what was created (only if verified)
+        """
+        from pathlib import Path as _Path
+        from datetime import datetime
+        from lirox.tools.file_generation.design_engine import DesignEngine
+        from lirox.tools.file_generation.content_strategist import ContentStrategist
+        from lirox.tools.document_creators import create_pdf, create_docx, create_xlsx, create_pptx
+        from lirox.config import WORKSPACE_DIR
+        from lirox.utils.input_sanitizer import sanitize_user_name
 
         user_name = sanitize_user_name(self.profile_data.get("user_name", ""))
+        if user_name.lower() in ("lirox", "lirox ai", "unknown", ""):
+            user_name = ""
 
-        # ── STEP 1: Determine file type, path, and content via LLM ──
-        plan_prompt = f"""You are a document generation planner. The user wants a file created.
+        # ──────────────────────────────────────────────────────────────────
+        # PHASE 1 — DESIGN THINKING
+        # ──────────────────────────────────────────────────────────────────
+        yield {"type": "agent_progress", "message": "🎨 Analyzing topic and audience…"}
 
-USER REQUEST: {query}
-DEFAULT WORKSPACE: {WORKSPACE_DIR}
-OUTPUTS DIRECTORY: {OUTPUTS_DIR}
-USER NAME: {user_name or 'User'}
-
-TASK: Determine the file type, output path, and generate COMPLETE, RICH content.
-
-CONTENT QUALITY RULES:
-- Generate AT LEAST 3-4 sentences per section — never just bullet points
-- Include specific facts, statistics, dates, and examples
-- Vary the content structure — mix paragraphs, key stats, comparisons
-- For presentations: create 8+ slides with rich bullet points (4-6 per slide)
-- For PDFs: write full prose paragraphs, not just bullet lists
-- Always include an introduction and conclusion section
-- Add real value — don't restate the topic title as a sentence
-
-Output ONLY this JSON — no other text:
-{{
-  "file_type": "pdf|docx|xlsx|pptx",
-  "path": "/absolute/path/to/filename.ext",
-  "title": "Document Title",
-  "sections": [
-    {{"heading": "Section Title", "body": "Full paragraph text here. Multiple sentences with real content.", "bullets": ["Detailed point 1", "Detailed point 2"]}}
-  ],
-  "sheets": [
-    {{"name": "Sheet1", "headers": ["Column A", "Column B"], "rows": [["data1", "data2"]]}}
-  ],
-  "slides": [
-    {{"title": "Slide Title", "bullets": ["Rich bullet with detail and context", "Another substantial point with examples", "A third point with specific facts", "Fourth point with actionable insight"], "notes": "Speaker notes with additional context"}}
-  ]
-}}
-
-IMPORTANT:
-- Use "sections" for pdf and docx files
-- Use "sheets" for xlsx files
-- Use "slides" for pptx files — generate AT LEAST 6-8 content slides
-- Generate ALL content NOW — complete paragraphs, real data, full bullet points
-- Each bullet should be a full sentence or detailed phrase, NOT just 2-3 words
-- For {query}: generate rich, detailed, informative, expert-level content"""
-
-        raw = generate_response(plan_prompt, provider="auto",
-                                system_prompt="Document planner. Output ONLY the JSON object. No explanation.")
-
-        # ── STEP 2: Parse the plan with triple-layer fallback ──
-        from lirox.utils.llm import is_error_response
-        if is_error_response(raw):
-            yield {"type": "error", "message": f"❌ LLM provider error: {raw[:200]}"}
-            yield from self._chat(query, context, sp)
-            return
-        
-        d = None
+        file_type = DesignEngine.detect_file_type(query)
         try:
-            d = _extract_json(raw)
-            if not d or not isinstance(d, dict):
-                raise ValueError("JSON extraction returned None or non-dict")
-        except ValueError:
-            _logger.warning("JSON extraction failed, attempting fallback")
-            d = self._filegen_fallback(query)
-            if not d:
-                yield {"type": "error", "message": "❌ Could not parse document plan from LLM."}
-                yield from self._chat(query, context, sp)
-                return
+            design = DesignEngine.plan_document(query, query[:80], file_type=file_type)
+            design_log = DesignEngine.log_design_decision(design)
+            yield {"type": "agent_progress", "message": design_log}
+        except Exception as e:
+            _logger.warning("Design planning failed (%s), using defaults", e)
+            design = DesignEngine.plan_document(query, query[:80])
 
-        # ── STEP 3: Validate and normalize plan dict ──
-        file_type = (d.get("file_type") or "").lower().strip()
-        path = (d.get("path") or "").strip()
-        title = (d.get("title") or "").strip()
+        palette_name = design.palette
+        audience_level = design.audience.value
+        user_expertise = self.profile_data.get("expertise_level", audience_level)
 
-        if not file_type:
-            q = query.lower()
-            if any(w in q for w in ["pdf"]):
-                file_type = "pdf"
-            elif any(w in q for w in ["word", "docx", "doc", "document"]):
-                file_type = "docx"
-            elif any(w in q for w in ["excel", "xlsx", "spreadsheet", "xls"]):
-                file_type = "xlsx"
-            elif any(w in q for w in ["ppt", "pptx", "powerpoint", "presentation", "slide", "deck"]):
-                file_type = "pptx"
-            else:
-                file_type = "pdf"
+        # ──────────────────────────────────────────────────────────────────
+        # PHASE 2 — CONTENT GENERATION
+        # ──────────────────────────────────────────────────────────────────
+        yield {"type": "agent_progress", "message": "📝 Generating rich content…"}
 
-        if not title:
-            title = f"Generated {file_type.upper()}"
+        try:
+            content = ContentStrategist.generate(
+                topic=design.topic,
+                query=query,
+                file_type=file_type,
+                audience=audience_level,
+                structure_hints=design.structure,
+            )
+        except Exception as e:
+            _logger.warning("Content generation failed: %s", e)
+            content = {"sections": [], "slides": [], "sheets": []}
 
-        # ── STEP 4: Resolve output path with safety checks ──
+        title = content.get("title", "") or design.topic or query[:80]
+
+        # ──────────────────────────────────────────────────────────────────
+        # PHASE 3 — RESOLVE OUTPUT PATH
+        # ──────────────────────────────────────────────────────────────────
         ext_map = {"pdf": ".pdf", "docx": ".docx", "xlsx": ".xlsx", "pptx": ".pptx"}
         ext = ext_map.get(file_type, ".pdf")
 
-        if not path:
-            q = query.lower()
-            if "desktop" in q:
-                base_dir = os.path.expanduser("~/Desktop")
-            elif "download" in q:
-                base_dir = os.path.expanduser("~/Downloads")
-            elif "document" in q:
-                base_dir = os.path.expanduser("~/Documents")
-            else:
-                base_dir = WORKSPACE_DIR
+        q_lower = query.lower()
+        if "desktop" in q_lower:
+            base_dir = os.path.expanduser("~/Desktop")
+        elif "download" in q_lower:
+            base_dir = os.path.expanduser("~/Downloads")
+        elif "document" in q_lower:
+            base_dir = os.path.expanduser("~/Documents")
+        else:
+            base_dir = WORKSPACE_DIR
 
-            safe_name = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')[:50]
-            if not safe_name:
-                safe_name = f"document_{int(time.time())}"
-            path = os.path.join(base_dir, safe_name + ext)
-        
-        if not path.endswith(ext):
-            base = path.rsplit('.', 1)[0] if '.' in os.path.basename(path) else path
-            path = base + ext
+        safe_name = re.sub(r'[^\w\s-]', '', title).strip().replace(' ', '_')[:50]
+        if not safe_name:
+            safe_name = f"document_{int(time.time())}"
+        path = os.path.join(base_dir, safe_name + ext)
 
         try:
             path = _resolve_path(path, query)
@@ -400,183 +358,160 @@ IMPORTANT:
             yield {"type": "error", "message": f"❌ Path validation failed: {pe}"}
             return
 
-        # Ensure parent directory exists
         os.makedirs(os.path.dirname(path), exist_ok=True)
 
-        # ── STEP 4b: Ensure sections/slides/sheets are proper lists ──
+        # ──────────────────────────────────────────────────────────────────
+        # PHASE 3b — ENSURE DATA STRUCTURES ARE VALID
+        # ──────────────────────────────────────────────────────────────────
         if file_type in ("pdf", "docx"):
-            sections = d.get("sections", [])
-            if not isinstance(sections, list):
-                sections = []
-            if not sections:
-                sections = [{"heading": "Content", "body": query[:500], "bullets": []}]
-            d["sections"] = sections
-
-        elif file_type == "xlsx":
-            sheets = d.get("sheets", [])
-            if not isinstance(sheets, list):
-                sheets = []
-            if not sheets:
-                sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [[query[:100]]]}]
-            d["sheets"] = sheets
+            sections = content.get("sections", [])
+            if not isinstance(sections, list) or not sections:
+                sections = [{"heading": title, "body": query[:500], "bullets": []}]
+            # Add user personalisation to first section
+            if user_name and user_name.lower() not in ("lirox", "lirox ai", "unknown"):
+                header = (
+                    f"Document prepared for {user_name}\n"
+                    f"Topic: {query}\n"
+                    f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}\n\n"
+                )
+                first = sections[0]
+                first["body"] = header + (first.get("body") or "")
+            content["sections"] = sections
 
         elif file_type == "pptx":
-            slides = d.get("slides", [])
-            if not isinstance(slides, list):
-                slides = []
-            if not slides:
+            slides = content.get("slides", [])
+            if not isinstance(slides, list) or not slides:
                 slides = [{"title": title, "bullets": [query[:80]], "notes": ""}]
-            d["slides"] = slides
+            content["slides"] = slides
 
-        # ── STEP 4c: Content quality check — enrich thin content via ContentGenerator ──
-        quality_check = ContentQualityVerifier.check(file_type, d)
-        if quality_check.get("issues"):
-            yield {"type": "agent_progress", "message": "📝 Enriching document content…"}
-            try:
-                gen = ContentGenerator()
-                topic = title or query[:80]
-                enriched = gen.generate(file_type, topic, query=query)
-                for key in ("slides", "sections", "sheets"):
-                    if enriched.get(key) and (not d.get(key) or quality_check.get("issues")):
-                        d[key] = enriched[key]
-            except Exception as _ce:
-                _logger.warning("ContentGenerator failed: %s", _ce)
+        elif file_type == "xlsx":
+            sheets = content.get("sheets", [])
+            if not isinstance(sheets, list) or not sheets:
+                sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [[query[:100]]]}]
+            content["sheets"] = sheets
 
-        # ── STEP 4d: Add user context to content ──
-        context_header = ""
-        if user_name and user_name.lower() not in ("lirox", "lirox ai", "", "unknown"):
-            context_header = (
-                f"Document prepared for {user_name}\n"
-                f"Topic: {query}\n"
-                f"Generated: {datetime.now().strftime('%B %d, %Y at %H:%M')}\n\n"
-            )
+        # ──────────────────────────────────────────────────────────────────
+        # PHASE 4 — CREATE FILE
+        # ──────────────────────────────────────────────────────────────────
+        yield {"type": "tool_call", "message": f"✨ Creating {file_type.upper()}: {os.path.basename(path)}"}
 
-        if file_type in ("pdf", "docx") and context_header:
-            if d.get("sections") and len(d["sections"]) > 0:
-                first_section = d["sections"][0]
-                if first_section.get("body"):
-                    first_section["body"] = context_header + first_section["body"]
-                else:
-                    first_section["body"] = context_header
-
-        yield {"type": "tool_call", "message": f"📄 Creating {file_type.upper()}: {os.path.basename(path)}"}
-
-        # ── STEP 5: EXECUTE — Actually create the file ──
         receipt = None
-        user_expertise = self.profile_data.get("expertise_level", "intermediate")
         try:
             if file_type == "pdf":
-                sections = d.get("sections", [])
-                if not isinstance(sections, list) or not sections:
-                    sections = [{"heading": title, "body": query[:500], "bullets": []}]
-                receipt = create_pdf(path, title, sections,
-                                     query=query, user_name=user_name, user_expertise=user_expertise)
-
+                receipt = create_pdf(
+                    path, title, content["sections"],
+                    query=query, user_name=user_name, user_expertise=user_expertise,
+                )
             elif file_type == "docx":
-                sections = d.get("sections", [])
-                if not isinstance(sections, list) or not sections:
-                    sections = [{"heading": title, "body": query[:500], "bullets": []}]
-                receipt = create_docx(path, title, sections,
-                                      query=query, user_name=user_name, user_expertise=user_expertise)
-
-            elif file_type == "xlsx":
-                sheets = d.get("sheets", [])
-                if not isinstance(sheets, list) or not sheets:
-                    sheets = [{"name": "Sheet1", "headers": ["Data"], "rows": [[query[:100]]]}]
-                receipt = create_xlsx(path, title, sheets,
-                                      query=query, user_name=user_name, user_expertise=user_expertise)
-
+                receipt = create_docx(
+                    path, title, content["sections"],
+                    query=query, user_name=user_name, user_expertise=user_expertise,
+                )
             elif file_type == "pptx":
-                slides = d.get("slides", [])
-                if not isinstance(slides, list) or not slides:
-                    slides = [{"title": title, "bullets": [query[:80]], "notes": ""}]
-                receipt = create_pptx(path, title, slides,
-                                      query=query, user_name=user_name, user_expertise=user_expertise)
-
+                receipt = create_pptx(
+                    path, title, content["slides"],
+                    query=query, user_name=user_name, user_expertise=user_expertise,
+                )
+            elif file_type == "xlsx":
+                receipt = create_xlsx(
+                    path, title, content["sheets"],
+                    query=query, user_name=user_name, user_expertise=user_expertise,
+                )
             else:
-                receipt = FileReceipt(tool="file_generator", operation="create",
-                                      error=f"Unknown file type: {file_type}")
-
+                receipt = FileReceipt(
+                    tool="file_generator", operation="create",
+                    error=f"Unknown file type: {file_type}",
+                )
         except Exception as e:
             _logger.exception("File creation exception: %s", e)
-            receipt = FileReceipt(tool="file_generator", operation="create",
-                                  path=path, error=f"File creation error: {e}")
+            receipt = FileReceipt(
+                tool="file_generator", operation="create",
+                path=path, error=f"File creation error: {e}",
+            )
 
         if receipt is None:
-            receipt = FileReceipt(tool="file_generator", operation="create", path=path,
-                                  error="File creation returned None receipt")
+            receipt = FileReceipt(
+                tool="file_generator", operation="create", path=path,
+                error="File creation returned None receipt",
+            )
 
-        # ── VERIFICATION & ERROR HANDLING ──
-        # Only claim success if file actually exists and is valid
-
+        # ──────────────────────────────────────────────────────────────────
+        # PHASE 5 — STRICT VERIFICATION
+        # Only claim success if file ACTUALLY exists and has content
+        # ──────────────────────────────────────────────────────────────────
         try:
             from lirox.verify.file_verification import FileVerificationEngine
-            
-            # Strict verification: file must exist AND have content AND have right structure
+
             fv = FileVerificationEngine.verify(path)
-            
+
             if fv["passed"]:
-                # File is valid
                 file_size = os.path.getsize(path)
-                section_count = self._count_content(d, file_type)
-                
+                section_count = self._count_content(content, file_type)
+
+                # Build rich success message
                 answer = (
-                    f"✅ Created **{os.path.basename(path)}**\n\n"
-                    f"📁 Path: `{path}`\n"
-                    f"📊 Size: {file_size:,} bytes\n"
-                    f"📄 Content: {section_count}\n\n"
-                    f"Your {file_type.upper()} is ready!"
+                    f"✅ {file_type.upper()} created successfully!\n\n"
+                    f"📄 **{os.path.basename(path)}**\n"
+                    f"📍 `{path}`\n"
+                    f"📊 {file_size:,} bytes | {section_count}\n"
+                    f"🎨 Theme: {design.theme.value.capitalize()} | "
+                    f"Palette: {design.palette.capitalize()}\n"
+                    f"👥 Audience: {design.audience.value.capitalize()}\n"
                 )
-                
-                yield {"type": "message", "message": answer}
+                if user_name:
+                    answer += f"👤 Created for: {user_name}\n"
+                answer += f"⏱️ {datetime.now().strftime('%B %d, %Y at %H:%M')}"
+
+                for chunk in _STREAMER.stream_words(answer, delay=0.025):
+                    yield {"type": "streaming", "message": chunk}
+                yield {"type": "done", "answer": answer}
                 return
+
             else:
-                # Verification failed - don't claim success
                 issues_str = "; ".join(fv["issues"])
                 answer = (
                     f"❌ File creation encountered issues:\n\n"
                     f"**Issues:**\n"
-                    + "\n".join(f"- {issue}" for issue in fv["issues"]) + f"\n\n"
-                    f"**Path:** `{path}`\n"
+                    + "\n".join(f"- {issue}" for issue in fv["issues"])
+                    + f"\n\n**Path:** `{path}`\n"
                     f"**Type:** {file_type.upper()}\n\n"
                     f"Please try again or use a different topic."
                 )
-                
                 yield {"type": "error", "message": answer}
                 return
-                
+
         except Exception as e:
-            # Verification system error
-            _logger.error(f"File verification error: {e}")
+            _logger.error("File verification error: %s", e)
             answer = (
                 f"⚠️ File was created but verification failed:\n\n"
                 f"**Path:** `{path}`\n"
-                f"**Error:** {str(e)}\n\n"
+                f"**Error:** {e}\n\n"
                 f"Please check the file manually."
             )
             yield {"type": "warning", "message": answer}
             return
 
-        for chunk in _STREAMER.stream_words(answer, delay=0.025):
-            yield {"type": "streaming", "message": chunk}
-        yield {"type": "done", "answer": answer}
+    # ── helpers ───────────────────────────────────────────────────────────
 
     def _count_content(self, d: dict, file_type: str) -> str:
         """Human-readable content summary."""
         if not d or not isinstance(d, dict):
             return "unknown amount"
-        
+
         if file_type == "pptx":
             slides = d.get("slides", [])
             if not isinstance(slides, list):
                 return "unknown amount"
             n = len(slides)
-            return f"{n} slide{'s' if n != 1 else ''}"
+            return f"{n + 2} slides"  # +hero +closing
         elif file_type == "xlsx":
             sheets = d.get("sheets", [])
             if not isinstance(sheets, list):
                 return "unknown amount"
-            total_rows = sum(len(s.get("rows", []) if isinstance(s, dict) else []) for s in sheets)
+            total_rows = sum(
+                len(s.get("rows", []) if isinstance(s, dict) else [])
+                for s in sheets
+            )
             return f"{len(sheets)} sheet{'s' if len(sheets) != 1 else ''}, {total_rows} rows"
         else:
             sections = d.get("sections", [])
@@ -586,7 +521,7 @@ IMPORTANT:
             return f"{n} section{'s' if n != 1 else ''}"
 
     def _filegen_fallback(self, query: str) -> dict:
-        """Last-resort: build a complete, valid plan from the query itself."""
+        """Last-resort: build a valid plan from the query itself."""
         q = query.lower()
         file_type = "pdf"
         if any(w in q for w in ["ppt", "powerpoint", "presentation", "slide", "deck"]):
@@ -597,17 +532,15 @@ IMPORTANT:
             file_type = "docx"
 
         title = query[:80] if query else "Untitled Document"
-        
-        fallback = {
+
+        return {
             "file_type": file_type,
             "title": title,
-            "path": "",  
+            "path": "",
             "sections": [{"heading": "Content", "body": query[:500], "bullets": []}],
             "slides": [{"title": title, "bullets": ["Content based on: " + query[:60]], "notes": ""}],
             "sheets": [{"name": "Sheet1", "headers": ["Info"], "rows": [[query[:100]]]}],
         }
-        
-        return fallback
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # FILE OPERATIONS — Read/Write/List existing files
