@@ -78,10 +78,29 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
             
         user_name = parameters.get("user_name", "")
 
-        # Use ContentGenerator for rich, structured content
-        from lirox.tools.content_generator import ContentGenerator
-        gen = ContentGenerator()
-        content_data = gen.generate("pptx", topic, query=topic)
+        from lirox.tools.file_generation.design_engine import DesignEngine
+        from lirox.tools.file_generation.content_strategist import ContentStrategist
+        
+        try:
+            design = DesignEngine.plan_document(topic, topic, file_type="pptx")
+        except Exception:
+            design = DesignEngine.plan_document(topic, topic)
+            
+        audience_level = design.audience.value
+        design_context = f"Design Plan:\n- Theme: {design.theme.value}\n- Audience: {audience_level}\n- Structure: {len(design.structure)} sections on {design.topic}\n- Palette: {design.palette}"
+
+        try:
+            content_data = ContentStrategist.generate(
+                topic=design.topic,
+                query=topic,
+                file_type="pptx",
+                audience=audience_level,
+                structure_hints=design.structure,
+                design_context=design_context,
+            )
+        except Exception:
+            content_data = {"slides": []}
+
         slides = content_data.get("slides", [])
 
         # Fallback if generation failed
@@ -92,7 +111,7 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
                 {"title": "Conclusion", "bullets": [f"Summary of {topic}"], "notes": ""},
             ]
 
-        return file_generator.create_pptx(path, topic, slides, query=topic, user_name=user_name)
+        return file_generator.create_pptx(path, topic, slides, query=topic, user_name=user_name, design_plan=design)
 
     elif tool_name == "create_pdf":
         import os
@@ -123,15 +142,35 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
             
         user_name = parameters.get("user_name", "")
 
-        from lirox.tools.content_generator import ContentGenerator
-        gen = ContentGenerator()
-        content_data = gen.generate("pdf", topic, query=topic)
+        from lirox.tools.file_generation.design_engine import DesignEngine
+        from lirox.tools.file_generation.content_strategist import ContentStrategist
+        
+        try:
+            design = DesignEngine.plan_document(topic, topic, file_type="pdf")
+        except Exception:
+            design = DesignEngine.plan_document(topic, topic)
+            
+        audience_level = design.audience.value
+        design_context = f"Design Plan:\n- Theme: {design.theme.value}\n- Audience: {audience_level}\n- Structure: {len(design.structure)} sections on {design.topic}\n- Palette: {design.palette}"
+
+        try:
+            content_data = ContentStrategist.generate(
+                topic=design.topic,
+                query=topic,
+                file_type="pdf",
+                audience=audience_level,
+                structure_hints=design.structure,
+                design_context=design_context,
+            )
+        except Exception:
+            content_data = {"sections": []}
+
         sections = content_data.get("sections", [])
 
         if not sections:
             sections = [{"heading": topic, "body": "Content", "bullets": []}]
 
-        return file_generator.create_pdf(path, topic, sections, query=topic, user_name=user_name)
+        return file_generator.create_pdf(path, topic, sections, query=topic, user_name=user_name, design_plan=design)
 
     elif tool_name in ("create_document", "create_docx"):
         import os
@@ -162,14 +201,34 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
             
         user_name = parameters.get("user_name", "")
 
-        from lirox.tools.content_generator import ContentGenerator
-        gen = ContentGenerator()
-        content_data = gen.generate("docx", topic, query=topic)
+        from lirox.tools.file_generation.design_engine import DesignEngine
+        from lirox.tools.file_generation.content_strategist import ContentStrategist
+        
+        try:
+            design = DesignEngine.plan_document(topic, topic, file_type="docx")
+        except Exception:
+            design = DesignEngine.plan_document(topic, topic)
+            
+        audience_level = design.audience.value
+        design_context = f"Design Plan:\n- Theme: {design.theme.value}\n- Audience: {audience_level}\n- Structure: {len(design.structure)} sections on {design.topic}\n- Palette: {design.palette}"
+
+        try:
+            content_data = ContentStrategist.generate(
+                topic=design.topic,
+                query=topic,
+                file_type="docx",
+                audience=audience_level,
+                structure_hints=design.structure,
+                design_context=design_context,
+            )
+        except Exception:
+            content_data = {"sections": []}
+
         sections = content_data.get("sections", [])
         if not sections:
             sections = [{"heading": topic, "body": "Content", "bullets": []}]
 
-        return file_generator.create_docx(path, topic, sections, query=topic, user_name=user_name)
+        return file_generator.create_docx(path, topic, sections, query=topic, user_name=user_name, design_plan=design)
 
     elif tool_name in ("create_spreadsheet", "create_xlsx"):
         import os
@@ -200,14 +259,34 @@ def cognitive_tool_executor(tool_name: str, parameters: Dict[str, Any]) -> Any:
             
         user_name = parameters.get("user_name", "")
 
-        from lirox.tools.content_generator import ContentGenerator
-        gen = ContentGenerator()
-        content_data = gen.generate("xlsx", topic, query=topic)
+        from lirox.tools.file_generation.design_engine import DesignEngine
+        from lirox.tools.file_generation.content_strategist import ContentStrategist
+        
+        try:
+            design = DesignEngine.plan_document(topic, topic, file_type="xlsx")
+        except Exception:
+            design = DesignEngine.plan_document(topic, topic)
+            
+        audience_level = design.audience.value
+        design_context = f"Design Plan:\n- Theme: {design.theme.value}\n- Audience: {audience_level}\n- Structure: {len(design.structure)} sections on {design.topic}\n- Palette: {design.palette}"
+
+        try:
+            content_data = ContentStrategist.generate(
+                topic=design.topic,
+                query=topic,
+                file_type="xlsx",
+                audience=audience_level,
+                structure_hints=design.structure,
+                design_context=design_context,
+            )
+        except Exception:
+            content_data = {"sheets": []}
+
         sheets = content_data.get("sheets", [])
         if not sheets:
             sheets = [{"name": "Sheet1", "headers": ["A", "B"], "rows": [["1", "2"]]}]
 
-        return file_generator.create_xlsx(path, topic, sheets, query=topic, user_name=user_name)
+        return file_generator.create_xlsx(path, topic, sheets, query=topic, user_name=user_name, design_plan=design)
 
     elif tool_name == "execute_code":
         from lirox.tools.code_executor import CodeExecutor
