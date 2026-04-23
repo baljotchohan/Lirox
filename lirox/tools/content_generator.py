@@ -43,14 +43,19 @@ class ContentGenerator:
     # ── Slide content ────────────────────────────────────────────────────────
 
     def generate_slides(self, topic: str, num_slides: int = 8,
-                        context: str = "") -> List[Dict[str, Any]]:
+                        context: str = "", structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Generate *num_slides* content slides for a PPTX presentation dynamically.
 
         Each slide dict has ``title``, ``bullets`` (3-6 items), and
         ``notes`` (speaker notes).
         """
+        
+        hints_text = ""
+        if structure_hints:
+            hints_text = f"\nYou MUST use exactly these slide titles:\n" + "\n".join([f"- {h}" for h in structure_hints]) + "\n"
+
         prompt = f"""Design a dynamic presentation structure for the topic: "{topic}"
-{('Additional context: ' + context) if context else ''}
+{('Additional context: ' + context) if context else ''}{hints_text}
 
 Rules:
 - Adapt the number of slides and their progression entirely based on what is most appropriate for this specific topic (e.g., around {num_slides} slides, but plan whatever is best).
@@ -69,19 +74,24 @@ Output ONLY the JSON array, no other text."""
             prompt,
             "Expert presentation designer. Output ONLY valid JSON.",
         )
-        return self._parse_list(raw, "slides", num_slides, topic)
+        return self._parse_list(raw, "slides", num_slides, topic, structure_hints)
 
     # ── Section content ──────────────────────────────────────────────────────
 
     def generate_sections(self, topic: str, num_sections: int = 5,
-                          context: str = "") -> List[Dict[str, Any]]:
+                          context: str = "", structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Generate *num_sections* content sections for a PDF or DOCX dynamically.
 
         Each section dict has ``heading``, ``body`` (3-6 sentences), and
         ``bullets`` (0-4 supporting points).
         """
+        
+        hints_text = ""
+        if structure_hints:
+            hints_text = f"\nYou MUST use exactly these section headings:\n" + "\n".join([f"- {h}" for h in structure_hints]) + "\n"
+            
         prompt = f"""Design a comprehensive, dynamic document structure for the topic: "{topic}"
-{('Additional context: ' + context) if context else ''}
+{('Additional context: ' + context) if context else ''}{hints_text}
 
 Rules:
 - Adapt the number of sections and their focus entirely based on what is most appropriate for this specific topic (e.g., around {num_sections} sections, but plan whatever is best).
@@ -100,18 +110,23 @@ Output ONLY the JSON array, no other text."""
             prompt,
             "Expert technical writer. Output ONLY valid JSON.",
         )
-        return self._parse_list(raw, "sections", num_sections, topic)
+        return self._parse_list(raw, "sections", num_sections, topic, structure_hints)
 
     # ── Sheet content ────────────────────────────────────────────────────────
 
     def generate_sheets(self, topic: str, num_sheets: int = 1,
-                        context: str = "") -> List[Dict[str, Any]]:
+                        context: str = "", structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Generate *num_sheets* worksheet definitions for an XLSX workbook dynamically.
 
         Each sheet dict has ``name``, ``headers``, and ``rows``.
         """
+        
+        hints_text = ""
+        if structure_hints:
+            hints_text = f"\nYou MUST use exactly these sheet names:\n" + "\n".join([f"- {h}" for h in structure_hints]) + "\n"
+            
         prompt = f"""Design a dynamic spreadsheet structure for the topic: "{topic}"
-{('Additional context: ' + context) if context else ''}
+{('Additional context: ' + context) if context else ''}{hints_text}
 
 Rules:
 - Adapt the number of sheets, column headers, and rows entirely based on what is most appropriate for this specific topic (e.g., around {num_sheets} sheets, but use what fits).
@@ -129,11 +144,11 @@ Output ONLY the JSON array, no other text."""
             prompt,
             "Expert data analyst. Output ONLY valid JSON.",
         )
-        return self._parse_list(raw, "sheets", num_sheets, topic)
+        return self._parse_list(raw, "sheets", num_sheets, topic, structure_hints)
 
     # ── Parser ───────────────────────────────────────────────────────────────
 
-    def _parse_list(self, raw: str, key: str, expected: int, topic: str) -> List[Dict[str, Any]]:
+    def _parse_list(self, raw: str, key: str, expected: int, topic: str, structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Best-effort extraction: JSON first, then plain-text fallback."""
         import json
 
@@ -178,7 +193,7 @@ Output ONLY the JSON array, no other text."""
             "ContentGenerator._parse_list: all parsers failed for %s on topic '%s'",
             key, topic,
         )
-        return self._generate_fallback(key, topic)
+        return self._generate_fallback(key, topic, structure_hints)
 
 
     def _parse_plain_text(self, raw: str, key: str, topic: str) -> List[Dict[str, Any]]:
@@ -242,7 +257,7 @@ Output ONLY the JSON array, no other text."""
         return results if len(results) >= 2 else []
 
 
-    def _generate_fallback(self, key: str, topic: str) -> List[Dict[str, Any]]:
+    def _generate_fallback(self, key: str, topic: str, structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Last resort: ask LLM for simple plain text, then structure it."""
         try:
             # Ask for plain text — no JSON, no formatting requirements
@@ -276,6 +291,15 @@ Output ONLY the JSON array, no other text."""
                 {"title": "Future Outlook", "bullets": ["Predicted developments", "Research directions", "Potential breakthroughs", "Long-term impact"], "notes": ""},
                 {"title": "Conclusion", "bullets": [f"Key takeaways about {topic}", "Recommended actions", "Resources for learning more", "Final thoughts"], "notes": ""},
             ]
+        elif structure_hints:
+            sections = []
+            for h in structure_hints:
+                sections.append({
+                    "heading": h, 
+                    "body": f"Detailed content covering {h}. This section explores the key aspects, applications, and core principles related to this topic.", 
+                    "bullets": []
+                })
+            return sections
         else:
             return [
                 {"heading": f"Introduction to {topic}", "body": f"{topic} represents one of the most significant developments in its field. Over recent years, it has transformed how industries operate and how people interact with technology. This document explores the key aspects, applications, and future potential of {topic}.", "bullets": []},
@@ -288,7 +312,8 @@ Output ONLY the JSON array, no other text."""
     # ── Public entry point ───────────────────────────────────────────────────
 
     def generate(self, file_type: str, topic: str, query: str = "",
-                 context: str = "") -> Dict[str, Any]:
+                 context: str = "", structure_hints: Optional[List[str]] = None,
+                 section_count: int = 0) -> Dict[str, Any]:
         """Generate complete document content for *file_type*.
 
         Returns a dict with the appropriate content key populated:
@@ -308,9 +333,9 @@ Output ONLY the JSON array, no other text."""
 
         try:
             if file_type == "pptx":
-                result["slides"] = self.generate_slides(topic, num_slides=8, context=combined_context) or []
+                result["slides"] = self.generate_slides(topic, num_slides=section_count or 8, context=combined_context, structure_hints=structure_hints) or []
             elif file_type in ("pdf", "docx"):
-                result["sections"] = self.generate_sections(topic, num_sections=5, context=combined_context) or []
+                result["sections"] = self.generate_sections(topic, num_sections=section_count or 5, context=combined_context, structure_hints=structure_hints) or []
             elif file_type == "xlsx":
                 result["sheets"] = self.generate_sheets(topic, num_sheets=2, context=combined_context) or []
         except Exception as e:

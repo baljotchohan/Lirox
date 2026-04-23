@@ -49,9 +49,16 @@ class ContentStrategist:
             from lirox.tools.content_generator import ContentGenerator
             gen = ContentGenerator()
 
-            # Tell the generator how many sections/slides to produce
+            # Tell the generator how many sections/slides to produce and the exact headings to use
             section_count = len(structure_hints) if structure_hints else 7
-            result = gen.generate(file_type, topic, query=query, context=design_context)
+            result = gen.generate(
+                file_type, 
+                topic, 
+                query=query, 
+                context=design_context,
+                structure_hints=structure_hints,
+                section_count=section_count
+            )
 
             # Check if we got real content
             content_key = {
