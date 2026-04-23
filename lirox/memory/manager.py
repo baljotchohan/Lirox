@@ -144,6 +144,24 @@ class MemoryManager:
             "agent":             self.agent_name,
         }
 
+    def apply_to_generation(self, user_name: str, task: str) -> str:
+        """Pull memories and apply them to CURRENT task"""
+        with self._lock:
+            facts = self._lt.get("facts", [])
+            prefs = self._lt.get("preferences", {})
+            
+        projects = self._lt.get("projects", [])
+            
+        context = f"""
+User {user_name} previously:
+- Created PDFs on: {[p.get('name') for p in projects if isinstance(p, dict)]}
+- Prefers tone: {prefs.get('tone', ['professional'])[-1] if prefs.get('tone') else 'professional'}
+- Has facts: {facts[-5:]}
+
+Apply these patterns to today's task: {task}
+"""
+        return context
+
     def _load(self, path: str) -> Optional[dict]:
         # Called only from __init__ before any threads are started.
         # Bug #6: No TOCTOU — open directly and handle FileNotFoundError.

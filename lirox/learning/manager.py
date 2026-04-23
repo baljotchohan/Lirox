@@ -199,6 +199,31 @@ class LearningManager:
 
     # ── Internal sync ─────────────────────────────────────────────────────────
 
+    def apply_preferences_to_generation(self) -> str:
+        """Actually USE learned preferences during generation"""
+        # Retrieve learned preferences
+        try:
+            prefs = self.learnings.data.get("preferences", {})
+            flat_prefs = {}
+            for cat, values in prefs.items():
+                if values:
+                    flat_prefs[cat] = values[-1] # Take the most recent preference
+            
+            if not flat_prefs:
+                return ""
+            
+            # Build preference context
+            context = f"""
+Based on past interactions, this user prefers:
+"""
+            for k, v in flat_prefs.items():
+                context += f"- {k.capitalize()}: {v}\n"
+                
+            context += "\nAPPLY THESE PREFERENCES to your generation.\n"
+            return context
+        except Exception:
+            return ""
+
     def _sync_facts_to_db(self) -> None:
         """Mirror JSON-stored facts into SQLite for searchability."""
         if not self.db:

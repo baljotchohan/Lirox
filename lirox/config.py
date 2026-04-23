@@ -139,3 +139,43 @@ def is_self_modification(path: str) -> bool:
         return p.startswith(str(Path(LIROX_SOURCE_DIR).resolve()))
     except Exception:
         return False
+
+# ── Unicorn Strategy Pillars ──
+PILLAR_1_LEARNING = {
+    'enabled': True,
+    'track_preferences': True,
+    'apply_learned_style': True,
+    'show_improvement': True,
+    'learning_dashboard': True
+}
+
+PILLAR_2_SECURITY = {
+    'agent_identity': True,
+    'kill_switch': True,
+    'rate_limiting': True,
+    'behavioral_monitoring': True,
+    'audit_trail': True
+}
+
+PILLAR_3_MULTI_AGENT = {
+    'coordinator_agent': True,
+    'code_agent': True,
+    'test_agent': True,
+    'research_agent': True,
+    'doc_agent': True,
+    'enabled_by_default': True
+}
+
+PILLAR_4_TESTING = {
+    'red_team_framework': True,
+    'owasp_compliance': True,
+    'safe_to_deploy_decision': True,
+    'regression_testing': True
+}
+
+PILLAR_5_MARKETPLACE = {
+    'agent_registry': True,
+    'code_signing': True,
+    'monetization': True,
+    'community_agents': True
+}

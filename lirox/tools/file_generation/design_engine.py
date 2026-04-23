@@ -482,6 +482,30 @@ class DesignEngine:
             _logger.error("Failed to generate LLM design plan, falling back to static rules: %s", e)
             return DesignEngine._fallback_plan_document(query, title, ft)
 
+    @staticmethod
+    def apply_design_intelligently(sections: List[Dict], design_plan: DesignPlan):
+        """Design affects CONTENT, not just colors"""
+        if 'Heritage' in design_plan.palette or design_plan.theme == DesignTheme.EDUCATIONAL:
+            for section in sections:
+                section['include_historical_context'] = True
+                section['tone'] = 'formal'
+                section['include_citations'] = True
+        
+        if 'Modern' in design_plan.palette or design_plan.theme == DesignTheme.CREATIVE:
+            for section in sections:
+                section['include_modern_examples'] = True
+                section['tone'] = 'contemporary'
+                section['highlight_relevance'] = True
+        
+        target_pages = design_plan.page_count or 10
+        words_per_page = 300
+        target_words = target_pages * words_per_page
+        
+        if len(sections) > 0:
+            target_per_section = target_words / len(sections)
+            for section in sections:
+                section['target_word_count'] = target_per_section
+
     # ── human-readable report ─────────────────────────────────────────────
 
     @staticmethod

@@ -30,6 +30,7 @@ class ContentStrategist:
                  audience: str = "intermediate",
                  structure_hints: Optional[List[str]] = None,
                  design_context: str = "",
+                 user_preferences: Optional[Dict[str, Any]] = None,
                  ) -> Dict[str, Any]:
         """
         Generate rich document content for *topic*.
@@ -49,6 +50,11 @@ class ContentStrategist:
             from lirox.tools.content_generator import ContentGenerator
             gen = ContentGenerator()
 
+            # Mix user_preferences into context
+            if user_preferences:
+                import json
+                design_context += f"\nUser Preferences: {json.dumps(user_preferences)}"
+
             # Tell the generator how many sections/slides to produce and the exact headings to use
             section_count = len(structure_hints) if structure_hints else 7
             result = gen.generate(
@@ -67,6 +73,26 @@ class ContentStrategist:
             }.get(file_type, "sections")
 
             items = result.get(content_key, [])
+            
+            # Check for thin content in sections and regenerate if needed
+            if content_key == "sections" and items:
+                for i, section in enumerate(items):
+                    word_count = len(section.get('body', '').split())
+                    if word_count < 100:
+                        _logger.warning("Section too thin (%d words), regenerating...", word_count)
+                        try:
+                            # Attempt regeneration for thin section
+                            new_sec = gen.generate_sections(
+                                topic=section.get('heading', topic),
+                                num_sections=1,
+                                context=f"Make this highly detailed, minimum 300 words. Topic: {section.get('heading', topic)}. Context: {design_context}"
+                            )
+                            if new_sec and len(new_sec) > 0:
+                                items[i] = new_sec[0]
+                        except Exception as e:
+                            _logger.warning("Failed to regenerate thin section: %s", e)
+                result["sections"] = items
+
             if isinstance(items, list) and len(items) >= 3:
                 _logger.info("ContentStrategist: LLM generated %d %s", len(items), content_key)
                 return result

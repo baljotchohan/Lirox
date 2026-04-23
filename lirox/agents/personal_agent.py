@@ -295,9 +295,22 @@ class PersonalAgent(BaseAgent):
             user_name = ""
 
         # ──────────────────────────────────────────────────────────────────
-        # PHASE 1 — DESIGN THINKING
+        # PHASE 1 — DESIGN THINKING (Multi-Agent Debate)
         # ──────────────────────────────────────────────────────────────────
         yield {"type": "agent_progress", "message": "🎨 Analyzing topic and audience…"}
+        
+        try:
+            from lirox.agents.thinking_engine import ThinkingEngine
+            from lirox.ui.thinking_display import ThinkingDisplay
+            import time
+            start_t = time.time()
+            engine = ThinkingEngine()
+            think_result = engine.think_and_decide(query, context)
+            think_result['time_taken'] = round(time.time() - start_t, 2)
+            ThinkingDisplay.show_thinking_process(think_result['thinking'])
+            yield {"type": "agent_progress", "message": f"🤖 Synthesis: {think_result['thinking']['final_decision']}"}
+        except Exception as e:
+            _logger.warning("Thinking engine failed: %s", e)
 
         file_type = DesignEngine.detect_file_type(query)
         try:
@@ -318,7 +331,14 @@ class PersonalAgent(BaseAgent):
         yield {"type": "agent_progress", "message": "📝 Generating rich content…"}
 
         try:
+            from lirox.learning.manager import LearningManager
+            lm = LearningManager()
+            prefs_context = lm.apply_preferences_to_generation()
+            
             design_context = f"Design Plan:\n- Theme: {design.theme.value}\n- Audience: {audience_level}\n- Structure: {len(design.structure)} sections on {design.topic}\n- Palette: {design.palette}"
+            if prefs_context:
+                design_context += "\n" + prefs_context
+                
             content = ContentStrategist.generate(
                 topic=design.topic,
                 query=query,
@@ -328,8 +348,10 @@ class PersonalAgent(BaseAgent):
                 design_context=design_context,
             )
         except Exception as e:
-            _logger.warning("Content generation failed: %s", e)
-            content = {"sections": [], "slides": [], "sheets": []}
+            _logger.error(f"[ERROR] Content generation failed: {str(e)}")
+            yield {"type": "warning", "message": f"⚠️ Content generation issue: {str(e)}. Retrying with simpler approach..."}
+            content = self._filegen_fallback(query)
+            yield {"type": "agent_progress", "message": "✓ Generated with fallback method"}
 
         title = content.get("title", "") or design.topic or query[:80]
 
@@ -446,11 +468,16 @@ class PersonalAgent(BaseAgent):
         # Only claim success if file ACTUALLY exists and has content
         # ──────────────────────────────────────────────────────────────────
         try:
-            from lirox.verify.file_verification import FileVerificationEngine
+            from lirox.verify.comprehensive_check import ComprehensiveVerification
 
+            cv_passed = True
+            if file_type == "pdf":
+                cv_passed = ComprehensiveVerification.verify_pdf_generation(path, design, content.get("sections", []))
+
+            from lirox.verify.file_verification import FileVerificationEngine
             fv = FileVerificationEngine.verify(path)
 
-            if fv["passed"]:
+            if fv["passed"] and cv_passed:
                 file_size = os.path.getsize(path)
                 section_count = self._count_content(content, file_type)
 
@@ -474,12 +501,12 @@ class PersonalAgent(BaseAgent):
                 return
 
             else:
-                issues_str = "; ".join(fv["issues"])
+                issues_str = "; ".join(fv["issues"]) if not fv["passed"] else "Comprehensive verification failed (e.g. thin content or generic text)"
                 answer = (
                     f"❌ File creation encountered issues:\n\n"
                     f"**Issues:**\n"
-                    + "\n".join(f"- {issue}" for issue in fv["issues"])
-                    + f"\n\n**Path:** `{path}`\n"
+                    f"- {issues_str}\n\n"
+                    f"**Path:** `{path}`\n"
                     f"**Type:** {file_type.upper()}\n\n"
                     f"Please try again or use a different topic."
                 )
