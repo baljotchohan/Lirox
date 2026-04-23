@@ -280,8 +280,17 @@ Output ONLY the JSON array, no other text."""
                 return result
         except Exception:
             pass
+        # Absolute last resort — use structure hints if provided
+        if structure_hints:
+            results = []
+            for h in structure_hints:
+                if key == "slides":
+                    results.append({"title": h, "bullets": [f"Key point about {h}", "Detailed discussion", "Examples and applications"], "notes": ""})
+                else:
+                    results.append({"heading": h, "body": f"Detailed content covering {h}. This section explores the key aspects, applications, and core principles related to this topic.", "bullets": []})
+            return results
 
-        # Absolute last resort — static content with topic name
+        # Ultimate absolute last resort — static content with topic name
         if key == "slides":
             return [
                 {"title": f"Introduction to {topic}", "bullets": [f"Overview of {topic}", "Historical background and context", "Why this topic matters in today's world", "Scope of this presentation"], "notes": ""},
@@ -291,15 +300,6 @@ Output ONLY the JSON array, no other text."""
                 {"title": "Future Outlook", "bullets": ["Predicted developments", "Research directions", "Potential breakthroughs", "Long-term impact"], "notes": ""},
                 {"title": "Conclusion", "bullets": [f"Key takeaways about {topic}", "Recommended actions", "Resources for learning more", "Final thoughts"], "notes": ""},
             ]
-        elif structure_hints:
-            sections = []
-            for h in structure_hints:
-                sections.append({
-                    "heading": h, 
-                    "body": f"Detailed content covering {h}. This section explores the key aspects, applications, and core principles related to this topic.", 
-                    "bullets": []
-                })
-            return sections
         else:
             return [
                 {"heading": f"Introduction to {topic}", "body": f"{topic} represents one of the most significant developments in its field. Over recent years, it has transformed how industries operate and how people interact with technology. This document explores the key aspects, applications, and future potential of {topic}.", "bullets": []},

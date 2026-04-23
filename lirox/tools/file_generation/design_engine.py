@@ -432,13 +432,10 @@ class DesignEngine:
             
         try:
             resp = generate_response(prompt, system_prompt=system_prompt)
-            # Extract JSON from potential code fences
-            if "```json" in resp:
-                resp = resp.split("```json")[1].split("```")[0]
-            elif "```" in resp:
-                resp = resp.split("```")[1].split("```")[0]
-                
-            data = json.loads(resp.strip())
+            
+            from lirox.utils.llm_json import extract_json
+            data = extract_json(resp)
+            
             
             # Safely map enums
             aud_str = str(data.get("audience", "intermediate")).upper()

@@ -67,11 +67,12 @@ def create_docx(path: str, title: str, sections: List[Dict[str, Any]],
             r.error = f"Output directory is not writable: {out_dir}"
             return r
 
-        # Use LLM dynamic color scheme if provided, otherwise fallback
         if design_plan and hasattr(design_plan, 'color_scheme') and design_plan.color_scheme:
-            pal = design_plan.color_scheme
             palette_name = getattr(design_plan, 'palette', 'custom_llm_palette')
             _logger.info("Using LLM generated color scheme: %s", palette_name)
+            base_pal = PALETTES.get(getattr(design_plan, 'palette', ''), PALETTES["default"]).copy()
+            base_pal.update(design_plan.color_scheme)
+            pal = base_pal
         elif design_plan and hasattr(design_plan, 'palette'):
             palette_name = design_plan.palette
             _logger.info("Using design plan palette: %s", palette_name)
