@@ -96,7 +96,7 @@ Output ONLY the JSON array, no other text."""
 Rules:
 - Adapt the number of sections and their focus entirely based on what is most appropriate for this specific topic (e.g., around {num_sections} sections, but plan whatever is best).
 - Do NOT use a fixed template.
-- Each section body must be substantive (3-6 full sentences) providing real facts, details, and examples.
+- Each section body must be highly detailed and substantive (at least 150-200 words) providing real facts, details, and examples.
 - Include specific data points, dates, named examples, and statistics where relevant.
 - Write in a professional style with proper paragraph structure.
 - Bullets can be used for concrete lists of items, but not every section needs them.

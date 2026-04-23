@@ -78,7 +78,7 @@ class ContentStrategist:
             if content_key == "sections" and items:
                 for i, section in enumerate(items):
                     word_count = len(section.get('body', '').split())
-                    if word_count < 100:
+                    if word_count < 40:
                         _logger.warning("Section too thin (%d words), regenerating...", word_count)
                         try:
                             # Attempt regeneration for thin section

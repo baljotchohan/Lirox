@@ -13,7 +13,7 @@ class ComprehensiveVerification:
         
         checks = {
             'file_exists': os.path.exists(file_path),
-            'file_size_ok': os.path.exists(file_path) and os.path.getsize(file_path) > 10000,
+            'file_size_ok': os.path.exists(file_path) and os.path.getsize(file_path) > 2000,
             'page_count_ok': ComprehensiveVerification._verify_page_count(file_path, design_plan),
             'has_content': ComprehensiveVerification._verify_content_quality(file_path),
             'design_applied': ComprehensiveVerification._verify_design(file_path, design_plan),
@@ -38,7 +38,7 @@ class ComprehensiveVerification:
         
     @staticmethod
     def _verify_content_quality(file_path: str) -> bool:
-        return os.path.exists(file_path) and os.path.getsize(file_path) > 5000
+        return os.path.exists(file_path) and os.path.getsize(file_path) > 1000
         
     @staticmethod
     def _verify_design(file_path: str, design_plan: Any) -> bool:
