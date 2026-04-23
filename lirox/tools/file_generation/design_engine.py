@@ -331,16 +331,8 @@ class DesignEngine:
     # ── main entry point ──────────────────────────────────────────────────
 
     @staticmethod
-    def plan_document(query: str,
-                      title: str = "",
-                      file_type: str | None = None) -> DesignPlan:
-        """
-        Create a complete design plan for the document.
-
-        This is where DESIGN THINKING happens, not template filling.
-        """
-        # 1. File type
-        ft = file_type or DesignEngine.detect_file_type(query)
+    def _fallback_plan_document(query: str, title: str, ft: str) -> DesignPlan:
+        """Fallback static design generation if the LLM fails."""
 
         # 2. Topic analysis
         subject, complexity, theme = DesignEngine.analyze_topic(query, title)
@@ -389,6 +381,109 @@ class DesignEngine:
             subject, theme, palette, len(structure), audience.value,
         )
         return plan
+
+    @staticmethod
+    def plan_document(query: str,
+                      title: str = "",
+                      file_type: str | None = None) -> DesignPlan:
+        """
+        Create a complete design plan for the document via genuine LLM thinking.
+        """
+        ft = file_type or DesignEngine.detect_file_type(query)
+        
+        # Use LLM to design the document structure and style dynamically
+        from lirox.utils.llm import generate_response
+        import json
+        
+        system_prompt = (
+            "You are an expert document designer and architect. Your job is to create a complete design plan "
+            "for a document based on the user's request. You must return your design plan as a pure JSON object "
+            "with exactly the following schema. Do not return any other text, markdown blocks, or explanation, ONLY JSON:\n\n"
+            "{\n"
+            '  "topic": "The exact subject or title of the document",\n'
+            '  "audience": "One of: beginner, intermediate, advanced, expert",\n'
+            '  "theme": "One of: professional, educational, creative, minimal, corporate",\n'
+            '  "palette": "A descriptive name for the palette (e.g. cyber_blue, nature_green)",\n'
+            '  "structure": ["List of", "5 to 10", "section headings"],\n'
+            '  "page_count": 8,\n'
+            '  "has_visuals": true,\n'
+            '  "style_guide": {\n'
+            '    "spacing": "tight or generous",\n'
+            '    "visual_density": "low or medium or high"\n'
+            '  },\n'
+            '  "color_scheme": {\n'
+            '    "primary": "HEXCODE (without #)",\n'
+            '    "secondary": "HEXCODE (without #)",\n'
+            '    "accent": "HEXCODE (without #)",\n'
+            '    "text_dark": "HEXCODE (without #)"\n'
+            '  },\n'
+            '  "typography": {\n'
+            '    "heading": "Font name (e.g. Helvetica, Times, Georgia, Calibri)",\n'
+            '    "body": "Font name",\n'
+            '    "heading_size": "24 or 28",\n'
+            '    "body_size": "11 or 12"\n'
+            '  }\n'
+            "}"
+        )
+        
+        prompt = f"Design a {ft} document for the following request: {query}\n"
+        if title:
+            prompt += f"Title constraint: {title}\n"
+            
+        try:
+            resp = generate_response(prompt, system_prompt=system_prompt)
+            # Extract JSON from potential code fences
+            if "```json" in resp:
+                resp = resp.split("```json")[1].split("```")[0]
+            elif "```" in resp:
+                resp = resp.split("```")[1].split("```")[0]
+                
+            data = json.loads(resp.strip())
+            
+            # Safely map enums
+            aud_str = str(data.get("audience", "intermediate")).upper()
+            try:
+                aud = AudienceLevel[aud_str]
+            except KeyError:
+                aud = AudienceLevel.INTERMEDIATE
+                
+            thm_str = str(data.get("theme", "professional")).upper()
+            try:
+                thm = DesignTheme[thm_str]
+            except KeyError:
+                thm = DesignTheme.PROFESSIONAL
+                
+            # Safely handle format mapping
+            try:
+                doc_format = DocumentFormat[ft.upper()]
+            except KeyError:
+                doc_format = DocumentFormat.PDF
+                
+            plan = DesignPlan(
+                topic=data.get("topic", title or query[:80]),
+                audience=aud,
+                file_type=doc_format,
+                theme=thm,
+                palette=data.get("palette", "custom"),
+                structure=data.get("structure", ["Introduction", "Core Concepts", "Conclusion"]),
+                page_count=data.get("page_count", 8),
+                has_visuals=data.get("has_visuals", True),
+                style_guide=data.get("style_guide", {"spacing": "tight", "visual_density": "medium"}),
+                color_scheme=data.get("color_scheme", {
+                    "primary": "2563EB", "secondary": "DBEAFE", 
+                    "accent": "F59E0B", "text_dark": "333333"
+                }),
+                typography=data.get("typography", {
+                    "heading": "Helvetica", "body": "Helvetica", 
+                    "heading_size": "24", "body_size": "11"
+                }),
+            )
+            _logger.info("Generated genuine LLM design plan for topic: %s", plan.topic)
+            return plan
+            
+        except Exception as e:
+            _logger.error("Failed to generate LLM design plan, falling back to static rules: %s", e)
+            return DesignEngine._fallback_plan_document(query, title, ft)
 
     # ── human-readable report ─────────────────────────────────────────────
 

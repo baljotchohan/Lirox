@@ -83,12 +83,51 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
             _logger.info("Using fallback palette: %s", palette_name)
         pal = PALETTES.get(palette_name, PALETTES.get("default", {}))
 
+        # ── EXTRACT DESIGN THINKING CONTEXT ──
+        theme_val = getattr(design_plan.theme, 'value', 'professional') if design_plan and hasattr(design_plan, 'theme') else 'professional'
+        style_guide = design_plan.style_guide if design_plan and hasattr(design_plan, 'style_guide') else {}
+        typography = design_plan.typography if design_plan and hasattr(design_plan, 'typography') else {}
+
+        # 1. Spacing & Layout
+        spacing_level = style_guide.get("spacing", "tight")
+        if spacing_level == "generous":
+            margin = 1.25 * inch
+            body_leading = 18
+        else:
+            margin = 0.85 * inch
+            body_leading = 15
+
+        # 2. Typography Mapping
+        req_heading_font = typography.get("heading", "Helvetica").lower()
+        if req_heading_font in ["georgia", "times", "serif"]:
+            h_font = "Times-Roman"
+            h_font_bold = "Times-Bold"
+        else:
+            h_font = "Helvetica"
+            h_font_bold = "Helvetica-Bold"
+
+        req_body_font = typography.get("body", "Helvetica").lower()
+        if req_body_font in ["georgia", "times", "serif"]:
+            b_font = "Times-Roman"
+            b_font_bold = "Times-Bold"
+            b_font_it = "Times-Italic"
+        else:
+            b_font = "Helvetica"
+            b_font_bold = "Helvetica-Bold"
+            b_font_it = "Helvetica-Oblique"
+
+        h_size = int(typography.get("heading_size", 24))
+        b_size = int(typography.get("body_size", 11))
+        
+        # Determine text color fallback
+        text_color = pal.get('text_dark', '333333')
+
         doc = SimpleDocTemplate(
             str(out_path), pagesize=A4,
-            topMargin=0.75 * inch,
-            bottomMargin=0.75 * inch,
-            leftMargin=0.85 * inch,
-            rightMargin=0.85 * inch,
+            topMargin=margin * 0.8,
+            bottomMargin=margin * 0.8,
+            leftMargin=margin,
+            rightMargin=margin,
             title=title,
             author=user_name or "Generated Document",
         )
@@ -98,48 +137,50 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
         styles.add(ParagraphStyle(
             "CoverTitle",
             parent=styles["Title"],
-            fontName="Helvetica-Bold",
-            fontSize=32,
+            fontName=h_font_bold,
+            fontSize=32 if theme_val != 'minimal' else 28,
             textColor=HexColor(f"#{pal['primary']}"),
-            spaceAfter=12,
-            alignment=TA_LEFT,
+            spaceAfter=20,
+            alignment=TA_LEFT if theme_val != 'corporate' else TA_CENTER,
             leading=38,
         ))
         styles.add(ParagraphStyle(
             "CoverSubtitle",
             parent=styles["Normal"],
-            fontName="Helvetica",
+            fontName=b_font,
             fontSize=14,
             textColor=HexColor(f"#{pal['accent']}"),
             spaceAfter=6,
+            alignment=TA_LEFT if theme_val != 'corporate' else TA_CENTER,
         ))
         styles.add(ParagraphStyle(
             "SectionHeader",
             parent=styles["Heading1"],
-            fontName="Helvetica-Bold",
-            fontSize=20,
+            fontName=h_font_bold,
+            fontSize=h_size,
             textColor=HexColor(f"#{pal['primary']}"),
             spaceBefore=24,
             spaceAfter=10,
-            leading=24,
+            leading=h_size + 4,
+            alignment=TA_LEFT if theme_val != 'minimal' else TA_CENTER,
         ))
         styles.add(ParagraphStyle(
             "BodyText_Custom",
             parent=styles["Normal"],
-            fontName="Helvetica",
-            fontSize=11,
-            leading=16,
-            textColor=HexColor(f"#{pal['text_dark']}"),
+            fontName=b_font,
+            fontSize=b_size,
+            leading=body_leading,
+            textColor=HexColor(f"#{text_color}"),
             spaceAfter=8,
-            alignment=TA_JUSTIFY,
+            alignment=TA_JUSTIFY if theme_val in ['corporate', 'professional'] else TA_LEFT,
         ))
         styles.add(ParagraphStyle(
             "BulletItem",
             parent=styles["Normal"],
-            fontName="Helvetica",
-            fontSize=11,
-            leading=15,
-            textColor=HexColor(f"#{pal['text_dark']}"),
+            fontName=b_font,
+            fontSize=b_size,
+            leading=body_leading - 1,
+            textColor=HexColor(f"#{text_color}"),
             spaceAfter=4,
             leftIndent=20,
             bulletIndent=10,
@@ -147,10 +188,10 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
         styles.add(ParagraphStyle(
             "CalloutText",
             parent=styles["Normal"],
-            fontName="Helvetica-Oblique",
-            fontSize=11,
+            fontName=b_font_it,
+            fontSize=b_size,
             textColor=HexColor(f"#{pal['primary']}"),
-            leading=15,
+            leading=body_leading,
             leftIndent=12,
             rightIndent=12,
             spaceBefore=4,
@@ -210,24 +251,41 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
 
         # ── Cover page ──────────────────────────────────────────────────────
         story = []
-        story.append(Spacer(1, 1.5 * inch))
-        story.append(HRFlowable(
-            width="40%", thickness=3,
-            color=HexColor(f"#{pal['primary']}"),
-            spaceBefore=0, spaceAfter=12, hAlign="LEFT",
-        ))
+        
+        # Dynamic Cover Page Layout Based on Theme
+        if theme_val == 'creative':
+            story.append(Spacer(1, 2 * inch))
+            story.append(HRFlowable(width="100%", thickness=12, color=HexColor(f"#{pal['accent']}"), spaceBefore=0, spaceAfter=24, hAlign="LEFT"))
+        elif theme_val == 'corporate':
+            story.append(Spacer(1, 2.5 * inch))
+        else:
+            story.append(Spacer(1, 1.5 * inch))
+            story.append(HRFlowable(
+                width="40%", thickness=3,
+                color=HexColor(f"#{pal['primary']}"),
+                spaceBefore=0, spaceAfter=12, hAlign="LEFT",
+            ))
+
         story.append(Paragraph(_safe(title), styles["CoverTitle"]))
         story.append(Spacer(1, 8))
+        
         author_text = f"Prepared for: {user_name}" if user_name else "Generated Document"
         date_str    = datetime.now().strftime("%B %d, %Y")
+        
         story.append(Paragraph(_safe(author_text), styles["CoverSubtitle"]))
         story.append(Paragraph(date_str, styles["CoverSubtitle"]))
-        story.append(Spacer(1, 0.5 * inch))
-        story.append(HRFlowable(
-            width="100%", thickness=1,
-            color=HexColor(f"#{pal['accent']}"),
-            spaceBefore=12, spaceAfter=0,
-        ))
+        
+        if theme_val == 'corporate':
+            story.append(Spacer(1, 1 * inch))
+            story.append(HRFlowable(width="50%", thickness=1, color=HexColor(f"#{pal['accent']}"), spaceBefore=12, spaceAfter=0, hAlign="CENTER"))
+        elif theme_val != 'minimal':
+            story.append(Spacer(1, 0.5 * inch))
+            story.append(HRFlowable(
+                width="100%", thickness=1,
+                color=HexColor(f"#{pal['accent']}"),
+                spaceBefore=12, spaceAfter=0,
+            ))
+            
         story.append(PageBreak())
 
         # ── Table of Contents (3+ sections) ─────────────────────────────────
@@ -249,7 +307,9 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
 
             if heading:
                 story.append(Paragraph(_safe(heading), styles["SectionHeader"]))
-                story.append(_accent_rule())
+                # Only add accent rules for non-minimal themes
+                if theme_val not in ['minimal']:
+                    story.append(_accent_rule())
 
             if body:
                 for para in body.split("\n\n"):
@@ -265,12 +325,16 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
                     for b in bullets if b and b.strip()
                 ]
                 if items:
-                    story.append(ListFlowable(items, bulletType="bullet", start="●",
-                                              bulletFontSize=8))
+                    bullet_type = "bullet" if theme_val != 'minimal' else "1"
+                    bullet_start = "●" if theme_val != 'minimal' else "-"
+                    story.append(ListFlowable(items, bulletType=bullet_type, start=bullet_start,
+                                              bulletFontSize=8 if theme_val != 'minimal' else 11))
                     story.append(Spacer(1, 8))
 
-            if i % 2 == 0 and bullets:
-                story.append(_callout_box(f"Key Point: {bullets[0][:200]}"))
+            if bullets and theme_val != 'minimal':
+                # Use callouts intelligently based on theme/audience
+                if (theme_val in ['educational', 'creative']) or (i % 2 == 0):
+                    story.append(_callout_box(f"Key Point: {bullets[0][:200]}"))
 
             story.append(Spacer(1, 12))
 
