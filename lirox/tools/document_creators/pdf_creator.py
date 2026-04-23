@@ -74,14 +74,19 @@ def create_pdf(path: str, title: str, sections: List[Dict[str, Any]],
             r.error = f"Output directory is not writable: {out_dir}"
             return r
 
-        # Use design_plan palette if provided, otherwise fallback to old system
-        if design_plan and hasattr(design_plan, 'palette'):
+        # Use LLM dynamic color scheme if provided, otherwise fallback
+        if design_plan and hasattr(design_plan, 'color_scheme') and design_plan.color_scheme:
+            pal = design_plan.color_scheme
+            palette_name = getattr(design_plan, 'palette', 'custom_llm_palette')
+            _logger.info("Using LLM generated color scheme: %s", palette_name)
+        elif design_plan and hasattr(design_plan, 'palette'):
             palette_name = design_plan.palette
             _logger.info("Using design plan palette: %s", palette_name)
+            pal = PALETTES.get(palette_name, PALETTES.get("default", {}))
         else:
             palette_name = pick_palette(query or title, title, user_expertise=user_expertise)
             _logger.info("Using fallback palette: %s", palette_name)
-        pal = PALETTES.get(palette_name, PALETTES.get("default", {}))
+            pal = PALETTES.get(palette_name, PALETTES.get("default", {}))
 
         # ── EXTRACT DESIGN THINKING CONTEXT ──
         theme_val = getattr(design_plan.theme, 'value', 'professional') if design_plan and hasattr(design_plan, 'theme') else 'professional'
