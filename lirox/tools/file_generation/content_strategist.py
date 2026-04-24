@@ -1,15 +1,4 @@
-"""Content Strategist — Creates rich, audience-aware content.
-
-Not just filling sections with text, but:
-- Understanding the topic deeply
-- Creating structured content with learning progressions
-- Adding examples, visuals, practical guidance
-- Personalizing for the audience level
-
-The strategist first tries the LLM-based ContentGenerator (which produces
-dynamic, topic-specific content). If that fails, it falls back to a curated
-knowledge base for common topics, then to a generic structure builder.
-"""
+"""Content Strategist — Creates rich, audience-aware content using dynamic generation or fallbacks."""
 from __future__ import annotations
 
 import logging
@@ -21,23 +10,17 @@ _logger = logging.getLogger("lirox.file_generation.content_strategist")
 class ContentStrategist:
     """Creates content strategically based on audience and topic."""
 
-    # ── public API ────────────────────────────────────────────────────────
-
     @staticmethod
     def generate(topic: str, query: str, file_type: str, 
                   audience: str = "general",
                   structure_hints: List[str] = None,
                   design_context: str = "") -> Generator[Dict[str, Any], None, None]:
-        """
-        Generate rich, substantive content.
-        Yields progress events and finally the complete content dict.
-        """
+        """Generate rich, substantive content and yield progress events."""
         
         from lirox.tools.content_generator import ContentGenerator
         generator = ContentGenerator()
         
         sections = []
-        # Generate rich sections iteratively
         for event in generator.generate_sections(
             topic=topic,
             num_sections=len(structure_hints) if structure_hints else 5,
@@ -49,7 +32,6 @@ class ContentStrategist:
             elif event["type"] == "section":
                 section = event["data"]
                 
-                # VERIFY section richness
                 word_count = len(section.get('body', '').split())
                 if word_count < 100:
                     yield {"type": "progress", "message": f"Refining Section: {section.get('heading')}..."}
@@ -57,7 +39,6 @@ class ContentStrategist:
                 
                 sections.append(section)
 
-        # Yield the final result
         yield {
             "type": "result",
             "data": {
@@ -70,9 +51,7 @@ class ContentStrategist:
     
     @staticmethod
     def _regenerate_section(thin_section: Dict, design_context: str) -> Dict:
-        """
-        Regenerate a section that was too thin
-        """
+        """Regenerate a section that is too thin."""
         from lirox.utils.llm import generate_response
         
         prompt = f"""

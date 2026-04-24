@@ -1,8 +1,5 @@
 """ContentGenerator — LLM-based rich content generation for documents.
-
-Generates structured, detailed content for each document format.  The
-generator asks the LLM to produce content that meets minimum quality
-standards (word counts, bullet counts, etc.) before the file is built.
+Generates structured, detailed content for each document format.
 """
 from __future__ import annotations
 
@@ -15,28 +12,17 @@ _logger = logging.getLogger("lirox.tools.content_generator")
 
 class ContentGenerator:
     """Generate rich document content using an LLM.
-
-    All methods return the same structured dict that
-    ``PersonalAgent._filegen`` expects, so this class can be dropped in as
-    a content enrichment step without changing the caller.
+    Returns a structured dict compatible with PersonalAgent._filegen.
     """
 
     def __init__(self, llm_fn=None):
-        """
-        Parameters
-        ----------
-        llm_fn: callable(prompt, system_prompt) -> str
-            The LLM function to use.  If None, falls back to
-            ``lirox.utils.llm.generate_response``.
-        """
+        """Initialize with an optional LLM function."""
         self._llm = llm_fn
 
     def _call_llm(self, prompt: str, system_prompt: str = "") -> str:
         if self._llm:
             return self._llm(prompt, system_prompt)
         from lirox.utils.llm import generate_response
-        
-        # Lirox v1.2 Strict Document Engine Protocol
         strict_sys = (
             "SYSTEM ROLE: You are a strict document generation engine. Your ONLY function is to produce clean, final-form documents. "
             "You are NOT a teacher, NOT an explainer, and NOT a conversational assistant.\n\n"
@@ -61,15 +47,7 @@ class ContentGenerator:
             system_prompt=system_prompt or strict_sys,
         )
 
-    # ── Slide content ────────────────────────────────────────────────────────
-
-    def generate_slides(self, topic: str, num_slides: int = 8,
-                        context: str = "", structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Generate *num_slides* content slides for a PPTX presentation dynamically.
-
-        Each slide dict has ``title``, ``bullets`` (3-6 items), and
-        ``notes`` (speaker notes).
-        """
+        """Generate content slides for a PPTX presentation."""
         
         hints_text = ""
         if structure_hints:
@@ -97,13 +75,9 @@ Output ONLY the JSON array, no other text."""
         )
         return self._parse_list(raw, "slides", num_slides, topic, structure_hints)
 
-    # ── Section content ──────────────────────────────────────────────────────
-
     def generate_sections(self, topic: str, num_sections: int = 5,
                           context: str = "", structure_hints: Optional[List[str]] = None) -> Generator[Dict[str, Any], None, None]:
-        """Generate *num_sections* content sections iteratively.
-        Yields each section as it is completed.
-        """
+        """Generate content sections iteratively."""
         if not structure_hints:
             yield {"type": "progress", "message": "Planning document structure..."}
             structure_hints = self._generate_structure(topic, num_sections, context)
@@ -147,14 +121,9 @@ Output as JSON:
 
 
 
-    # ── Sheet content ────────────────────────────────────────────────────────
-
     def generate_sheets(self, topic: str, num_sheets: int = 1,
                         context: str = "", structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Generate *num_sheets* worksheet definitions for an XLSX workbook dynamically.
-
-        Each sheet dict has ``name``, ``headers``, and ``rows``.
-        """
+        """Generate worksheet definitions for an XLSX workbook."""
         
         hints_text = ""
         if structure_hints:
@@ -181,10 +150,8 @@ Output ONLY the JSON array, no other text."""
         )
         return self._parse_list(raw, "sheets", num_sheets, topic, structure_hints)
 
-    # ── Parser ───────────────────────────────────────────────────────────────
-
     def _parse_list(self, raw: str, key: str, expected: int, topic: str, structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Best-effort extraction: JSON first, then plain-text fallback."""
+        """Extract content using JSON parsers or plain-text fallback."""
         import json
 
         # Attempt 1: Use the JSON extractor (now handles arrays too)
@@ -360,17 +327,10 @@ Output ONLY the JSON array, no other text."""
                 {"heading": "Conclusion and Future Outlook", "body": f"{topic} stands at an inflection point, with rapid advancement creating new possibilities while also raising important questions. Continued research, collaboration, and responsible development will determine how these capabilities shape the future.", "bullets": []},
             ]
 
-    # ── Public entry point ───────────────────────────────────────────────────
-
     def generate(self, file_type: str, topic: str, query: str = "",
                  context: str = "", structure_hints: Optional[List[str]] = None,
                  section_count: int = 0) -> Dict[str, Any]:
-        """Generate complete document content for *file_type*.
-
-        Returns a dict with the appropriate content key populated:
-        ``slides`` for pptx, ``sections`` for pdf/docx, ``sheets`` for xlsx.
-        Always includes all three keys so callers can safely access any.
-        """
+        """Generate complete document content for the specified file type."""
         combined_context = (query + " " + context).strip()
 
         # Ensure result dict always has all keys (v1.1 fix)

@@ -15,6 +15,17 @@
 
 </div>
 
+### Codebase Overview
+This repository contains the core code for my AI advisor persona.
+
+### Features
+* Strategic advice generator
+* Document generation engine
+* Tool usage guidance
+
+### Installation Instructions
+See the [Getting Started](#-getting-started) section below for installation steps.
+
 ---
 
 ## ⚡ The Lirox Manifesto

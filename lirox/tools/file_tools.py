@@ -1,15 +1,5 @@
-"""Lirox v1.1 — File Operations (verified, structured receipts, audit logging).
-
-Every write/read/delete/patch now returns a FileReceipt with explicit
-disk-verification. The agent can no longer report success unless
-`receipt.verified and receipt.ok` are both True.
-
-All file operations are logged to the audit trail (Feature-7).
-The self-modification gate is enforced on all write paths (BUG-12).
-
-Backwards-compat: string-returning wrappers kept for callers that
-haven't migrated — they produce identical output but internally use
-the verified path.
+"""Lirox File Operations Module.
+Provides verified, audited file system operations with safety checks.
 """
 from __future__ import annotations
 
@@ -36,11 +26,7 @@ def _audit(event_name: str, path: str = "", message: str = "", **kwargs) -> None
 
 
 def _self_mod_blocked(path: str) -> Optional[str]:
-    """Return an error string if writing to `path` would modify Lirox itself
-    AND the user hasn't opted in via LIROX_ALLOW_SELF_MOD=1. Else None.
-
-    BUG-12 fix: this function is now CALLED in every write path in file_tools.py.
-    """
+    """Check if writing to the path modifies Lirox source code."""
     try:
         if is_self_modification(path):
             if os.getenv("LIROX_ALLOW_SELF_MOD") != "1":
@@ -58,7 +44,6 @@ def _self_mod_blocked(path: str) -> Optional[str]:
     return None
 
 
-# ── Safety ────────────────────────────────────────────────────────
 
 def _readlink_or_none(path: str) -> Optional[str]:
     if not os.path.islink(path):
@@ -80,11 +65,7 @@ def _normalize_and_expand(path: str) -> str:
 
 
 def _is_safe_path(path: str) -> Tuple[bool, str]:
-    """Returns (ok, resolved_or_reason).
-
-    Uses os.path.realpath to fully resolve all symlink chains, preventing
-    path-traversal attacks via symlinks pointing outside the sandbox.
-    """
+    """Resolve path and verify it lies within permitted directories."""
     from lirox.config import SAFE_DIRS_RESOLVED, PROTECTED_PATHS
     if not path:
         return False, "Empty path"
@@ -111,15 +92,9 @@ def _is_safe_path(path: str) -> Tuple[bool, str]:
     )
 
 
-# ── Structured (verified) ops ─────────────────────────────────────
 
 def file_write_verified(path: str, content: str, mode: str = "w") -> FileReceipt:
-    """Write + verify on disk. Never reports success without verification.
-
-    TOCTOU fix (C-07): the resolved path is re-verified immediately before
-    the file open so that a symlink swap between the initial safety check and
-    the actual write cannot redirect the write to a protected location.
-    """
+    """Write content to a file and verify existence and content on disk."""
     r = FileReceipt(tool="file_write", operation="write", path=path)
     ok, info = _is_safe_path(path)
     if not ok:
@@ -186,6 +161,7 @@ def file_write_verified(path: str, content: str, mode: str = "w") -> FileReceipt
 
 
 def file_read_verified(path: str, max_chars: int = 8000) -> FileReceipt:
+    """Read a file and verify its existence on disk."""
     r = FileReceipt(tool="file_read", operation="read", path=path)
     ok, info = _is_safe_path(path)
     if not ok:
@@ -217,6 +193,7 @@ def file_read_verified(path: str, max_chars: int = 8000) -> FileReceipt:
 
 
 def file_delete_verified(path: str, confirm: bool = True) -> FileReceipt:
+    """Delete a file or directory and verify removal."""
     r = FileReceipt(tool="file_delete", operation="delete", path=path)
     ok, info = _is_safe_path(path)
     if not ok:
@@ -277,6 +254,7 @@ def file_delete_verified(path: str, confirm: bool = True) -> FileReceipt:
 
 
 def file_append_verified(path: str, content: str) -> FileReceipt:
+    """Append content to a file and verify the new size."""
     r = FileReceipt(tool="file_append", operation="append", path=path)
     ok, info = _is_safe_path(path)
     if not ok:
@@ -307,6 +285,7 @@ def file_append_verified(path: str, content: str) -> FileReceipt:
 
 
 def file_patch_verified(path: str, old_text: str, new_text: str) -> FileReceipt:
+    """Replace a specific string in a file and verify the result."""
     r = FileReceipt(tool="file_patch", operation="patch", path=path)
     ok, info = _is_safe_path(path)
     if not ok:
@@ -360,6 +339,7 @@ def file_patch_verified(path: str, old_text: str, new_text: str) -> FileReceipt:
 
 
 def create_directory_verified(path: str) -> FileReceipt:
+    """Create a directory and verify its existence."""
     r = FileReceipt(tool="create_dir", operation="mkdir", path=path)
     ok, info = _is_safe_path(path)
     if not ok:
@@ -384,7 +364,6 @@ def create_directory_verified(path: str) -> FileReceipt:
         return r
 
 
-# ── Backwards-compat string wrappers ──────────────────────────────
 
 def file_write(path: str, content: str, mode: str = "w") -> str:
     return file_write_verified(path, content, mode).as_user_summary()
@@ -415,7 +394,6 @@ def create_directory(path: str) -> str:
     return create_directory_verified(path).as_user_summary()
 
 
-# ── List / tree / search (read-only, no state to verify beyond existence) ─
 
 def file_list(path: str = ".", pattern: str = "*", max_files: int = 100) -> str:
     # SECURITY-03 fix: reject glob patterns that escape the directory via '..'
@@ -555,7 +533,6 @@ def run_shell(command: str, timeout: int = 30) -> str:
     return run_command(command)
 
 
-# ── Legacy helpers (kept for backward-compat) ─────────────────────
 
 def get_file_metadata(path: str) -> Dict:
     """Extract file metadata (size, timestamps, permissions, type) without reading content."""
