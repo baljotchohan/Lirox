@@ -71,6 +71,17 @@ def process_query(orch, query: str, verbose: bool = False):
                 show_agent_event(event.message, agent=event.agent, etype=etype)
                 _last_thinking["steps"].append(event.message)
 
+            # ── Handle Tool Calls ──
+            elif etype == "tool_call":
+                show_agent_event(event.message, agent=event.agent, etype="tool_call")
+
+            # ── Handle Tool Results ──
+            elif etype == "tool_result":
+                show_agent_event(event.message, agent=event.agent, etype="agent_progress")
+
+            # ── Handle Warnings ──
+            elif etype == "warning":
+                console.print(f"  [bold #FFC107]⚠ {event.message}[/]")
                 
             # ── Handle Streaming ──
             elif etype == "streaming":
@@ -80,12 +91,16 @@ def process_query(orch, query: str, verbose: bool = False):
             # ── Handle Done ──
             elif etype == "done":
                 if last_event_type == "streaming":
-                    console.print() # Finish the line
+                    console.print()  # Finish the streaming line
+                    # Response already displayed via streaming — just show Done
+                    console.print(f"  [bold #10b981]✓ Done[/]")
+                else:
+                    # Non-streamed response (e.g. filegen results) — render normally
+                    show_answer(event.message)
                 # Check if this is a thinking-done event with full data
                 thinking_data = event.data.get("thinking_result")
                 if thinking_data:
                     _last_thinking["full_result"] = thinking_data
-                show_answer(event.message)
                 _last_thinking["elapsed"] = event.data.get("total_time", 0.0)
                 
             # ── Handle Errors ──

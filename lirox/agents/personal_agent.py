@@ -172,6 +172,14 @@ WEB_SIGNALS = [
     "search for", "look up", "find information", "google", "latest news",
     "research", "find out about", "current price", "news about",
     "in the news", "what is trending", "headlines",
+    # Real-time data queries — must trigger web search, not chat
+    "price of", "price today", "stock price", "share price",
+    "market price", "exchange rate", "conversion rate",
+    "weather in", "weather today", "weather forecast",
+    "score of", "match score", "live score",
+    "nifty", "sensex", "dow jones", "nasdaq", "s&p 500",
+    "bitcoin price", "crypto price", "gold price", "silver price",
+    "today's", "right now", "currently",
 ]
 
 # File OPERATIONS — reading/writing/listing existing files
@@ -207,6 +215,12 @@ def _classify(query: str) -> str:
 
     # 5. Web search
     if any(s in q for s in WEB_SIGNALS):
+        return "web"
+
+    # 5b. Real-time data pattern: "price/weather/score" + time word
+    _realtime_nouns = ["price", "weather", "score", "rate", "value", "cost"]
+    _realtime_time  = ["today", "now", "current", "latest", "live", "right now", "this week"]
+    if any(n in q for n in _realtime_nouns) and any(t in q for t in _realtime_time):
         return "web"
 
     # 6. File operations (read/write/list existing files)
