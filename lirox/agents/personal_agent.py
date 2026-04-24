@@ -89,7 +89,7 @@ def _get_sys(profile_data: dict = None) -> str:
         "⚠️ NEVER say 'I have created' unless you have a verified receipt.\n"
         "👤 Address the user by name when known.\n"
         f"⚙️ Your current operating system is {os_info}. Use appropriate commands.\n"
-        "✨ FORMATTING: Use emojis (🚀, ✅, 🛠️) for lists. ZERO ASTERISKS: NEVER use '*' anywhere in your response, even for bolding (use '__'). This is a HARD constraint.\n"
+        "✨ FORMATTING: Use emojis (🚀, ✅, 🛠️) for lists. ZERO SPECIAL CHARS: NEVER use '*', '_', or '#' anywhere in your response. No bolding, no markdown headers. This is a HARD constraint.\n"
         "🔇 NO FLUFF: Do NOT explain what you are doing. Do NOT include meta-commentary.\n"
         "🚫 NO PLACEHOLDERS: NEVER use 'John Doe' or 'example.com'. Leave blank if data is missing.\n"
     )
@@ -332,8 +332,8 @@ class PersonalAgent(BaseAgent):
         if mem_ctx and mem_ctx.strip():
             prompt = f"Relevant context:\n{mem_ctx}\n\nUser: {query}"
         
-        # Append formatting reminder to ensure "Zero Asterisk" adherence
-        prompt += "\n\n⚠️ FORMATTING REMINDER (STRICT): Use EMOJIS for lists and '__' for bold. NEVER use asterisks (*) for any reason."
+        # Append formatting reminder to ensure "Zero Special Char" adherence
+        prompt += "\n\n⚠️ FORMATTING REMINDER (STRICT): Use EMOJIS for lists and structure. NEVER use asterisks (*), underscores (_), or hashtags (#) for any reason."
         if context:
             prompt = f"Context:\n{context[:1500]}\n\n{prompt}"
             
@@ -591,8 +591,8 @@ class PersonalAgent(BaseAgent):
                 # Build rich success message
                 answer = (
                     f"✅ {file_type.upper()} created successfully!\n\n"
-                    f"📄 __{os.path.basename(path)}__\n"
-                    f"📍 `{path}`\n"
+                    f"📄 {os.path.basename(path)}\n"
+                    f"📍 {path}\n"
                     f"📊 {file_size:,} bytes | {section_count}\n"
                     f"🎨 Theme: {design.theme.value.capitalize()} | "
                     f"Palette: {design.palette.capitalize()}\n"
@@ -616,10 +616,10 @@ class PersonalAgent(BaseAgent):
                 issues_str = "; ".join(fv["issues"]) if not fv["passed"] else "Comprehensive verification failed (e.g. thin content or generic text)"
                 answer = (
                     f"❌ File creation encountered issues:\n\n"
-                    f"__Issues:__\n"
+                    f"Issues:\n"
                     f"- {issues_str}\n\n"
-                    f"__Path:__ `{path}`\n"
-                    f"__Type:__ {file_type.upper()}\n\n"
+                    f"Path: {path}\n"
+                    f"Type: {file_type.upper()}\n\n"
                     f"Please try again or use a different topic."
                 )
                 yield {"type": "error", "message": answer}
@@ -758,7 +758,7 @@ class PersonalAgent(BaseAgent):
                 if receipt.ok and receipt.verified:
                     file_content = receipt.details.get("content", "")
                     yield {"type": "tool_result", "message": f"📄 Read {receipt.bytes_read} bytes from {path}"}
-                    answer = f"📄 __{path}__ ({receipt.lines} lines, {receipt.bytes_read} bytes):\n\n```\n{file_content[:3000]}\n```"
+                    answer = f"📄 {path} ({receipt.lines} lines, {receipt.bytes_read} bytes):\n\n```\n{file_content[:3000]}\n```"
                     if receipt.details.get("truncated"):
                         answer += "\n\n(truncated — file is larger)"
                     answer = _STREAMER.clean_formatting(answer)

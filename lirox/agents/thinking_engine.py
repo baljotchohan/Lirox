@@ -14,7 +14,7 @@ class BaseSubAgent:
         prompt = f"As the {self.name} ({self.role}), analyze this query: '{query}'\nContext: {context}\nProvide a short summary and reasoning."
         sys_prompt = (
             "You are a sub-agent in a multi-agent system. "
-            "🚀 ZERO ASTERISK POLICY (STRICT): NEVER use '*' for any reason. Use '__' for bold. Use emojis for lists. "
+            "🚀 ZERO SPECIAL CHAR POLICY (STRICT): NEVER use '*', '_', or '#' for any reason. Use emojis for lists and structure. "
             "Output ONLY JSON: {\"summary\": \"...\", \"reasoning\": \"...\"}"
         )
         try:

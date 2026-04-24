@@ -10,23 +10,35 @@ class StreamingResponse:
 
     @staticmethod
     def clean_formatting(text: str) -> str:
-        """Enforces zero asterisk policy by cleaning output before it is streamed."""
+        """Enforces zero formatting char policy. Strips *, _, and # while maintaining structure."""
         if not text:
             return text
-        # Split by code blocks
+        # Split by code blocks to avoid messing with code
         parts = re.split(r'(```.*?```|`.*?`)', text, flags=re.DOTALL)
         for i in range(len(parts)):
             if i % 2 == 0:
                 part = parts[i]
-                # Bold
-                part = re.sub(r'\*\*(.*?)\*\*', r'__\1__', part)
-                # Italic
-                part = re.sub(r'(?<!\w)\*(?!\s)(.*?)(?<!\s)\*(?!\w)', r'_\1_', part)
-                # Bullet points
-                part = re.sub(r'^([ \t]*)\*[ \t]+', r'\1🔹 ', part, flags=re.MULTILINE)
-                part = re.sub(r'^([ \t]*)\-[ \t]+', r'\1🔸 ', part, flags=re.MULTILINE)
-                # Eliminate any remaining stray asterisks
-                part = part.replace('*', '')
+                
+                # Replace Headers (#) with emojis. Support variable spacing.
+                # Use (?m) for multiline mode to ensure ^ matches starts of lines.
+                part = re.sub(r'(?m)^#{1,3}\s+(.*)$', r'🔹 \1', part)
+                part = re.sub(r'(?m)^#{4,6}\s+(.*)$', r'🔸 \1', part)
+                
+                # Replace Bold/Italic markers (** or __) with nothing
+                # Non-greedy matches to avoid over-eating text
+                part = re.sub(r'\*\*(.*?)\*\*', r'\1', part)
+                part = re.sub(r'__(.*?)__', r'\1', part)
+                part = re.sub(r'\*(.*?)\*', r'\1', part)
+                part = re.sub(r'_(.*?)_', r'\1', part)
+                
+                # Replace Bullet points (* or -) with emojis
+                part = re.sub(r'(?m)^([ \t]*)\*[ \t]+', r'\1🔹 ', part)
+                part = re.sub(r'(?m)^([ \t]*)\-[ \t]+', r'\1🔸 ', part)
+                
+                # Final pass: Eliminate any remaining stray formatting characters
+                # Strips *, _, #, and ` while preserving the actual content.
+                part = part.replace('*', '').replace('_', '').replace('#', '').replace('`', '')
+                
                 parts[i] = part
         return "".join(parts)
 
