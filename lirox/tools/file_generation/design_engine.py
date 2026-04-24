@@ -403,7 +403,7 @@ class DesignEngine:
             '  "topic": "The exact subject or title of the document",\n'
             '  "audience": "One of: beginner, intermediate, advanced, expert",\n'
             '  "theme": "One of: professional, educational, creative, minimal, corporate",\n'
-            '  "palette": "A descriptive name for the palette (e.g. cyber_blue, nature_green)",\n'
+            '  "palette": "One of: technology, education, creative, business, culture, nature, health, default",\n'
             '  "structure": ["List of", "5 to 10", "section headings"],\n'
             '  "page_count": 8,\n'
             '  "has_visuals": true,\n'
