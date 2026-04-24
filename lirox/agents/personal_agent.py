@@ -228,35 +228,34 @@ def _classify(query: str) -> str:
     if any(s in q for s in MEMORY_SIGNALS):
         return "memory"
 
-    # 3. FILE GENERATION — BEFORE generic file ops
+    # 3. Code/Text File Extensions (explicit extension means standard file operation)
+    if re.search(r'\b\w+\.(py|js|ts|md|txt|json|csv|html|css|yaml|yml|toml|sh)\b', q):
+        if re.search(r'\b(read|write|create|make|generate|edit|open|show|cat|save|delete|find)\b', q):
+            return "file"
+
+    # 4. FILE GENERATION — Rich documents (pdf, docx, pptx, xlsx)
     #    "create a ppt", "make a pdf", "generate excel", "presentation on X"
     if _FILEGEN_PATTERN.search(q) or _FILEGEN_PATTERN_REV.search(q):
         return "filegen"
 
-    # 4. Shell commands
+    # 5. Shell commands
     if any(s in q for s in SHELL_SIGNALS):
         return "shell"
 
-    # 5. Web search
+    # 6. Web search
     if any(s in q for s in WEB_SIGNALS):
         return "web"
 
-    # 5b. Real-time data pattern: "price/weather/score" + time word
+    # 6b. Real-time data pattern: "price/weather/score" + time word
     _realtime_nouns = ["price", "weather", "score", "rate", "value", "cost"]
     _realtime_time  = ["today", "now", "current", "latest", "live", "right now", "this week"]
     if any(n in q for n in _realtime_nouns) and any(t in q for t in _realtime_time):
         return "web"
 
-    # 6. File operations (read/write/list existing files)
+    # 7. File operations (read/write/list existing files)
     #    Only match explicit file-op phrases, not broad patterns
     if any(s in q for s in _FILE_OP_SIGNALS):
         return "file"
-
-    # 7. Check for file extensions in context of actual file operations
-    if re.search(r'\b\w+\.(py|js|ts|md|txt|json|csv|html|css|yaml|yml|toml)\b', q):
-        # Only if there's an action verb
-        if re.search(r'\b(read|write|create|edit|open|show|cat|save|delete|find)\b', q):
-            return "file"
 
     # 8. Default: conversational chat
     return "chat"

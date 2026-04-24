@@ -259,16 +259,13 @@ class DesignEngine:
                     "Q&A / Discussion",
                 ], 8
             else:
+                # DYNAMIC FALLBACK: keep it simpler unless specified
                 return [
-                    "Title Slide",
                     "Introduction",
                     "Core Concepts",
                     "Implementation",
-                    "Advanced Techniques",
-                    "Practical Applications",
-                    "Troubleshooting",
                     "Conclusion",
-                ], 8
+                ], 4
         else:
             # pdf / docx sections
             if audience == AudienceLevel.BEGINNER:
@@ -297,12 +294,9 @@ class DesignEngine:
                 return [
                     "Introduction",
                     "Core Concepts",
-                    "Implementation Guide",
-                    "Advanced Techniques",
-                    "Practical Applications",
-                    "Troubleshooting",
+                    "Implementation Details",
                     "Conclusion",
-                ], 8
+                ], 4
 
     # ── colour schemes ────────────────────────────────────────────────────
 
@@ -404,8 +398,8 @@ class DesignEngine:
             '  "audience": "One of: beginner, intermediate, advanced, expert",\n'
             '  "theme": "One of: professional, educational, creative, minimal, corporate",\n'
             '  "palette": "One of: technology, education, creative, business, culture, nature, health, default",\n'
-            '  "structure": ["List of", "5 to 10", "section headings"],\n'
-            '  "page_count": 8,\n'
+            '  "structure": ["List of section headings", "Keep it short (1-3) for simple requests", "Use more (5+) only if a deep comprehensive document is requested"],\n'
+            '  "page_count": "Number of pages (e.g., 1 for simple requests, 8 for complex)",\n'
             '  "has_visuals": true,\n'
             '  "style_guide": {\n'
             '    "spacing": "tight or generous",\n'
