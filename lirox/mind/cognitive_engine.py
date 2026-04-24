@@ -1091,7 +1091,6 @@ class ThinkingDisplay:
         
     def start(self, query: str, intent_name: str):
         import time
-        from lirox.mind.intent import IntentClassifier, Complexity, CognitiveContext
         self.start_time = time.time()
         self.query = query
         _, self.complexity = IntentClassifier.classify(query, CognitiveContext())
