@@ -44,7 +44,7 @@ class TestCreatePdf:
                    [{"heading": "S1", "body": "Paragraph.", "bullets": []}])
         result = FileVerificationEngine.verify(path)
         assert result["passed"], f"FileVerificationEngine failed: {result['issues']}"
-        assert result["size"] > 0
+        assert result["file_size"] > 0
 
     def test_multiple_sections(self, tmp_dir):
         path = os.path.join(tmp_dir, "multi.pdf")
@@ -190,7 +190,7 @@ class TestFileVerificationEngine:
     def test_missing_file_fails(self, tmp_dir):
         result = FileVerificationEngine.verify(os.path.join(tmp_dir, "nonexistent.pdf"))
         assert not result["passed"]
-        assert result["size"] == 0
+        assert result["file_size"] == 0
         assert result["issues"]
 
     def test_existing_file_passes(self, tmp_dir):
@@ -207,4 +207,4 @@ class TestFileVerificationEngine:
                               [{"name": "S", "headers": ["X"], "rows": [["1"]]}])
         assert receipt.ok
         result = FileVerificationEngine.verify(path)
-        assert result["size"] == os.path.getsize(path)
+        assert result["file_size"] == os.path.getsize(path)

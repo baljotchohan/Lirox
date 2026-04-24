@@ -8,6 +8,28 @@ from typing import Generator
 class StreamingResponse:
     """Stream responses. Code blocks yielded atomically — never split or truncated."""
 
+    @staticmethod
+    def clean_formatting(text: str) -> str:
+        """Enforces zero asterisk policy by cleaning output before it is streamed."""
+        if not text:
+            return text
+        # Split by code blocks
+        parts = re.split(r'(```.*?```|`.*?`)', text, flags=re.DOTALL)
+        for i in range(len(parts)):
+            if i % 2 == 0:
+                part = parts[i]
+                # Bold
+                part = re.sub(r'\*\*(.*?)\*\*', r'__\1__', part)
+                # Italic
+                part = re.sub(r'(?<!\w)\*(?!\s)(.*?)(?<!\s)\*(?!\w)', r'_\1_', part)
+                # Bullet points
+                part = re.sub(r'^([ \t]*)\*[ \t]+', r'\1🔹 ', part, flags=re.MULTILINE)
+                part = re.sub(r'^([ \t]*)\-[ \t]+', r'\1🔸 ', part, flags=re.MULTILINE)
+                # Eliminate any remaining stray asterisks
+                part = part.replace('*', '')
+                parts[i] = part
+        return "".join(parts)
+
     def stream_words(self, text: str, delay: float = 0.01) -> Generator[str, None, None]:
         """
         Stream text word-by-word for a 'typing' effect.

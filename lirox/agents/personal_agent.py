@@ -228,35 +228,34 @@ def _classify(query: str) -> str:
     if any(s in q for s in MEMORY_SIGNALS):
         return "memory"
 
-    # 3. FILE GENERATION — BEFORE generic file ops
+    # 3. Code/Text File Extensions (explicit extension means standard file operation)
+    if re.search(r'\b\w+\.(py|js|ts|md|txt|json|csv|html|css|yaml|yml|toml|sh)\b', q):
+        if re.search(r'\b(read|write|create|make|generate|edit|open|show|cat|save|delete|find)\b', q):
+            return "file"
+
+    # 4. FILE GENERATION — Rich documents (pdf, docx, pptx, xlsx)
     #    "create a ppt", "make a pdf", "generate excel", "presentation on X"
     if _FILEGEN_PATTERN.search(q) or _FILEGEN_PATTERN_REV.search(q):
         return "filegen"
 
-    # 4. Shell commands
+    # 5. Shell commands
     if any(s in q for s in SHELL_SIGNALS):
         return "shell"
 
-    # 5. Web search
+    # 6. Web search
     if any(s in q for s in WEB_SIGNALS):
         return "web"
 
-    # 5b. Real-time data pattern: "price/weather/score" + time word
+    # 6b. Real-time data pattern: "price/weather/score" + time word
     _realtime_nouns = ["price", "weather", "score", "rate", "value", "cost"]
     _realtime_time  = ["today", "now", "current", "latest", "live", "right now", "this week"]
     if any(n in q for n in _realtime_nouns) and any(t in q for t in _realtime_time):
         return "web"
 
-    # 6. File operations (read/write/list existing files)
+    # 7. File operations (read/write/list existing files)
     #    Only match explicit file-op phrases, not broad patterns
     if any(s in q for s in _FILE_OP_SIGNALS):
         return "file"
-
-    # 7. Check for file extensions in context of actual file operations
-    if re.search(r'\b\w+\.(py|js|ts|md|txt|json|csv|html|css|yaml|yml|toml)\b', q):
-        # Only if there's an action verb
-        if re.search(r'\b(read|write|create|edit|open|show|cat|save|delete|find)\b', q):
-            return "file"
 
     # 8. Default: conversational chat
     return "chat"
@@ -320,6 +319,7 @@ class PersonalAgent(BaseAgent):
             )
             # Use the full enriched system prompt so it knows who it is (Lirox) and who the user is (boss)
             answer = generate_response(greeting_prompt, provider="auto", system_prompt=base_sys)
+            answer = _STREAMER.clean_formatting(answer)
             for chunk in _STREAMER.stream_words(answer, delay=0.025):
                 yield {"type": "streaming", "message": chunk}
             yield {"type": "done", "answer": answer}
@@ -338,6 +338,7 @@ class PersonalAgent(BaseAgent):
             prompt = f"Context:\n{context[:1500]}\n\n{prompt}"
             
         answer = generate_response(prompt, provider="auto", system_prompt=base_sys)
+        answer = _STREAMER.clean_formatting(answer)
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
@@ -601,6 +602,8 @@ class PersonalAgent(BaseAgent):
                     answer += f"👤 Created for: {user_name}\n"
                 answer += f"⏱️ {datetime.now().strftime('%B %d, %Y at %H:%M')}"
 
+                answer = _STREAMER.clean_formatting(answer)
+
                 for chunk in _STREAMER.stream_words(answer, delay=0.025):
                     yield {"type": "streaming", "message": chunk}
                 done_event = {"type": "done", "answer": answer}
@@ -758,6 +761,7 @@ class PersonalAgent(BaseAgent):
                     answer = f"📄 __{path}__ ({receipt.lines} lines, {receipt.bytes_read} bytes):\n\n```\n{file_content[:3000]}\n```"
                     if receipt.details.get("truncated"):
                         answer += "\n\n(truncated — file is larger)"
+                    answer = _STREAMER.clean_formatting(answer)
                     for chunk in _STREAMER.stream_words(answer, delay=0.025):
                         yield {"type": "streaming", "message": chunk}
                     yield {"type": "done", "answer": answer}
@@ -854,6 +858,7 @@ class PersonalAgent(BaseAgent):
         answer = generate_response(
             f"Query: {query}\nResults:\n{str(results)[:6000]}\nComprehensive answer:",
             provider="auto", system_prompt=_get_sys(self.profile_data))
+        answer = _STREAMER.clean_formatting(answer)
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
@@ -888,6 +893,8 @@ class PersonalAgent(BaseAgent):
                 )
                 answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
             
+            answer = _STREAMER.clean_formatting(answer)
+            
             for chunk in _STREAMER.stream_words(answer, delay=0.025):
                 yield {"type": "streaming", "message": chunk}
             yield {"type": "done", "answer": answer}
@@ -909,6 +916,7 @@ class PersonalAgent(BaseAgent):
         answer = generate_response(
             f"Query: {query}\n\nMy own source code:\n{summary}\n\nAnswer from actual code.",
             provider="auto", system_prompt=_get_sys(self.profile_data))
+        answer = _STREAMER.clean_formatting(answer)
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
@@ -955,6 +963,7 @@ class PersonalAgent(BaseAgent):
             f"USER QUERY: {query}\n\nFACTUAL DATA:\n{factual}\n\n"
             "Answer using ONLY the data above. If missing, say so honestly.",
             provider="auto", system_prompt=_get_sys(self.profile_data))
+        answer = _STREAMER.clean_formatting(answer)
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
@@ -972,6 +981,7 @@ class PersonalAgent(BaseAgent):
             prompt = (f"User asked: {query}\n\nTool receipt:\n{ctx}\n\n"
                       "Operation FAILED. Tell user what failed and suggest a fix. Max 3 sentences.")
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
+        answer = _STREAMER.clean_formatting(answer)
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
@@ -979,6 +989,7 @@ class PersonalAgent(BaseAgent):
     def _synth_text(self, query, text_result):
         prompt = f"Task: {query}\nTool output:\n{text_result}\n\nSummarize concisely."
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
+        answer = _STREAMER.clean_formatting(answer)
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
