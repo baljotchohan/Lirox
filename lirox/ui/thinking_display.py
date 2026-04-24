@@ -88,7 +88,9 @@ class LiveThinkingDisplay:
             self._stream_synthesis(layout)
             
             # Final decision
-            self._show_decision(lay    def _stream_agent_thinking(self, agent_name: str, layout: Layout, future=None):
+            self._show_decision(layout)
+    
+    def _stream_agent_thinking(self, agent_name: str, layout: Layout, future=None):
         """
         Stream agent's thinking in real-time from LLM
         """
