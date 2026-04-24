@@ -14,13 +14,14 @@ elif command -v python &>/dev/null; then
     PYTHON=python
 else
     echo "[ERROR] Python 3.9+ is required but was not found."
-    echo ""
-    echo " Install it with your package manager:"
-    echo "   Ubuntu/Debian:  sudo apt update && sudo apt install -y python3 python3-pip"
-    echo "   Fedora/RHEL:    sudo dnf install -y python3 python3-pip"
-    echo "   Arch:           sudo pacman -S python python-pip"
-    echo ""
     exit 1
+fi
+
+# ── Handle Uninstall ──────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--uninstall" ]]; then
+    echo "[INFO] Starting Lirox Deep Uninstall..."
+    $PYTHON -c "import sys; from pathlib import Path; sys.path.insert(0, str(Path.cwd())); from lirox.config import delete_all_data; delete_all_data()"
+    exit 0
 fi
 
 PY_VER=$($PYTHON --version 2>&1)

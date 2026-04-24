@@ -333,19 +333,10 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         # Placeholder for update logic
 
     elif base == "/uninstall":
-        if confirm_prompt("ARE YOU SURE? This will delete ALL Lirox data."):
+        if confirm_prompt("ARE YOU SURE? This will delete ALL data and remove Lirox from your device."):
             from lirox.config import delete_all_data
-            # Clear pinned model
-            os.environ.pop("_LIROX_PINNED_MODEL", None)
-            # Delete profile
-            try:
-                profile_path = Path(profile.storage_file)
-                if profile_path.exists():
-                    profile_path.unlink()
-            except Exception:
-                pass
             delete_all_data()
-            success_message("Uninstalled. Goodbye."); sys.exit(0)
+            sys.exit(0)
 
     else:
         error_panel("UNKNOWN COMMAND", f"Type /help for a list of commands.")

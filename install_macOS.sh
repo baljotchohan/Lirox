@@ -14,12 +14,15 @@ elif command -v python &>/dev/null; then
     PYTHON=python
 else
     echo "[ERROR] Python 3.9+ is required but was not found."
-    echo ""
-    echo " Install options:"
-    echo "   Homebrew:  brew install python"
-    echo "   Official:  https://www.python.org/downloads/macos/"
-    echo ""
     exit 1
+fi
+
+# ── Handle Uninstall ──────────────────────────────────────────────────────────
+if [[ "${1:-}" == "--uninstall" ]]; then
+    echo "[INFO] Starting Lirox Deep Uninstall..."
+    # We use python -m lirox logic or direct config call
+    $PYTHON -c "import sys; from pathlib import Path; sys.path.insert(0, str(Path.cwd())); from lirox.config import delete_all_data; delete_all_data()"
+    exit 0
 fi
 
 PY_VER=$($PYTHON --version 2>&1)

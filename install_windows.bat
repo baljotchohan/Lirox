@@ -25,6 +25,13 @@ if %errorlevel% neq 0 (
     set PYTHON=python
 )
 
+:: ── Handle Uninstall ──────────────────────────────────────────────────────────
+if "%1"=="--uninstall" (
+    echo [INFO] Starting Lirox Deep Uninstall...
+    %PYTHON% -c "import sys; from pathlib import Path; sys.path.insert(0, str(Path.cwd())); from lirox.config import delete_all_data; delete_all_data()"
+    exit /b 0
+)
+
 :: ── Check Python version ──────────────────────────────────────────────────────
 for /f "tokens=2 delims= " %%v in ('%PYTHON% --version 2^>^&1') do set PY_VER=%%v
 echo [INFO] Found Python %PY_VER%

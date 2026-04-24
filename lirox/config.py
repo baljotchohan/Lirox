@@ -183,26 +183,49 @@ PILLAR_5_MARKETPLACE = {
 
 def delete_all_data():
     """
-    Delete ALL Lirox data (for /uninstall command).
+    Delete ALL Lirox data and clean up the device footprint.
     WARNING: This is irreversible.
     """
     import shutil
+    import sys
+    import subprocess
+    from pathlib import Path
 
     deleted = []
+    root = Path(PROJECT_ROOT)
 
-    # Delete data directory (sessions, memory, mind)
-    data_path = Path(DATA_DIR)
-    if data_path.exists():
-        shutil.rmtree(data_path)
-        deleted.append(str(data_path))
+    # 1. Clear pinned environment variables
+    os.environ.pop("_LIROX_PINNED_MODEL", None)
 
-    # Delete outputs directory
-    outputs_path = Path(OUTPUTS_DIR)
-    if outputs_path.exists():
-        shutil.rmtree(outputs_path)
-        deleted.append(str(outputs_path))
+    # 2. Core Data Directories
+    # We use a list of paths to ensure we cover all configured storage locations
+    targets = [DATA_DIR, OUTPUTS_DIR, MEMORY_DIR, SESSIONS_DIR, MIND_DIR]
+    for d in targets:
+        p = Path(d)
+        if p.exists():
+            try:
+                shutil.rmtree(p)
+                deleted.append(str(p))
+            except Exception as e:
+                print(f"✗ Failed to delete {p}: {e}")
 
-    # Delete any workspace artifacts with lirox_ prefix
+    # 3. Configuration & Profile
+    config_files = [
+        root / "profile.json",
+        root / "profile.json.tmp",
+        root / ".env",
+        root / ".env.local",
+        root / "profile.json.bak"
+    ]
+    for f in config_files:
+        if f.exists():
+            try:
+                f.unlink()
+                deleted.append(str(f))
+            except Exception as e:
+                 print(f"✗ Failed to delete {f}: {e}")
+
+    # 4. Workspace Artifacts (Optional cleanup of generated files)
     workspace = Path(WORKSPACE_DIR)
     if workspace.exists():
         for f in workspace.glob("lirox_*"):
@@ -215,7 +238,47 @@ def delete_all_data():
             except Exception:
                 pass
 
+    # 5. Python & Dev Artifacts
+    # Clean __pycache__ recursively
+    for p in root.rglob("__pycache__"):
+        try:
+            shutil.rmtree(p)
+            deleted.append(str(p))
+        except Exception:
+            pass
+    
+    # Clean build/egg artifacts
+    for p in root.glob("*.egg-info"):
+        try:
+            shutil.rmtree(p)
+            deleted.append(str(p))
+        except Exception:
+            pass
+        
+    if (root / ".pytest_cache").exists():
+        try:
+            shutil.rmtree(root / ".pytest_cache")
+            deleted.append(".pytest_cache")
+        except Exception:
+            pass
+
+    # 6. Attempt Pip Uninstall (The "Deep" part)
+    try:
+        print("[INFO] Attempting to remove Lirox from Python environment...")
+        subprocess.run([sys.executable, "-m", "pip", "uninstall", "lirox", "-y"], 
+                       capture_output=True, check=False)
+        print("✓ Package uninstalled from pip")
+    except Exception:
+        pass
+
+    # 7. Results
     for d in deleted:
         print(f"✓ Deleted: {d}")
-    print("✓ All Lirox data deleted")
+    
+    print("\n" + "="*40)
+    print("  DEEP CLEANUP COMPLETE")
+    print("="*40)
+    print("✓ All Lirox data, configs, and caches removed.")
+    print("✓ Lirox has been uninstalled from your Python environment.")
+    print("  Note: The source code in this directory remains. Delete it manually if desired.")
 
