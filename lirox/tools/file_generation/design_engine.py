@@ -512,7 +512,7 @@ class DesignEngine:
     def log_design_decision(plan: DesignPlan) -> str:
         """Create a human-readable explanation of design choices."""
         lines = [
-            "🎨 **Design Strategy**",
+            "🎨 __Design Strategy__",
             f"  📖 Topic: {plan.topic}",
             f"  👥 Audience: {plan.audience.value.capitalize()}",
             f"  🎭 Theme: {plan.theme.value.capitalize()}",

@@ -587,7 +587,7 @@ class PersonalAgent(BaseAgent):
                 # Build rich success message
                 answer = (
                     f"✅ {file_type.upper()} created successfully!\n\n"
-                    f"📄 **{os.path.basename(path)}**\n"
+                    f"📄 __{os.path.basename(path)}__\n"
                     f"📍 `{path}`\n"
                     f"📊 {file_size:,} bytes | {section_count}\n"
                     f"🎨 Theme: {design.theme.value.capitalize()} | "
@@ -610,10 +610,10 @@ class PersonalAgent(BaseAgent):
                 issues_str = "; ".join(fv["issues"]) if not fv["passed"] else "Comprehensive verification failed (e.g. thin content or generic text)"
                 answer = (
                     f"❌ File creation encountered issues:\n\n"
-                    f"**Issues:**\n"
+                    f"__Issues:__\n"
                     f"- {issues_str}\n\n"
-                    f"**Path:** `{path}`\n"
-                    f"**Type:** {file_type.upper()}\n\n"
+                    f"__Path:__ `{path}`\n"
+                    f"__Type:__ {file_type.upper()}\n\n"
                     f"Please try again or use a different topic."
                 )
                 yield {"type": "error", "message": answer}
@@ -623,8 +623,8 @@ class PersonalAgent(BaseAgent):
             _logger.error("File verification error: %s", e)
             answer = (
                 f"⚠️ File was created but verification failed:\n\n"
-                f"**Path:** `{path}`\n"
-                f"**Error:** {e}\n\n"
+                f"__Path:__ `{path}`\n"
+                f"__Error:__ {e}\n\n"
                 f"Please check the file manually."
             )
             yield {"type": "warning", "message": answer}
@@ -752,9 +752,9 @@ class PersonalAgent(BaseAgent):
                 if receipt.ok and receipt.verified:
                     file_content = receipt.details.get("content", "")
                     yield {"type": "tool_result", "message": f"📄 Read {receipt.bytes_read} bytes from {path}"}
-                    answer = f"📄 **{path}** ({receipt.lines} lines, {receipt.bytes_read} bytes):\n\n```\n{file_content[:3000]}\n```"
+                    answer = f"📄 __{path}__ ({receipt.lines} lines, {receipt.bytes_read} bytes):\n\n```\n{file_content[:3000]}\n```"
                     if receipt.details.get("truncated"):
-                        answer += "\n\n*(truncated — file is larger)*"
+                        answer += "\n\n(truncated — file is larger)"
                     for chunk in _STREAMER.stream_words(answer, delay=0.025):
                         yield {"type": "streaming", "message": chunk}
                     yield {"type": "done", "answer": answer}
