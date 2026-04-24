@@ -91,14 +91,14 @@ class ThinkingDisplayManager:
         self.live = Live(self.layout, console=console, refresh_per_second=12, transient=True)
         self.live.start()
 
-    def update_agent(self, agent_name: str, message: str, status: str = "done"):
+    def update(self, agent_name: str, message: str, status: str = "done"):
         """Update a specific agent's progress bar."""
         if self.progress and agent_name in self.agent_tasks:
             task_id = self.agent_tasks[agent_name]
             if status == "done":
                 self.progress.update(task_id, completed=100)
             elif status == "running":
-                self.progress.update(task_id, advance=25)
+                self.progress.update(task_id, advance=5)
             elif status == "warning":
                 self.progress.update(task_id, completed=100)
         self.steps.append(f"{agent_name}: {message}")
@@ -148,29 +148,37 @@ def show_status_card(profile_data: dict, providers: list):
 
 
 def show_thinking_phase(event: dict):
-    """Render thinking phase progress as clean inline text (no Live layout).
+    """Render thinking phase progress using the Live layout.
     
-    The Live layout approach was causing empty box rendering because:
-    1. LLM calls block for 10-60s each, preventing progress bar updates
-    2. The transient=True setting clears the display, leaving artifact borders
-    Instead we show clean inline text that accumulates naturally.
+    Uses the ThinkingDisplayManager to show progress bars per agent and 
+    real-time status updates for the current phase.
     """
     idx = event.get("phase_index", 0)
     name = event.get("phase_name", "PHASE")
     icon = event.get("phase_icon", "🧠")
-    total = event.get("phase_total", 3)
     tagline = event.get("phase_tagline", "")
-    confidence = event.get("confidence", 0)
     
-    # Show clean inline phase indicator
-    console.print(f"    [{CLR_THINK}]├─ {icon} {name} [{idx+1}/{total}][/] [dim]{tagline}[/]")
+    # Start the live display on the first phase
+    if idx == 0 and not thinking_manager.live:
+        thinking_manager.start(tagline or "Analyzing task...")
+    
+    # Update the status panel with current phase info
+    thinking_manager.update_status(icon, f"[bold]{name}[/] · {tagline}")
 
 def show_agent_event(message: str, agent: str = "personal", etype: str = "agent_progress"):
-    """Show agent events as clean inline text."""
-    if etype == "tool_call":
-        console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(message)}[/]")
-    elif etype == "agent_progress":
-        console.print(f"  [{CLR_DIM}]  ├─ {escape(message)}[/]")
+    """Show agent events. If thinking display is active, route to progress bars."""
+    if thinking_manager.live and agent != "personal":
+        status = "done" if "finished" in message.lower() or "✓" in message else "running"
+        if "Resolving" in message or "Analyzing conflict" in message:
+            thinking_manager.update_status("💬", message, border="yellow")
+        else:
+            thinking_manager.update(agent, message, status=status)
+    else:
+        # Fallback to inline for tool calls or when thinking display is off
+        if etype == "tool_call":
+            console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(message)}[/]")
+        elif etype == "agent_progress":
+            console.print(f"  [{CLR_DIM}]  ├─ {escape(message)}[/]")
 
 
 def show_answer(text: str, agent: str = "personal"):

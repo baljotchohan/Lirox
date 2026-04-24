@@ -121,27 +121,55 @@ class RealThinkingEngine:
             "phase_total": 3,
             "phase_tagline": "Synthesizing perspectives and resolving contradictions",
             "confidence": 85,
-            "steps": ["Analyzing perspective alignment", "Detecting conceptual conflicts"]
+            "steps": ["Analyzing perspective alignment", "Detecting conceptual conflicts", "Resolving multi-agent contradictions"]
         }
         
-        # Instead of n^2 pairs, we let a 'Judge' look at all views to find conflicts
         debate_log = []
-        positions_text = "\n".join([f"{name}: {view['summary']}" for name, view in agent_views.items()])
+        positions_text = "\n".join([f"{name}: {view['summary']}\nAnalysis: {view['analysis']}" for name, view in agent_views.items()])
         
         yield {"type": "agent_progress", "agent": "System", "message": "Analyzing conflict map...", "status": "running"}
         
+        # ── PHASE 2.1: CRITICAL ANALYSIS ──
+        conflict_prompt = (
+            f"Expert Positions:\n{positions_text}\n\n"
+            "Analyze these positions for contradictions, risks, or trade-offs.\n"
+            "Respond with a list of specific conflicts or 'NO CONFLICT'.\n"
+            "Format: [{'agents': ['A', 'B'], 'issue': '...', 'resolution_strategy': '...'}]"
+        )
+        
         conflict_analysis = generate_response(
-            f"Positions:\n{positions_text}\n\nIdentify if any of these positions conflict. "
-            "Respond with 'NO CONFLICT' or a JSON list of conflicts: [{'agents': ['A', 'B'], 'issue': '...'}]",
+            conflict_prompt,
             provider=self.provider,
-            system_prompt="You are a debate analyzer. Find contradictions between expert views."
+            system_prompt="You are a Strategic Debate Judge. Find deep technical contradictions. 🚀 ZERO ASTERISK POLICY."
         )
         
         if "NO CONFLICT" not in conflict_analysis:
-            # Simple conflict detection for now to keep it robust
-            for name, view in agent_views.items():
-                if "Error" in view['summary']:
-                    yield {"type": "agent_progress", "agent": "System", "message": f"Resolved failure in {name}", "status": "warning"}
+            # We found conflicts, let's try to resolve them
+            yield {"type": "agent_progress", "agent": "System", "message": "Resolving identified conflicts...", "status": "running"}
+            
+            resolution_prompt = (
+                f"Original Task: {task}\n\n"
+                f"Expert Perspectives:\n{positions_text}\n\n"
+                f"Identified Conflicts:\n{conflict_analysis}\n\n"
+                "Resolve these conflicts. Propose a single verified path forward that merges the best points while mitigating the risks.\n"
+                "Respond with:\nRESOLVED_PATH: <detailed path>\nTRADE_OFFS: <key trade-offs made>"
+            )
+            
+            resolution = generate_response(
+                resolution_prompt,
+                provider=self.provider,
+                system_prompt="Strategic Mediator. Resolve expert conflicts into a unified plan. 🚀 ZERO ASTERISK POLICY."
+            )
+            
+            # Record in debate log
+            debate_log.append({
+                "agent_a": "Architect/Builder",
+                "agent_b": "Verifier/Researcher",
+                "issue": "Conceptual Alignment",
+                "resolution": resolution[:500]
+            })
+        else:
+            yield {"type": "agent_progress", "agent": "System", "message": "✓ Perfect alignment detected.", "status": "done"}
 
         # ── PHASE 3: CONSENSUS SYNTHESIS ──────────────────────────────────────
         yield {
@@ -152,7 +180,7 @@ class RealThinkingEngine:
             "phase_total": 3,
             "phase_tagline": "Forming the unified final strategy",
             "confidence": 98,
-            "steps": ["Merging expertise", "Finalizing verified path"]
+            "steps": ["Merging expertise", "Finalizing verified path", "Applying Zero Asterisk Protocol"]
         }
         
         synthesis = self._synthesize_decision(agent_views, debate_log)
@@ -160,7 +188,7 @@ class RealThinkingEngine:
         
         final_result = {
             'agent_views': agent_views,
-            'debate': {'conflicts': debate_log, 'summary': f"Synthesized {len(agent_views)} views"},
+            'debate': {'conflicts': debate_log, 'summary': f"Synthesized {len(agent_views)} views through debate"},
             'synthesis': synthesis,
             'decision': synthesis['final_decision'],
             'time_taken': elapsed,
@@ -172,19 +200,22 @@ class RealThinkingEngine:
     
     def _synthesize_decision(self, agent_views: Dict, conflicts: List) -> Dict:
         views_text = "\n".join([f"{name}: {view['summary']}\n- Analysis: {view['analysis']}" for name, view in agent_views.items()])
+        conflicts_text = "\n".join([f"Conflict between {c['agent_a']} and {c['agent_b']}: {c['resolution']}" for c in conflicts])
         
         synthesis_prompt = f"""
-Synthesize these expert perspectives into a single unified decision.
+Synthesize these expert perspectives and resolved conflicts into a single unified decision.
 
 EXPERT VIEWS:
 {views_text}
+
+RESOLVED CONFLICTS:
+{conflicts_text}
 
 Provide:
 1. DECISION: The final unified action (one clear sentence)
 2. REASONING: Why this is the best path (2 sentences)
 3. CONFIDENCE: 0-100%
 """
-        
         
         sys_p = "Strategic decision engine. 🚀 ZERO ASTERISK POLICY (MANDATORY): NEVER use '*' for any reason. Use '__' for bold. Use emojis for lists."
         response = generate_response(synthesis_prompt, provider=self.provider, system_prompt=sys_p)
@@ -207,3 +238,4 @@ Provide:
             'confidence': confidence,
             'all_views_considered': len(agent_views),
         }
+

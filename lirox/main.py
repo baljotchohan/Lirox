@@ -90,6 +90,23 @@ def process_query(orch, query: str, verbose: bool = False):
                 
             # ── Handle Done ──
             elif etype == "done":
+                # If thinking result is present, show synthesis in the live layout
+                thinking_data = event.data.get("thinking_result")
+                if thinking_data:
+                    _last_thinking["full_result"] = thinking_data
+                    try:
+                        from lirox.ui.display import thinking_manager
+                        thinking_manager.show_synthesis(
+                            thinking_data.get("decision", ""),
+                            thinking_data.get("synthesis", {}).get("confidence", 0),
+                            event.data.get("total_time", 0.0)
+                        )
+                        # Give the user a moment to see the synthesis before it vanishes
+                        time.sleep(1.2)
+                        thinking_manager.stop()
+                    except:
+                        pass
+                
                 if last_event_type == "streaming":
                     console.print()  # Finish the streaming line
                     # Response already displayed via streaming — just show Done
@@ -97,10 +114,7 @@ def process_query(orch, query: str, verbose: bool = False):
                 else:
                     # Non-streamed response (e.g. filegen results) — render normally
                     show_answer(event.message)
-                # Check if this is a thinking-done event with full data
-                thinking_data = event.data.get("thinking_result")
-                if thinking_data:
-                    _last_thinking["full_result"] = thinking_data
+                
                 _last_thinking["elapsed"] = event.data.get("total_time", 0.0)
                 
             # ── Handle Errors ──
