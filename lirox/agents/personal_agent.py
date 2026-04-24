@@ -256,6 +256,34 @@ class PersonalAgent(BaseAgent):
 
     def _chat(self, query, context, sp=""):
         base_sys = sp or _get_sys(self.profile_data)
+        user_name = self.profile_data.get("user_name", "")
+        agent_name = self.profile_data.get("agent_name", "Lirox")
+
+        # ── GREETING DETECTION ──
+        # Simple greetings should get a clean, direct response without injecting
+        # stale conversation history (which causes hallucination about old projects).
+        q_stripped = query.lower().strip().rstrip("!.?")
+        _GREETINGS = {
+            "hi", "hello", "hey", "yo", "sup", "hola", "howdy",
+            "good morning", "good evening", "good afternoon", "good night",
+            "what's up", "whats up", "wassup", "hii", "hiii",
+            "hey there", "hello there", "hi there",
+        }
+        if q_stripped in _GREETINGS or (len(query.split()) <= 3 and q_stripped.split()[0] in {"hi", "hello", "hey", "yo", "sup"}):
+            # Direct greeting — no context injection, no hallucination
+            greeting_prompt = (
+                f"The user '{user_name or 'the user'}' just greeted you with: \"{query}\"\n\n"
+                "Respond with a brief, warm greeting. Be direct and natural.\n"
+                "Ask what they'd like to work on. Do NOT reference any past projects or topics.\n"
+                "Keep it to 2-3 sentences max."
+            )
+            answer = generate_response(greeting_prompt, provider="auto", system_prompt=base_sys)
+            for chunk in _STREAMER.stream_words(answer, delay=0.025):
+                yield {"type": "streaming", "message": chunk}
+            yield {"type": "done", "answer": answer}
+            return
+
+        # ── NORMAL CHAT (with context) ──
         mem_ctx = self.memory.get_relevant_context(query)
         prompt = query
         if mem_ctx and mem_ctx.strip():

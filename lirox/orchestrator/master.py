@@ -90,8 +90,13 @@ class MasterOrchestrator:
         session = self.session_store.current()
         session.add("user", query, agent="personal")
 
-        history_ctx = self._get_recent_context(limit=3)
-        context = f"RECENT CONTEXT:\n{history_ctx}" if history_ctx else ""
+        # Skip context injection for very short queries (greetings) to prevent
+        # hallucination about past conversations.
+        if len(query.split()) > 3:
+            history_ctx = self._get_recent_context(limit=3)
+            context = f"RECENT CONTEXT:\n{history_ctx}" if history_ctx else ""
+        else:
+            context = ""
 
         # ── Agent execution ───────────────────────────────────────────────────
         full_context = context

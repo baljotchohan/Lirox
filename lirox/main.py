@@ -196,7 +196,9 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             return
         profile.data["llm_provider"] = p
         profile.save()
-        success_message(f"LLM provider set to {p}")
+        # Actually set the env var that generate_response() reads
+        os.environ["_LIROX_PINNED_MODEL"] = p
+        success_message(f"LLM provider pinned to: {p}")
 
     elif base == "/memory":
         from lirox.learning.manager import LearningManager
@@ -297,6 +299,15 @@ def _handle(orch, profile, cmd, base, parts, verbose):
     elif base == "/uninstall":
         if confirm_prompt("ARE YOU SURE? This will delete ALL Lirox data."):
             from lirox.config import delete_all_data
+            # Clear pinned model
+            os.environ.pop("_LIROX_PINNED_MODEL", None)
+            # Delete profile
+            try:
+                profile_path = Path(profile.storage_file)
+                if profile_path.exists():
+                    profile_path.unlink()
+            except Exception:
+                pass
             delete_all_data()
             success_message("Uninstalled. Goodbye."); sys.exit(0)
 
@@ -338,6 +349,11 @@ def main():
 
         profile      = UserProfile()
         orchestrator = MasterOrchestrator(profile_data=profile.data)
+
+        # Restore pinned LLM provider from profile (persists across restarts)
+        _saved_provider = profile.data.get("llm_provider", "")
+        if _saved_provider and _saved_provider != "auto":
+            os.environ["_LIROX_PINNED_MODEL"] = _saved_provider
 
         show_welcome()
 

@@ -148,52 +148,29 @@ def show_status_card(profile_data: dict, providers: list):
 
 
 def show_thinking_phase(event: dict):
-    """Render a live, animated thinking phase with progress bars."""
-    if not thinking_manager.live:
-        thinking_manager.start(event.get("phase_tagline", "Analyzing task..."))
+    """Render thinking phase progress as clean inline text (no Live layout).
     
+    The Live layout approach was causing empty box rendering because:
+    1. LLM calls block for 10-60s each, preventing progress bar updates
+    2. The transient=True setting clears the display, leaving artifact borders
+    Instead we show clean inline text that accumulates naturally.
+    """
     idx = event.get("phase_index", 0)
     name = event.get("phase_name", "PHASE")
     icon = event.get("phase_icon", "🧠")
     total = event.get("phase_total", 3)
-    steps = event.get("steps", [])
+    tagline = event.get("phase_tagline", "")
     confidence = event.get("confidence", 0)
     
-    thinking_manager.update_status(icon, f"{name} [{idx+1}/{total}]", "cyan")
-    for step in steps:
-        thinking_manager.add_log(step)
+    # Show clean inline phase indicator
+    console.print(f"    [{CLR_THINK}]├─ {icon} {name} [{idx+1}/{total}][/] [dim]{tagline}[/]")
 
 def show_agent_event(message: str, agent: str = "personal", etype: str = "agent_progress"):
-    if not thinking_manager.live:
-        # Fallback if not in parallel thinking mode
-        if etype == "tool_call":
-            console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(message)}[/]")
-        elif etype == "agent_progress":
-            console.print(f"  [{CLR_DIM}]  ├─ {escape(message)}[/]")
-        return
-
-    # If it's a specific agent result from the real_engine
-    if etype == "agent_progress":
-        # Determine agent name and status from the event
-        known_agents = ["Architect", "Builder", "Researcher", "Executor", "Verifier", "System"]
-        status = "done" if "finished" in message.lower() or "✓" in message else "running"
-        
-        # Check if the agent parameter is one of our specialists
-        if agent in known_agents:
-            thinking_manager.update_agent(agent, message, status)
-            return
-            
-        # Fallback to parsing message if agent is generic
-        if ":" in message:
-            parts = message.split(":", 1)
-            agent_name = parts[0].strip().lstrip("✓ ")
-            msg = parts[1].strip()
-            if agent_name in known_agents:
-                thinking_manager.update_agent(agent_name, msg, status)
-                return
-        
-        thinking_manager.add_log(message)
-        thinking_manager.update_status("⏳", message)
+    """Show agent events as clean inline text."""
+    if etype == "tool_call":
+        console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(message)}[/]")
+    elif etype == "agent_progress":
+        console.print(f"  [{CLR_DIM}]  ├─ {escape(message)}[/]")
 
 
 def show_answer(text: str, agent: str = "personal"):
