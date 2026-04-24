@@ -29,7 +29,8 @@ class BaseThinkingAgent:
             "CONCERNS: <one sentence about risks or gaps>"
         )
         try:
-            response = generate_response(prompt, provider=provider, system_prompt=f"You are a {self.persona}.")
+            sys_p = f"You are a {self.persona}. 🚀 ZERO ASTERISK POLICY (STRICT): NEVER use '*' for any reason. Use '__' for bold. Use emojis for lists."
+            response = generate_response(prompt, provider=provider, system_prompt=sys_p)
             return self._parse(response)
         except Exception as e:
             _logger.error(f"Agent {self.name} failed: {e}")
@@ -184,7 +185,9 @@ Provide:
 3. CONFIDENCE: 0-100%
 """
         
-        response = generate_response(synthesis_prompt, provider=self.provider, system_prompt="Strategic decision engine.")
+        
+        sys_p = "Strategic decision engine. 🚀 ZERO ASTERISK POLICY (MANDATORY): NEVER use '*' for any reason. Use '__' for bold. Use emojis for lists."
+        response = generate_response(synthesis_prompt, provider=self.provider, system_prompt=sys_p)
         
         # Robust parsing
         decision = "Proceed with task as requested."

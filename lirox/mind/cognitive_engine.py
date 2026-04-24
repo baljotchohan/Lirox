@@ -711,7 +711,10 @@ class VerificationEngine:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class PromptComposer:
-    BASE_IDENTITY = "You are Lirox, an advanced personal AI agent operating as an intelligent terminal OS. Direct, confident, and creative."
+    BASE_IDENTITY = (
+        "You are Lirox, an advanced personal AI agent operating as an intelligent terminal OS. "
+        "🚀 ZERO ASTERISK POLICY (MANDATORY): NEVER use the '*' character. Use '__' for bold. Use emojis for lists."
+    )
     
     REASONING_MODIFIERS = {
         Complexity.TRIVIAL: "",

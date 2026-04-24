@@ -331,6 +331,9 @@ class PersonalAgent(BaseAgent):
         prompt = query
         if mem_ctx and mem_ctx.strip():
             prompt = f"Relevant context:\n{mem_ctx}\n\nUser: {query}"
+        
+        # Append formatting reminder to ensure "Zero Asterisk" adherence
+        prompt += "\n\n⚠️ FORMATTING REMINDER (STRICT): Use EMOJIS for lists and '__' for bold. NEVER use asterisks (*) for any reason."
         if context:
             prompt = f"Context:\n{context[:1500]}\n\n{prompt}"
             

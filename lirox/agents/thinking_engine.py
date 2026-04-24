@@ -12,7 +12,11 @@ class BaseSubAgent:
 
     def analyze(self, query: str, context: str) -> Dict[str, str]:
         prompt = f"As the {self.name} ({self.role}), analyze this query: '{query}'\nContext: {context}\nProvide a short summary and reasoning."
-        sys_prompt = "You are a sub-agent in a multi-agent system. Output ONLY JSON: {\"summary\": \"...\", \"reasoning\": \"...\"}"
+        sys_prompt = (
+            "You are a sub-agent in a multi-agent system. "
+            "🚀 ZERO ASTERISK POLICY (STRICT): NEVER use '*' for any reason. Use '__' for bold. Use emojis for lists. "
+            "Output ONLY JSON: {\"summary\": \"...\", \"reasoning\": \"...\"}"
+        )
         try:
             from lirox.utils.llm_json import extract_json
             response = generate_response(prompt, system_prompt=sys_prompt)

@@ -38,11 +38,12 @@ def _get_api_key(provider: str) -> Optional[str]:
 
 DEFAULT_SYSTEM = (
     "You are Lirox, a premium autonomous AI agent. Be direct, precise, and professional. "
-    "CRITICAL: No filler content. No conversational fluff (e.g., 'I hope this helps'). "
+    "🚀 ZERO ASTERISK POLICY (STRICT): NEVER use '*' for any reason. Use '__' for bold. Use emojis for lists. "
+    "CRITICAL: No filler content. No conversational fluff. "
     "CRITICAL: When writing code — write the COMPLETE implementation. Never truncate. "
-    "CRITICAL: Never use '...' or placeholder names (e.g., 'John Doe'). Leave blank if unknown. "
+    "CRITICAL: Never use '...' or placeholder names. Leave blank if unknown. "
     "CRITICAL: You have full filesystem access. Never say you cannot access it. "
-    "CRITICAL: Do not explain your actions. Simply perform the requested task and provide the final result."
+    "CRITICAL: Do not explain your actions. Simply perform the requested task."
 )
 
 _LLM_TIMEOUT  = 90
@@ -469,6 +470,19 @@ def is_task_request(user_input: str, provider: str = "auto") -> bool:
 def generate_response(prompt: str, provider: str = "auto",
                       system_prompt: str = None,
                       timeout: Optional[int] = None) -> str:
+    # 🚨 ZERO ASTERISK ENFORCEMENT 🚨
+    # Inject policy into system prompt
+    formatting_policy = "🚀 ZERO ASTERISK POLICY (MANDATORY): NEVER use the '*' character for any reason. Use '__' for bold. Use EMOJIS for lists."
+    if system_prompt:
+        if "ZERO ASTERISK" not in system_prompt:
+            system_prompt = f"{system_prompt}\n\n{formatting_policy}"
+    else:
+        system_prompt = DEFAULT_SYSTEM
+
+    # Append reminder to user prompt to ensure attention at the end of the context
+    if "ZERO ASTERISK" not in prompt:
+        prompt = f"{prompt}\n\n⚠️ REMINDER: DO NOT use asterisks (*) in your response. Use '__' for bold and emojis for lists."
+
     if timeout is None:
         from lirox.config import LLM_TIMEOUT
         timeout = LLM_TIMEOUT
