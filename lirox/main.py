@@ -329,8 +329,8 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     elif base == "/update":
-        success_message("Checking for updates...")
-        # Placeholder for update logic
+        from lirox.core.updater import run_update
+        run_update()
 
     elif base == "/uninstall":
         if confirm_prompt("ARE YOU SURE? This will delete ALL data and remove Lirox from your device."):
