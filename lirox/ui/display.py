@@ -73,59 +73,58 @@ def show_thinking(msg: str):
 
 
 def show_thinking_phase(event: dict):
-    """Render a single thinking phase from a ``thinking_phase`` event dict.
-
-    Produces output like::
-
-      🔍 UNDERSTAND  [1/8]  ████████░░  88%
-        ✓ Intent detected: file operation
-        ✓ Query length: 7 words — complexity: medium
-        ✓ Ambiguity check: None detected
     """
-    idx        = event.get("phase_index", 0)
-    name       = event.get("phase_name", "PHASE")
-    icon       = event.get("phase_icon", "•")
-    tagline    = event.get("phase_tagline", "")
-    total      = event.get("phase_total", 8)
-    steps      = event.get("steps", [])
-    confidence = event.get("confidence", 80)
-    complexity = event.get("complexity", "medium")
-
-    # ── Progress bar ──────────────────────────────────────────────────────────
-    filled   = round((idx + 1) / total * 10)
-    bar      = "█" * filled + "░" * (10 - filled)
-    phase_lbl = f"[{idx + 1}/{total}]"
-
-    # ── Confidence color ──────────────────────────────────────────────────────
-    if confidence >= 90:
-        conf_color = "#10b981"   # green
-    elif confidence >= 75:
-        conf_color = "#FFC107"   # amber
-    else:
-        conf_color = "#ef4444"   # red
-
-    header = (
-        f"[bold #a78bfa]{icon} {name}[/]  "
-        f"[dim]{phase_lbl}[/]  "
-        f"[{conf_color}]{bar}[/]  "
-        f"[{conf_color}]{confidence}%[/]"
-    )
-    if tagline:
-        header += f"  [dim #94a3b8]— {escape(tagline)}[/]"
-
-    console.print(f"  {header}")
+    Render a live, animated thinking phase.
+    """
+    from rich.live import Live
+    from rich.spinner import Spinner
+    
+    idx = event.get("phase_index", 0)
+    name = event.get("phase_name", "PHASE")
+    icon = event.get("phase_icon", "🧠")
+    total = event.get("phase_total", 3)
+    steps = event.get("steps", [])
+    
+    # Simple one-line status
+    console.print(f"  [bold #a78bfa]{icon} {name}[/] [dim][{idx+1}/{total}][/]")
     for step in steps:
-        console.print(f"    [{CLR_DIM}]✓ {escape(str(step)[:160])}[/]")
+        console.print(f"    [dim]├─ ✓ {step}[/]")
+
+def show_thinking(query: str, steps: list, elapsed: float):
+    """
+    Show full, expanded thinking results (for /expand thinking)
+    """
+    from rich.table import Table
+    from rich.panel import Panel
+    
+    table = Table(show_header=True, header_style="bold cyan", box=None)
+    table.add_column("Agent / Step", style="bold white")
+    table.add_column("Details", style="dim")
+    
+    for i, step in enumerate(steps):
+        agent = "System"
+        msg = step
+        if ":" in step and len(step.split(":")[0]) < 15:
+            agent, msg = step.split(":", 1)
+        table.add_row(f"[{i+1}] {agent}", msg.strip())
+        
+    panel = Panel(
+        table,
+        title=f"[bold cyan]🧠 Reasoning Trace: {query}[/]",
+        subtitle=f"[dim]Total time: {elapsed:.2f}s[/]",
+        border_style="cyan",
+        padding=(1, 2)
+    )
+    console.print(panel)
+
 
 
 def show_thinking_panel_open(complexity: str):
-    """Print a single-line thinking indicator."""
-    color = COMPLEXITY_COLORS.get(complexity, "#a78bfa")
-    console.print(
-        f"  [bold {color}]🧠 Thinking[/]  "
-        f"[dim]· {complexity}[/]",
-        end="  ",
-    )
+    """
+    Shows the 'Thinking' status line.
+    """
+    msg = f"  ⟳ [bold #a78bfa]🧠 Thinking[/] [dim]· {complexity} · 5 agents debating...[/] [yellow](type /expand thinking for trace)[/]"
+    console.print(msg)
 
 
 def show_thinking_panel_close(total_ms: int, complexity: str):

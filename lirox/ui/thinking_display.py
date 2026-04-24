@@ -307,8 +307,12 @@ class ThinkingEngine:
         return f"Task: {task}\nAnalyze market fit. Do users want this? Competition? 2 bullet points max."
     
     def _executor_prompt(self, task: str) -> str:
-        return f"Task: {task}\nPlan the execution. Step-by-step plan. 2 bullet points max."    elif action == 'collapse_thinking':
+        return f"Task: {task}\nPlan the execution. Step-by-step plan. 2 bullet points max."
+
+    def handle_action(self, action: str):
+        if action == 'collapse_thinking':
             self.display.is_expanded = False
+
 
 
 THINKING_CONFIG = {

@@ -36,50 +36,17 @@ class ContentStrategist:
                             NOW ACTUALLY USED instead of ignored
         """
         
-        from lirox.utils.llm import generate_response
-        import re
+        from lirox.tools.content_generator import ContentGenerator
+        generator = ContentGenerator()
         
-        # Build FULL context for LLM
-        full_context = f"""
-You are creating rich, detailed content for a {file_type.upper()} document.
-
-Topic: {topic}
-Query: {query}
-Audience: {audience}
-Suggested Structure: {structure_hints or 'flexible'}
-
-Design Context:
-{design_context}
-
-CRITICAL RULES:
-1. NO generic placeholder text like "This section covers X in context of Y"
-2. MINIMUM 300 words per section
-3. INCLUDE: specific facts, dates, quotes, examples, analysis
-4. STRUCTURE: intro, 3-5 detailed subsections, conclusion
-5. TONE: match design context and audience
-6. VALUE: reader learns something concrete
-
-DO NOT return thin sections.
-DO NOT repeat the query word for word.
-DO NOT use filler text.
-
-Generate {len(structure_hints or [])} rich sections with REAL content.
-Each section should have:
-- Clear heading
-- Substantial body (300+ words)
-- Specific examples
-- Concrete takeaways
-"""
-        
-        # Call LLM with FULL CONTEXT
-        response = generate_response(
-            full_context,
-            provider="auto",
-            system_prompt="You are an expert content creator. Generate rich, substantive content."
+        # Generate rich sections using the specialized generator
+        sections = generator.generate_sections(
+            topic=topic,
+            num_sections=len(structure_hints) if structure_hints else 5,
+            context=f"{query}\n{design_context}",
+            structure_hints=structure_hints
         )
-        
-        # Parse response into sections
-        sections = ContentStrategist._parse_sections(response, query)
+
         
         # VERIFY sections are actually rich
         for i, section in enumerate(sections):

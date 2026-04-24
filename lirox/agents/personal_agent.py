@@ -149,9 +149,10 @@ _FILEGEN_PATTERN = re.compile(
     r'\b(?:create|make|generate|build|prepare|draft|write|design)\b'
     r'.*\b(?:pdf|word|docx|doc|excel|xlsx|xls|spreadsheet|'
     r'pptx?|powerpoint|presentation|slides?|report|resume|invoice|'
-    r'certificate|letter|memo|proposal|deck)\b',
+    r'certificate|letter|memo|proposal|deck|document|file|paper)\b',
     re.IGNORECASE,
 )
+
 
 # Also match reversed order: "pdf about X" or "presentation on Y"
 _FILEGEN_PATTERN_REV = re.compile(

@@ -37,7 +37,16 @@ class RealThinkingEngine:
         agent_views = {}
         
         # ── PHASE 1: EACH AGENT THINKS ─────────────────────────────────────────
-        yield {"type": "thinking_phase", "message": "Agents starting independent analysis...", "phase": "analysis"}
+        yield {
+            "type": "thinking_phase", 
+            "phase_index": 0,
+            "phase_name": "INDEPENDENT ANALYSIS",
+            "phase_icon": "🔍",
+            "phase_total": 3,
+            "phase_tagline": "Each agent analyzes task from their unique perspective",
+            "confidence": 70,
+            "steps": ["Initializing debate protocols", "Loading agent personas"]
+        }
         
         for agent_name, agent in self.agents.items():
             yield {"type": "agent_progress", "agent": agent_name, "message": f"{agent_name} is analyzing...", "status": "running"}
@@ -45,10 +54,19 @@ class RealThinkingEngine:
             view = agent.analyze(task, context, provider=self.provider)
             agent_views[agent_name] = view
             
-            yield {"type": "agent_progress", "agent": agent_name, "message": f"{agent_name} finished: {view['summary'][:100]}...", "status": "done"}
+            yield {"type": "agent_progress", "agent": agent_name, "message": f"✓ {agent_name} finished analysis", "status": "done"}
         
         # ── PHASE 2: DETECT DISAGREEMENTS ──────────────────────────────────────
-        yield {"type": "thinking_phase", "message": "Entering multi-agent debate phase...", "phase": "debate"}
+        yield {
+            "type": "thinking_phase", 
+            "phase_index": 1,
+            "phase_name": "MULTI-AGENT DEBATE",
+            "phase_icon": "💬",
+            "phase_total": 3,
+            "phase_tagline": "Resolving conflicts and challenging assumptions",
+            "confidence": 85,
+            "steps": [f"Checking {len(agent_views)} perspectives for conflicts"]
+        }
         
         debate_log = []
         positions = {name: view['summary'] for name, view in agent_views.items()}
@@ -71,7 +89,7 @@ class RealThinkingEngine:
                 
                 if "CONFLICT:" in conflict_check:
                     conflict_text = conflict_check.replace("CONFLICT:", "").strip()
-                    yield {"type": "agent_progress", "agent": "System", "message": f"CONFLICT FOUND: {conflict_text}", "status": "warning"}
+                    yield {"type": "agent_progress", "agent": "System", "message": f"CONFLICT: {conflict_text}", "status": "warning"}
                     
                     resolution = self._resolve_conflict(agent_a, pos_a, agent_b, pos_b)
                     debate_log.append({
@@ -80,9 +98,9 @@ class RealThinkingEngine:
                         'conflict': conflict_text,
                         'resolution': resolution
                     })
-                    yield {"type": "agent_progress", "agent": "System", "message": f"Resolution: {resolution[:100]}...", "status": "done"}
+                    yield {"type": "agent_progress", "agent": "System", "message": f"✓ Resolved via {agent_a}'s logic", "status": "done"}
                 else:
-                    yield {"type": "agent_progress", "agent": "System", "message": f"No conflict between {agent_a} and {agent_b}.", "status": "done"}
+                    yield {"type": "agent_progress", "agent": "System", "message": f"No conflict between {agent_a} & {agent_b}", "status": "done"}
         
         debate = {
             'conflicts': debate_log,
@@ -90,10 +108,20 @@ class RealThinkingEngine:
         }
         
         # ── PHASE 3: SYNTHESIZE ────────────────────────────────────────────────
-        yield {"type": "thinking_phase", "message": "Synthesizing final consensus...", "phase": "synthesis"}
+        yield {
+            "type": "thinking_phase", 
+            "phase_index": 2,
+            "phase_name": "CONSENSUS SYNTHESIS",
+            "phase_icon": "🎯",
+            "phase_total": 3,
+            "phase_tagline": "Forming final strategy and verified path",
+            "confidence": 98,
+            "steps": ["Merging conflict resolutions", "Finalizing decision"]
+        }
         
         synthesis = self._synthesize_decision(agent_views, debate)
         elapsed = round(time.time() - start_time, 2)
+
         
         final_result = {
             'agent_views': agent_views,

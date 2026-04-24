@@ -81,36 +81,32 @@ Output ONLY the JSON array, no other text."""
     def generate_sections(self, topic: str, num_sections: int = 5,
                           context: str = "", structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Generate *num_sections* content sections for a PDF or DOCX dynamically.
-
-        Each section dict has ``heading``, ``body`` (3-6 sentences), and
-        ``bullets`` (0-4 supporting points).
         """
-        
         hints_text = ""
         if structure_hints:
             hints_text = f"\nYou MUST use exactly these section headings:\n" + "\n".join([f"- {h}" for h in structure_hints]) + "\n"
             
-        prompt = f"""Design a comprehensive, dynamic document structure for the topic: "{topic}"
+        prompt = f"""Design an ULTIMATE, deep-dive document for: "{topic}"
 {('Additional context: ' + context) if context else ''}{hints_text}
 
-Rules:
-- Adapt the number of sections and their focus entirely based on what is most appropriate for this specific topic (e.g., around {num_sections} sections, but plan whatever is best).
-- Do NOT use a fixed template.
-- Each section body must be highly detailed and substantive (at least 150-200 words) providing real facts, details, and examples.
-- Include specific data points, dates, named examples, and statistics where relevant.
-- Write in a professional style with proper paragraph structure.
-- Bullets can be used for concrete lists of items, but not every section needs them.
+CRITICAL QUALITY RULES:
+1. WORD COUNT: Each section body MUST be at least 300-400 words. 
+2. DEPTH: No generic summaries. Provide deep technical, historical, or practical analysis.
+3. DATA: Include real statistics, specific dates, named people/locations, and concrete examples.
+4. STRUCTURE: Use multiple paragraphs per section body.
+5. NO PLACEHOLDERS: Do not say "This section covers..." - just provide the content.
 
-Output as a JSON array of objects, where each object represents a section:
-{{"heading": "Descriptive Section Title", "body": "Full multi-sentence paragraph...", "bullets": ["optional", "items"]}}
+Output as a JSON array of objects:
+{{"heading": "Detailed Section Title", "body": "Full multi-paragraph text (300+ words)...", "bullets": ["detailed point 1", "detailed point 2"]}}
 
-Output ONLY the JSON array, no other text."""
+Output ONLY the JSON array. No preamble. No markdown fences unless required."""
 
         raw = self._call_llm(
             prompt,
-            "Expert technical writer. Output ONLY valid JSON.",
+            "Master Content Architect. You produce Pulitzer-prize quality deep dives. NO generic filler."
         )
         return self._parse_list(raw, "sections", num_sections, topic, structure_hints)
+
 
     # ── Sheet content ────────────────────────────────────────────────────────
 
