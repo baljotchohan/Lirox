@@ -97,6 +97,12 @@ def process_query(orch, query: str, verbose: bool = False):
         error_panel("PROCESS ERROR", str(e))
         import logging
         logging.error(f"Error in process_query: {e}", exc_info=True)
+    finally:
+        # Auto-train after every successful query to update LearningsStore
+        try:
+            orch.record_interaction()
+        except:
+            pass
 
 
 def handle_command(orch, profile, cmd: str, verbose: bool = False):
@@ -279,96 +285,116 @@ def _handle(orch, profile, cmd, base, parts, verbose):
 
 
 def main():
-    # ── Bootstrap FIRST ──
-    check_dependencies()
+    """Main CLI entry point with production-grade error handling."""
+    try:
+        # ── Bootstrap FIRST ──
+        check_dependencies()
 
-    from lirox.core.logger import configure_logging
-    configure_logging()
+        from lirox.core.logger import configure_logging
+        configure_logging()
 
-    from lirox.config import ensure_directories
-    ensure_directories()
+        from lirox.config import ensure_directories
+        ensure_directories()
 
-    from lirox.orchestrator.master import MasterOrchestrator
-    from lirox.ui.display import show_welcome, show_status_card, console
-    from lirox.utils.llm import available_providers
-    from lirox.config import APP_VERSION
-    from lirox.agent.profile import UserProfile
+        from lirox.orchestrator.master import MasterOrchestrator
+        from lirox.ui.display import show_welcome, show_status_card, console, error_panel
+        from lirox.utils.llm import available_providers
+        from lirox.config import APP_VERSION
+        from lirox.agent.profile import UserProfile
 
-    parser = argparse.ArgumentParser(description=f"Lirox v{APP_VERSION}")
-    parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
-    parser.add_argument("--version", action="store_true", help="Show version")
-    parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
-    # ── Handle command line shortcuts ──
-    if len(sys.argv) > 1 and sys.argv[1] == "setup":
-        sys.argv[1] = "--setup"
+        parser = argparse.ArgumentParser(description=f"Lirox v{APP_VERSION}")
+        parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
+        parser.add_argument("--version", action="store_true", help="Show version")
+        parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
+        
+        # Handle command line shortcuts
+        if len(sys.argv) > 1 and sys.argv[1] == "setup":
+            sys.argv[1] = "--setup"
 
-    args = parser.parse_args()
+        args = parser.parse_args()
 
-    if args.version:
-        print(f"Lirox v{APP_VERSION}"); sys.exit(0)
+        if args.version:
+            print(f"Lirox v{APP_VERSION}"); sys.exit(0)
 
-    profile      = UserProfile()
-    orchestrator = MasterOrchestrator(profile_data=profile.data)
+        profile      = UserProfile()
+        orchestrator = MasterOrchestrator(profile_data=profile.data)
 
-    show_welcome()
+        show_welcome()
 
-    if not profile.is_setup() or args.setup:
-        from lirox.ui.wizard import run_setup_wizard
-        try:
-            run_setup_wizard(profile)
-            orchestrator.profile_data = profile.data
-        except KeyboardInterrupt:
-            console.print("\n  [dim]Setup skipped.[/]")
+        if not profile.is_setup() or args.setup:
+            from lirox.ui.wizard import run_setup_wizard
+            try:
+                run_setup_wizard(profile)
+                orchestrator.profile_data = profile.data
+            except KeyboardInterrupt:
+                console.print("\n  [dim]Setup skipped.[/]")
 
-    show_status_card(profile.data, available_providers())
-    console.print(f"  [dim]Workspace: {os.getenv('LIROX_WORKSPACE', str(Path.home() / 'Desktop'))}[/]")
-    console.print("  [dim]Type /help for commands  ·  /setup to configure[/]\n")
+        show_status_card(profile.data, available_providers())
+        console.print(f"  [dim]Workspace: {os.getenv('LIROX_WORKSPACE', str(Path.home() / 'Desktop'))}[/]")
+        console.print("  [dim]Type /help for commands  ·  /setup to configure[/]\n")
 
-    from prompt_toolkit import PromptSession
-    from prompt_toolkit.styles import Style
-    from prompt_toolkit.completion import Completer, Completion
+        from prompt_toolkit import PromptSession
+        from prompt_toolkit.styles import Style
+        from prompt_toolkit.completion import Completer, Completion
 
-    cmd_docs = {
-        "/help": "Show this help",
-        "/setup": "Configure Lirox",
-        "/history": "View past conversations",
-        "/models": "List AI models",
-        "/memory": "AI stats",
-        "/workspace": "Manage files location",
-        "/expand thinking": "See detailed reasoning",
-        "/exit": "Quit",
-    }
+        cmd_docs = {
+            "/help": "Show this help",
+            "/setup": "Configure Lirox",
+            "/history": "View past conversations",
+            "/models": "List AI models",
+            "/memory": "AI stats",
+            "/workspace": "Manage files location",
+            "/expand thinking": "See detailed reasoning",
+            "/exit": "Quit",
+        }
 
-    class SlashCompleter(Completer):
-        def get_completions(self, document, complete_event):
-            text = document.text_before_cursor.lstrip()
-            if not text.startswith("/"): return
-            for cmd, desc in cmd_docs.items():
-                if cmd.startswith(text.lower()):
-                    yield Completion(cmd, start_position=-len(text), display_meta=desc)
+        class SlashCompleter(Completer):
+            def get_completions(self, document, complete_event):
+                text = document.text_before_cursor.lstrip()
+                if not text.startswith("/"): return
+                for cmd, desc in cmd_docs.items():
+                    if cmd.startswith(text.lower()):
+                        yield Completion(cmd, start_position=-len(text), display_meta=desc)
 
-    session = PromptSession(completer=SlashCompleter(), complete_while_typing=True)
-    style   = Style.from_dict({"prompt": "ansiyellow bold", "symbol": "ansiyellow"})
+        session = PromptSession(completer=SlashCompleter(), complete_while_typing=True)
+        style   = Style.from_dict({"prompt": "ansiyellow bold", "symbol": "ansiyellow"})
 
-    while True:
-        try:
-            line = session.prompt(
-                get_prompt_label(profile.data.get("agent_name", "Lirox")),
-                style=style
-            ).strip()
-            if not line:
-                continue
-            if line.lower() in ("exit", "quit", "/exit"):
-                from lirox.ui.display import info_panel
-                info_panel("Shutting down. Goodbye."); break
-            if line.startswith("/"):
-                handle_command(orchestrator, profile, line, verbose=args.verbose)
-                continue
-            process_query(orchestrator, line, verbose=args.verbose)
-        except KeyboardInterrupt:
-            continue # Already handled in prompt_toolkit or just ignore
-        except EOFError:
-            break
+        # Main REPL Loop
+        while True:
+            try:
+                line = session.prompt(
+                    get_prompt_label(profile.data.get("agent_name", "Lirox")),
+                    style=style
+                ).strip()
+                
+                if not line:
+                    continue
+                    
+                if line.lower() in ("exit", "quit", "/exit"):
+                    from lirox.ui.display import info_panel
+                    info_panel("Shutting down. Goodbye."); break
+                    
+                if line.startswith("/"):
+                    handle_command(orchestrator, profile, line, verbose=args.verbose)
+                    continue
+                    
+                process_query(orchestrator, line, verbose=args.verbose)
+                
+            except KeyboardInterrupt:
+                console.print("\n  [dim]Interrupted. Type /exit to quit.[/]")
+                continue 
+            except EOFError:
+                break
+            except Exception as e:
+                error_panel("FATAL LOOP ERROR", f"An unexpected error occurred: {e}")
+                import logging
+                logging.error(f"REPL Fatal Error: {e}", exc_info=True)
+
+    except Exception as fatal:
+        print(f"\n[bold red]CRITICAL FAILURE:[/bold red] {fatal}")
+        import logging
+        logging.critical(f"Main Entry Point Failure: {fatal}", exc_info=True)
+        sys.exit(1)
 
 if __name__ == "__main__":
     main()

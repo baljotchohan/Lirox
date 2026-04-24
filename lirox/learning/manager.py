@@ -201,48 +201,40 @@ class LearningManager:
 
     def apply_preferences_to_generation(self, user_id: str = None) -> str:
         """
-        Get preference context to pass to content generation
-        
-        Returns context string that informs LLM of user preferences
+        Get preference context to pass to content generation.
+        Extracts REAL data from the LearningsStore.
         """
-        
         try:
-            from lirox.mind.learnings import LearningsStore
+            # Access the store data directly
+            prefs_raw = self.learnings.data.get("preferences", {})
             
-            learnings = LearningsStore()
+            # Extract common preferences with fallbacks
+            # We look for keys like 'tone', 'depth', 'format' in the dict
+            tone = "professional"
+            if "tone" in prefs_raw:
+                tone = prefs_raw["tone"][-1] if isinstance(prefs_raw["tone"], list) else prefs_raw["tone"]
             
-            # Lirox's actual LearningsStore doesn't have get_facts_summary(n=5)
-            # So we use recall_facts which returns the top facts
+            depth = "comprehensive"
+            if "depth" in prefs_raw:
+                depth = prefs_raw["depth"][-1] if isinstance(prefs_raw["depth"], list) else prefs_raw["depth"]
+
             facts = self.recall_facts(limit=5)
-            topics = learnings.get_top_topics(3)
+            topics = self.recall_topics(limit=3)
             
-            # Extract preferences from facts
-            preferences = {
-                'depth': 'comprehensive',  # default
-                'tone': 'professional',
-                'include_examples': True,
-                'include_citations': True,
-            }
-            
-            # Build context string
-            context = f"""
-User Preferences (learned from past interactions):
-- Preferred depth: {preferences['depth']}
-- Preferred tone: {preferences['tone']}
-- Include examples: {preferences['include_examples']}
-- Include citations: {preferences['include_citations']}
-
-Recent topics of interest: {', '.join(t['topic'] for t in topics)}
-
-Apply these preferences to content generation.
-"""
+            context = "USER PREFERENCES (Dynamic):\n"
+            context += f"- Tone: {tone}\n"
+            context += f"- Depth: {depth}\n"
+            if facts:
+                context += f"- Contextual Facts: {'; '.join(facts)}\n"
+            if topics:
+                context += f"- Interest Areas: {', '.join(t.get('topic', '') for t in topics)}\n"
             
             return context
             
         except Exception as e:
-            import logging
-            logging.warning(f"Could not load learning preferences: {e}")
+            _logger.warning(f"Could not load learning preferences: {e}")
             return ""
+
 
     def _sync_facts_to_db(self) -> None:
         """Mirror JSON-stored facts into SQLite for searchability."""

@@ -116,8 +116,8 @@ def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
         client   = genai.Client(api_key=api_key)
         config   = types.GenerateContentConfig(
             system_instruction=system_prompt or DEFAULT_SYSTEM, temperature=0.7)
-        last_error = None
-        for model_name in ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]:
+        # Gemini 2.0 Flash is currently the best balanced model
+        for model_name in ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro"]:
             try:
                 return client.models.generate_content(
                     model=model_name, contents=prompt, config=config).text
@@ -395,13 +395,23 @@ def pick_default_provider() -> Optional[str]:
 
 def smart_router(prompt: str) -> Optional[str]:
     avail   = available_providers()
+    if not avail:
+        return None
+        
     lowered = prompt.lower()
-    if any(k in lowered for k in ["complex", "reason", "analyze"]) and "anthropic" in avail:
+    # Logic-heavy queries
+    if any(k in lowered for k in ["complex", "reason", "analyze", "strategy", "architect"]) and "anthropic" in avail:
         return "anthropic"
-    if any(k in lowered for k in ["code", "script", "debug", "function"]) and "groq" in avail:
+        
+    # Code queries
+    if any(k in lowered for k in ["code", "script", "debug", "function", "python", "javascript"]) and "groq" in avail:
         return "groq"
-    if any(k in lowered for k in RESEARCH_KEYWORDS) and "openrouter" in avail:
-        return "openrouter"
+        
+    # High-volume research queries
+    if any(k in lowered for k in RESEARCH_KEYWORDS) and "gemini" in avail:
+        return "gemini"
+        
+    # Default to priority list
     return pick_default_provider()
 
 
