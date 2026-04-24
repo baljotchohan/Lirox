@@ -35,9 +35,30 @@ class ContentGenerator:
         if self._llm:
             return self._llm(prompt, system_prompt)
         from lirox.utils.llm import generate_response
+        
+        # Lirox v1.2 Strict Document Engine Protocol
+        strict_sys = (
+            "SYSTEM ROLE: You are a strict document generation engine. Your ONLY function is to produce clean, final-form documents. "
+            "You are NOT a teacher, NOT an explainer, and NOT a conversational assistant.\n\n"
+            "GLOBAL HARD RULES:\n"
+            "- Do NOT explain anything\n"
+            "- Do NOT describe what you are doing\n"
+            "- Do NOT include meta commentary or reasoning\n"
+            "- Do NOT include phrases like 'this section', 'this document', 'in this part'\n"
+            "- Do NOT include educational or historical content unless explicitly requested\n"
+            "- Do NOT generate placeholder or dummy content (e.g., 'John Doe', 'example@email.com')\n"
+            "- Do NOT hallucinate fake tools, companies, platforms, or facts\n"
+            "- Do NOT repeat content or rephrase the same idea multiple times\n\n"
+            "OUTPUT QUALITY:\n"
+            "- Output must look like it was written by a professional human\n"
+            "- Output must be concise, structured, and purpose-driven\n"
+            "- Use formatting appropriate to the document type\n"
+            "- Every line must add value (no filler content)"
+        )
+        
         return generate_response(
             prompt, provider="auto",
-            system_prompt=system_prompt or "Expert content writer. Output only the requested content.",
+            system_prompt=system_prompt or strict_sys,
         )
 
     # ── Slide content ────────────────────────────────────────────────────────
@@ -116,7 +137,7 @@ QUALITY RULES:
 Output as JSON:
 {{"heading": "{heading}", "body": "...", "bullets": ["..."]}}"""
 
-        raw = self._call_llm(prompt, "Expert Historian & Technical Writer. Output ONLY JSON.")
+        raw = self._call_llm(prompt, "STRICT DOCUMENT ENGINE. Output ONLY JSON. No explanation. No markers.")
         from lirox.utils.llm_json import try_extract_json
         res = try_extract_json(raw)
         if isinstance(res, dict) and "body" in res:

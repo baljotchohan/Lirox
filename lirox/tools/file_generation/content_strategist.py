@@ -93,7 +93,7 @@ Heading: {thin_section.get('heading', 'Content')}
         response = generate_response(
             prompt,
             provider="auto",
-            system_prompt="Generate rich, detailed content. No filler text."
+            system_prompt="STRICT DOCUMENT ENGINE. Generate rich, detailed content. NO filler. NO meta-commentary. NO placeholders."
         )
         
         return {

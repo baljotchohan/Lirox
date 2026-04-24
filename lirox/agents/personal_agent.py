@@ -47,11 +47,11 @@ def _get_sys(profile_data: dict = None) -> str:
     ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
     
     runtime_lines = [
-        f"• OS: {os_info}",
-        f"• Active Provider: {pinned}",
+        f"💻 OS: {os_info}",
+        f"🔌 Active Provider: {pinned}",
     ]
     if "ollama" in pinned or pinned == "auto":
-        runtime_lines.append(f"• Local Model: {ollama_model}")
+        runtime_lines.append(f"🧠 Local Model: {ollama_model}")
     
     runtime_ctx = "\n".join(runtime_lines)
 
@@ -71,24 +71,27 @@ def _get_sys(profile_data: dict = None) -> str:
                        ("current_project", "Project"), ("profession", "Profession")]:
         val = profile_data.get(key, "")
         if val and val not in ("Operator", "Generalist"):
-            profile_lines.append(f"• {label}: {val}")
+            profile_lines.append(f"🔹 {label}: {val}")
     if profile_lines and "USER PROFILE" not in base:
         base += "\n\nUSER PROFILE:\n" + "\n".join(profile_lines)
 
     goals = profile_data.get("goals", [])
     if goals:
-        base += "\n\nGOALS:\n" + "\n".join(f"• {g}" for g in goals[:5])
+        base += "\n\nGOALS:\n" + "\n".join(f"🎯 {g}" for g in goals[:5])
 
     base += (
         "\n\nCRITICAL RULES:\n"
-        "• You have FULL filesystem access. Never say you cannot access it.\n"
-        "• When asked to create/write/edit files — DO IT using tools. Do not describe how.\n"
-        "• When writing code — write the COMPLETE implementation.\n"
-        "• When a tool receipt says VERIFIED — confirm success.\n"
-        "  When it says FAILED — report failure HONESTLY.\n"
-        "• NEVER say 'I have created' unless you have a verified receipt.\n"
-        "• Address the user by name when known.\n"
-        f"• Your current operating system is {os_info}. Use appropriate commands.\n"
+        "🚀 You have FULL filesystem access. Never say you cannot access it.\n"
+        "🛠️ When asked to create/write/edit files — DO IT using tools. Do not describe how.\n"
+        "💻 When writing code — write the COMPLETE implementation.\n"
+        "✅ When a tool receipt says VERIFIED — confirm success.\n"
+        "❌ When it says FAILED — report failure HONESTLY.\n"
+        "⚠️ NEVER say 'I have created' unless you have a verified receipt.\n"
+        "👤 Address the user by name when known.\n"
+        f"⚙️ Your current operating system is {os_info}. Use appropriate commands.\n"
+        "✨ FORMATTING: Use emojis (🚀, ✅, 🛠️) for lists. Never use '*' or '-' for bullets.\n"
+        "🔇 NO FLUFF: Do NOT explain what you are doing. Do NOT include meta-commentary.\n"
+        "🚫 NO PLACEHOLDERS: NEVER use 'John Doe' or 'example.com'. Leave blank if data is missing.\n"
     )
     return base
 
@@ -291,7 +294,7 @@ class PersonalAgent(BaseAgent):
 
     def _chat(self, query, context, sp=""):
         # Show immediate progress to avoid "stuck" feeling
-        yield {"type": "agent_progress", "message": "Analyzing request...", "agent": self.name}
+        yield {"type": "agent_progress", "message": "🔍 Analyzing request...", "agent": self.name}
         
         base_sys = sp or _get_sys(self.profile_data)
         user_name = self.profile_data.get("user_name", "")
@@ -323,7 +326,7 @@ class PersonalAgent(BaseAgent):
             return
 
         # ── NORMAL CHAT (with context) ──
-        yield {"type": "agent_progress", "message": "Synthesizing response...", "agent": self.name}
+        yield {"type": "agent_progress", "message": "🧠 Synthesizing response...", "agent": self.name}
         mem_ctx = self.memory.get_relevant_context(query)
         prompt = query
         if mem_ctx and mem_ctx.strip():
@@ -689,7 +692,7 @@ class PersonalAgent(BaseAgent):
             file_read_lines, create_directory_verified,
             file_append_verified, list_directory_tree,
         )
-        yield {"type": "agent_progress", "message": "📁 Planning file operation…"}
+        yield {"type": "agent_progress", "message": "📂 Planning file operation…"}
 
         from lirox.config import WORKSPACE_DIR
         plan_prompt = (
@@ -808,7 +811,7 @@ class PersonalAgent(BaseAgent):
 
     def _shell(self, query, context, sp=""):
         from lirox.tools.shell_verified import shell_run_verified
-        yield {"type": "agent_progress", "message": "💻 Planning command…"}
+        yield {"type": "agent_progress", "message": "⚡ Planning command…"}
         raw = generate_response(
             f"Task: {query}\n"
             'Output ONLY JSON: {{"command":"exact shell command","reason":"why",'
@@ -858,7 +861,7 @@ class PersonalAgent(BaseAgent):
 
     def _self(self, query, context, sp=""):
         from lirox.config import LIROX_SOURCE_DIR
-        yield {"type": "agent_progress", "message": "📖 Reading own source code…"}
+        yield {"type": "agent_progress", "message": "🔍 Reading own source code…"}
         source_dir = Path(LIROX_SOURCE_DIR)
         file_map = {}
         for p in sorted(source_dir.rglob("*.py")):

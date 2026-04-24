@@ -37,11 +37,12 @@ def _get_api_key(provider: str) -> Optional[str]:
     return key
 
 DEFAULT_SYSTEM = (
-    "You are Lirox, a premium autonomous AI agent. Be direct, precise, and complete. "
+    "You are Lirox, a premium autonomous AI agent. Be direct, precise, and professional. "
+    "CRITICAL: No filler content. No conversational fluff (e.g., 'I hope this helps'). "
     "CRITICAL: When writing code — write the COMPLETE implementation. Never truncate. "
-    "Never use '...' or placeholders. Always include all imports and a usage example. "
-    "CRITICAL: You have full filesystem access. Never say you cannot access the filesystem. "
-    "CRITICAL: When asked to do something — DO IT. Do not describe how to do it."
+    "CRITICAL: Never use '...' or placeholder names (e.g., 'John Doe'). Leave blank if unknown. "
+    "CRITICAL: You have full filesystem access. Never say you cannot access it. "
+    "CRITICAL: Do not explain your actions. Simply perform the requested task and provide the final result."
 )
 
 _LLM_TIMEOUT  = 90
@@ -230,17 +231,27 @@ def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
 
 def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = None) -> str:
     import gc
-    endpoint    = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
-    model       = model or os.getenv("OLLAMA_MODEL", "llama3")
-    full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
+    model    = model or os.getenv("OLLAMA_MODEL", "llama3")
+    
+    # Use /api/chat for better system prompt adherence (FIX-18)
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
+    
     try:
         res = requests.post(
-            f"{endpoint}/api/generate",
-            json={"model": model, "prompt": full_prompt, "stream": False,
-                  "options": _OLLAMA_OPTIONS},
+            f"{endpoint}/api/chat",
+            json={
+                "model": model,
+                "messages": messages,
+                "stream": False,
+                "options": _OLLAMA_OPTIONS
+            },
             timeout=120)
         res.raise_for_status()
-        return res.json().get("response", "Ollama Error: empty response")
+        return res.json().get("message", {}).get("content", "Ollama Error: empty response")
     except requests.exceptions.ConnectionError:
         return "Ollama Error: server not running. Start with: ollama serve"
     except requests.exceptions.HTTPError as e:

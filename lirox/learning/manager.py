@@ -221,13 +221,13 @@ class LearningManager:
             facts = self.recall_facts(limit=5)
             topics = self.recall_topics(limit=3)
             
-            context = "USER PREFERENCES (Dynamic):\n"
-            context += f"- Tone: {tone}\n"
-            context += f"- Depth: {depth}\n"
+            context = "🌟 USER PREFERENCES (Dynamic):\n"
+            context += f"🎨 Tone: {tone}\n"
+            context += f"📊 Depth: {depth}\n"
             if facts:
-                context += f"- Contextual Facts: {'; '.join(facts)}\n"
+                context += f"🧠 Contextual Facts: {'; '.join(facts)}\n"
             if topics:
-                context += f"- Interest Areas: {', '.join(t.get('topic', '') for t in topics)}\n"
+                context += f"🎯 Interest Areas: {', '.join(t.get('topic', '') for t in topics)}\n"
             
             return context
             
