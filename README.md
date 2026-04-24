@@ -1,235 +1,174 @@
 <div align="center">
 
-# 🦁 Lirox
+# 🦁 LIROX: Intelligence as an Operating System
 
-**Intelligence as an Operating System**
+**A Terminal-First, Autonomous Reasoning Engine & Personal AI Assistant**
 
-[![Version](https://img.shields.io/badge/version-1.0-blue.svg)](https://github.com/baljotchohan/Lirox)
-[![Python](https://img.shields.io/badge/python-3.9+-yellow.svg)](https://www.python.org/downloads/)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg?style=for-the-badge)](https://github.com/baljotchohan/Lirox)
+[![Python](https://img.shields.io/badge/python-3.9+-yellow.svg?style=for-the-badge)](https://www.python.org/downloads/)
+[![License](https://img.shields.io/badge/license-MIT-green.svg?style=for-the-badge)](LICENSE)
+[![Status](https://img.shields.io/badge/status-production--stable-success.svg?style=for-the-badge)]()
 
-*A terminal-first, local-first autonomous personal AI agent that reads, writes, and controls your desktop. Lirox learns who you are, remembers your conversations, and gets better over time.*
+*Lirox is more than a chatbot. It is a local reasoning layer that connects multi-provider LLMs directly to your file system, shell, and internet. It learns who you are, remembers your preferences, and executes complex tasks autonomously.*
+
+[Features](#-key-capabilities) • [Installation](#-getting-started) • [Commands](#-command-encyclopedia) • [Architecture](#-core-architecture) • [Security](#-safety--security)
 
 </div>
 
 ---
 
-## ⚡ What is Lirox?
+## ⚡ The Lirox Manifesto
 
-Lirox is a powerful, autonomous reasoning engine built locally into your terminal. It connects multi-provider LLMs directly to your file system, shell, and internet to act as a personal assistant that actively learns from you. 
-
-```mermaid
-graph TD;
-    User-->|Commands & Chat|Lirox;
-    Lirox-->|Execute|Shell;
-    Lirox-->|Manage|FileSystem;
-    Lirox-->|Search|Web(DuckDuckGo);
-    Lirox-->|Memory|KnowledgeBase[Personal Knowledge Base];
-    KnowledgeBase-->|Recall|Lirox;
-```
+Lirox transforms your terminal into a powerful autonomous workstation. Unlike cloud-locked agents, Lirox is **Local-First**, **Identity-Driven**, and **Reasoning-Heavy**. It uses a sophisticated Multi-Agent Orchestration engine to break down complex requests, debate solutions, and verify results before presenting them to you.
 
 ---
 
-## 🌟 Key Features
+## 🌟 Key Capabilities
 
-Lirox is packed with native capabilities to serve as your ultimate daily driver AI:
+### 🧠 Advanced Multi-Agent Thinking
+Lirox doesn't just guess; it thinks. Every query triggers a "Thinking Phase" where agents brainstorm and validate plans. You can see the live reasoning trace or expand it with `/expand thinking` to see the full logic tree.
 
-- 🧠 **Autonomous Reasoning Engine** – Powered by ReAct architecture, ensuring logical plan-execute-verify pipelines.
-- 💾 **Living Memory & Soul** – Continuously extracts learnings from your conversations. It remembers preferences, projects, and facts using a robust `.json` driven local state backed by SQLite.
-- 🗄️ **SQLite Database** – Production-grade persistence for profiles, sessions, facts, projects, usage stats, and an immutable audit trail.
-- 💻 **Verified Desktop Control** – Can create, edit, move, and track files on disk securely. 
-- 🐚 **Safe Shell Execution** – Runs terminal commands gracefully with built-in sandbox-style protection (allow/blocklists).
-- 🌐 **Web Searching** – Pulls real-time information via DuckDuckGo seamlessly.
-- 🔌 **Dynamic Multi-Provider** – Toggle effortlessly between Groq, Gemini, OpenRouter, Ollama, OpenAI, Anthropic, DeepSeek, and more.
-- 🛠 **Zero-Friction Dependencies** – Boots up and auto-installs missing Python packages natively without breaking your flow.
-- 🪄 **Beautiful UI** – Terminal interactions with a clean layout, streaming response rendering, word-by-word animation, and syntax highlighting.
-- 📄 **Document Generation** – Create professional PDF, PPTX, DOCX, and XLSX files with genuine AI-designed content and styling.
-- 🖥️ **Code Generation** – Full-stack developer mode: generate, run, fix, and test code across Python, JavaScript, TypeScript, Go, Rust, and more.
-- 📚 **Self-Learning** – Extracts structured knowledge (facts, preferences, topics, projects) from every conversation and persists it across sessions.
+### 💾 Persistent Living Memory
+Lirox features a "Living Soul" (MIND system) that continuously extracts:
+- **Facts**: What it knows about you and your environment.
+- **Preferences**: How you like your code formatted or your reports styled.
+- **Context**: Ongoing projects and goals.
+*This data is stored in a production-grade SQLite backend with JSON fallback.*
+
+### 🐚 Secure Shell & File Autonomy
+Lirox can read, write, move, and edit files across your system. It includes a **Hardened Sandbox** with:
+- **Allow/Blocklists**: Prevents destructive commands (e.g., `rm -rf /`).
+- **Safe Dirs**: Only operates in approved directories (Desktop, Projects, etc.).
+- **Audit Trails**: Every action is logged and verifiable.
+
+### 📄 Professional Document Pipeline
+Lirox can generate high-fidelity files with genuine AI design:
+- **PDF/DOCX**: Professional reports with thematic styling.
+- **PPTX**: Multi-slide presentations with logical flow.
+- **XLSX**: Structured data analysis and reporting.
 
 ---
 
-## 🚀 Quick Install
+## 🚀 Getting Started
+
+### Quick Install (Cross-Platform)
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/baljotchohan/Lirox.git
 cd Lirox
 
-# 2. Install Lirox
-pip install -e .
-
-# 3. Start Operating
-lirox
-```
-*(If pip gives an externally-managed-environment error, you are encouraged to use a `venv` or allow `pip install --break-system-packages -e .`)*
-
----
-
-## 💻 Platform-Specific Installation
-
-<details>
-<summary><b>Windows</b></summary>
-
-**Option A — Automated**
-```bat
-git clone https://github.com/baljotchohan/Lirox.git
-cd Lirox
-install_windows.bat
-lirox
-```
-
-**Option B — Manual**
-```bat
-python -m pip install --upgrade pip
-python -m pip install -e .
-lirox
-```
-*(If `lirox` command not found, use `python -m lirox`)*
-</details>
-
-<details>
-<summary><b>macOS</b></summary>
-
-**Option A — Automated**
-```bash
-git clone https://github.com/baljotchohan/Lirox.git
-cd Lirox
-chmod +x install_macOS.sh
+# 2. Run the platform-specific installer
+# macOS
 ./install_macOS.sh
-lirox
-```
-
-**Option B — Manual**
-```bash
-python3 -m pip install --upgrade pip
-python3 -m pip install -e .
-lirox
-```
-</details>
-
-<details>
-<summary><b>Linux</b></summary>
-
-**Option A — Automated**
-```bash
-git clone https://github.com/baljotchohan/Lirox.git
-cd Lirox
-chmod +x install_linux.sh
+# Linux
 ./install_linux.sh
+# Windows
+install_windows.bat
+
+# 3. Launch the engine
 lirox
 ```
 
-**Option B — Manual**
+### Deep Uninstall (Full Cleanup)
+If you need to completely remove Lirox and all its data from your device:
 ```bash
-sudo apt update && sudo apt install -y python3 python3-pip
-python3 -m pip install -e .
-lirox
+./install_macOS.sh --uninstall
 ```
-</details>
+*This removes API keys, user profiles, history, databases, caches, and uninstalls the pip package.*
 
 ---
 
 ## ⚙️ First Run & Setup
 
-Once installed, simply start the engine:
-```bash
-lirox
-```
+Upon first launch, Lirox will guide you through a **Setup Wizard**. You will need API keys for at least one provider.
 
-From within Lirox, you can set up your keys and profile:
-```text
-/setup
-```
-
-### Supported API Providers
-
-| Provider | Cost | Link |
-|----------|------|------|
-| **Groq** | Free | [console.groq.com](https://console.groq.com) |
-| **Gemini** | Free | [aistudio.google.com](https://aistudio.google.com) |
-| **OpenRouter** | Free tier | [openrouter.ai](https://openrouter.ai) |
-| **Ollama** | Local / Free | [ollama.com](https://ollama.com) |
-| **OpenAI** | Paid | [platform.openai.com](https://platform.openai.com) |
-| **Anthropic** | Paid | [console.anthropic.com](https://console.anthropic.com) |
+### Supported Providers
+- **Groq/Gemini**: Best for speed and free-tier usage.
+- **OpenAI/Anthropic**: Best for high-complexity reasoning.
+- **Ollama**: 100% Local execution.
+- **DeepSeek/OpenRouter**: High-performance cost-effective alternatives.
 
 ---
 
-## ⌨️ Command Reference
+## ⌨️ Command Encyclopedia
 
-Lirox provides an extensive set of slash-commands to manage its operating system and your data completely.
+Lirox uses a rich set of slash-commands for system management.
 
-### 🛠 System & Settings
-| Command | Description |
-|---------|-------------|
-| `/help` | Show all available commands |
-| `/setup` | Re-run setup wizard (API keys, profile) |
-| `/profile` | Display your user profile |
-| `/workspace [path]`| Show or change the active operational directory |
-| `/models` | List all available LLM providers |
-| `/use-model <n>` | Pin a specific provider (groq, gemini, ollama…) |
-| `/test` | Run system diagnostics |
-| `/health` | Run subsystem health checks (config, db, execution, docs, llm) |
-| `/restart` | Restart the Lirox engine |
-| `/update` | Auto-update repository via git pull & reinstall |
-| `/exit` | Gracefully shutdown Lirox |
+### 🛠 System Operations
+- `/help`: The master directory of all available commands.
+- `/setup`: Re-run the onboarding wizard to change keys or profile settings.
+- `/restart`: Hot-reload the Lirox engine without exiting the terminal.
+- `/update`: Automatically pull latest changes from Git and re-bootstrap dependencies.
+- `/exit`: Gracefully shut down all agents and save the session.
+- `/test`: Run a quick diagnostic suite to verify API connectivity.
+- `/health`: A deep subsystem check (Config, DB, Execution, Docs, LLM connectivity).
 
-### 🧠 Memory & Knowledge
-| Command | Description |
-|---------|-------------|
-| `/history [n]`| Show the last N sessions |
-| `/session` | View current session routing info |
-| `/memory` | Show memory buffer and long-term statistics |
-| `/reset` | Wipe short-term session memory for a fresh context |
-| `/train` | Force agent to extract and solidify learnings from chats |
-| `/recall` | View everything Lirox has learned about you |
+### 🧠 Intelligence & Memory
+- `/expand thinking`: Visualizes the complete reasoning trace of the last query.
+- `/thinking-help`: Explains the icons and legend used in the thinking display.
+- `/memory`: Displays statistics on your learned facts and preference counts.
+- `/recall`: Lists everything Lirox has currently learned about you (Facts).
+- `/train`: Manually triggers the "Soul Engine" to process the recent chat into long-term memory.
+- `/history [n]`: Browse your past conversation sessions (last N).
+- `/reset`: Wipes the current "Short-term" session memory for a clean slate.
 
-### 📦 Data Portability
-| Command | Description |
-|---------|-------------|
-| `/backup` | Compress and backup all data securely |
-| `/export-memory`| Export whole configuration & knowledge state to JSON |
-| `/import-memory`| Import JSON context (from web ChatGPT/Claude/Lirox exports)|
-| `/uninstall`| Self-destruct and wipe Lirox data safely |
+### 📂 Workspace & Data
+- `/workspace [path]`: Set or view the active operational directory. Lirox will prioritize this folder for all file operations.
+- `/backup`: Creates a timestamped ZIP of your entire Lirox data state.
+- `/export-memory`: Saves your "Soul" (Profile + Learnings) to a portable JSON file.
+- `/import-memory`: Import context from Claude/ChatGPT or other Lirox instances.
+- `/uninstall`: (In-App) Deep-cleans all data and removes Lirox from the system.
+
+### 🤖 Model Management
+- `/models`: Lists all active and configured LLM providers.
+- `/use-model <provider>`: Pins Lirox to a specific provider (e.g., `/use-model groq`).
 
 ---
 
-## 💡 Use Cases
+## 🏗 Core Architecture
 
-### 1. Developer Co-Pilot
-> *“Lirox, create a full python script to batch download images from an API, save it to `/workspace/scripts/batch_downloader.py`, run it, and let me know if there are syntax errors.”*
-
-### 2. Autonomous Knowledge Worker
-> *“Fetch the top news on AI safety, generate a 2-page summarized report, and save it as a Markdown document on my Desktop.”*
-
-### 3. Personal Mentor
-> *(After weeks of chatting, Lirox remembers your ongoing projects)*
-> *“How should I refactor the database schema in my recent web-app project?”* 
-
-### 4. File System Cleanup
-> *“Give me a list of all files in my Downloads folder larger than 100MB and calculate the total size.”*
-
----
-
-## 🔧 Architecture Overview
-
-Lirox operates logically by isolating reasoning layers from operational interfaces, ensuring sanity checks and runtime safety.
+Lirox is built on a modular "Pillar" architecture:
 
 ```text
 lirox/
-├── main.py              # Application Entry / System Ring 0
-├── config.py            # Hardened Configuration Settings
-├── agents/              # ReAct Reasoning Entities
-├── memory/              # Buffer & Persistence Pipeline
-├── mind/                # Dynamic Self / Learning Extraction
-├── tools/               # Secure Sub-systems (Terminal, Search)
-├── ui/                  # Rich Front-End Rendering
-└── utils/               # Native Utilities & Bootstrapping
+├── agent/        # Individual specialized agents (Identity, Profile)
+├── agents/       # ReAct implementations (Coordinator, Researcher, Coder)
+├── core/         # The "Heart" (Health, Diagnostics, Backup, Logger)
+├── mind/         # The "Soul" (Learning Manager, Bridge, Identity)
+├── orchestrator/ # The "Brain" (MasterOrchestrator, Event Handling)
+├── thinking/     # The "Reasoning" (Live trace generator, expanded views)
+├── ui/           # The "Face" (Rich terminal interface, Wizard)
+└── tools/        # The "Hands" (Shell, Web, Document Creators)
 ```
+
+### The 5 Pillars of Lirox
+1. **Learning**: Context-aware personalization that improves with every chat.
+2. **Security**: Cryptographic agent identities and hardened execution sandboxes.
+3. **Multi-Agent**: Collaborative problem solving via specialized sub-agents.
+4. **Testing**: Integrated health checks and red-team verification.
+5. **Portability**: Seamless backup/export of your "Digital Twin."
+
+---
+
+## 🛡 Safety & Security
+
+Lirox implements **Defense-in-Depth**:
+- **Identity System**: Every Lirox instance has a unique ED25519 cryptographic identity.
+- **Command Sanitization**: All shell commands are parsed and checked against a blocklist before execution.
+- **Path Isolation**: Agents cannot access system-critical paths like `/etc`, `/System`, or `C:\Windows`.
+- **Transparency**: Every file write or shell command is rendered clearly in the UI for user oversight.
+
+---
+
+## 💡 Pro Tips
+- Use `/workspace` to pin Lirox to your current coding project for better context.
+- Run `/health` if you notice slow responses to check if a provider is rate-limiting you.
+- Use `/expand thinking` after a complex request to learn *how* Lirox solved the problem.
 
 ---
 
 <div align="center">
-  <i>Empower your workflow today securely from your terminal.</i><br>
-  <b>Built by Baljot Chohan</b> under the <b>MIT License</b>.
+  <i>"Lirox is not just an assistant; it is a partner in your digital autonomy."</i><br>
+  <b>Crafted with ❤️ by Baljot Chohan</b>
 </div>
