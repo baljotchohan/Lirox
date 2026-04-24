@@ -1,4 +1,4 @@
-"""Lirox core infrastructure — errors, config validation, transactions, logging."""
+"""Lirox core infrastructure — errors, config validation, transactions, logging, diagnostics, backup."""
 from lirox.core.errors import (
     LiroxError,
     ConfigurationError,

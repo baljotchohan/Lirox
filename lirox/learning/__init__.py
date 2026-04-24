@@ -1,4 +1,4 @@
-"""Lirox v1.0 — Learning Package
+"""Lirox v1.1 — Learning Package
 
 Public API for Lirox's self-learning system.
 Wraps the internal mind/trainer and mind/learnings modules

@@ -179,3 +179,43 @@ PILLAR_5_MARKETPLACE = {
     'monetization': True,
     'community_agents': True
 }
+
+
+def delete_all_data():
+    """
+    Delete ALL Lirox data (for /uninstall command).
+    WARNING: This is irreversible.
+    """
+    import shutil
+
+    deleted = []
+
+    # Delete data directory (sessions, memory, mind)
+    data_path = Path(DATA_DIR)
+    if data_path.exists():
+        shutil.rmtree(data_path)
+        deleted.append(str(data_path))
+
+    # Delete outputs directory
+    outputs_path = Path(OUTPUTS_DIR)
+    if outputs_path.exists():
+        shutil.rmtree(outputs_path)
+        deleted.append(str(outputs_path))
+
+    # Delete any workspace artifacts with lirox_ prefix
+    workspace = Path(WORKSPACE_DIR)
+    if workspace.exists():
+        for f in workspace.glob("lirox_*"):
+            try:
+                if f.is_file():
+                    f.unlink()
+                elif f.is_dir():
+                    shutil.rmtree(f)
+                deleted.append(str(f))
+            except Exception:
+                pass
+
+    for d in deleted:
+        print(f"✓ Deleted: {d}")
+    print("✓ All Lirox data deleted")
+

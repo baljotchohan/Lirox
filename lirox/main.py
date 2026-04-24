@@ -50,8 +50,7 @@ def process_query(orch, query: str, verbose: bool = False):
     """
     from lirox.ui.display import (
         render_streaming_chunk, console, show_agent_event,
-        show_thinking_phase, show_thinking_panel_open,
-        show_thinking_panel_close, show_answer
+        show_thinking_phase, show_answer
     )
     
     _last_thinking["query"] = query
@@ -146,13 +145,13 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             ("/reset",              "Reset session memory"),
             ("/test",               "Run diagnostics"),
             ("/health",             "Run subsystem health checks"),
-            ("/train",              "Extract learnings from conversations"),
+            ("/train",              "Auto-trains after each conversation (no action needed)"),
             ("/recall",             "Show everything Lirox knows about you"),
             ("/workspace [path]",   "Show or change workspace directory"),
             ("/expand thinking",    "Show detailed reasoning from last query"),
             ("/backup",             "Backup all data"),
             ("/export-memory",      "Export profile + learnings as JSON"),
-            ("/import-memory",      "Import from ChatGPT/Claude/Gemini/Lirox export"),
+            ("/import-memory",      "Import from ChatGPT/Claude/Gemini/Lirox (paste or file)"),
             ("/restart",            "Restart Lirox"),
             ("/update",             "Update to latest version"),
             ("/uninstall",          "Remove all Lirox data"),
@@ -215,11 +214,14 @@ def _handle(orch, profile, cmd, base, parts, verbose):
 
     elif base == "/health":
         from lirox.core.health import run_health_checks
-        run_health_checks()
+        report = run_health_checks()
+        for check in report.checks:
+            status = "✓" if check.ok else "✗"
+            color = "green" if check.ok else "red"
+            console.print(f"  [{color}]{status}[/{color}] {check.name}: {check.message}")
 
     elif base == "/train":
-        info_panel("Training started in background...")
-        orch.record_interaction() # Forces training
+        info_panel("Training now happens automatically in background after each conversation.\nNo manual /train needed.")
 
     elif base == "/recall":
         from lirox.learning.manager import LearningManager
@@ -259,12 +261,16 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         success_message(f"Memory exported to: {path}")
 
     elif base == "/import-memory":
-        from lirox.learning.importer import import_learnings
-        if len(parts) < 2:
-            error_panel("USAGE", "/import-memory <file_path>")
-            return
-        res = import_learnings(parts[1])
-        success_message(f"Imported {res['facts']} facts and {res['prefs']} preferences.")
+        if len(parts) >= 2:
+            # Non-interactive file import
+            from lirox.learning.importer import import_learnings
+            res = import_learnings(parts[1])
+            success_message(f"Imported {res['facts']} facts and {res['prefs']} preferences.")
+        else:
+            # Interactive mode (paste or file picker)
+            from lirox.learning.importer import import_memory_interactive
+            if import_memory_interactive():
+                success_message("Memory imported successfully")
 
     elif base == "/restart":
         success_message("Restarting Lirox...")
@@ -349,13 +355,13 @@ def main():
             "/reset":           "Clear current session",
             "/test":            "Run quick diagnostics",
             "/health":          "Deep subsystem health checks",
-            "/train":           "Force background learning",
+            "/train":           "Auto-trains in background (no action needed)",
             "/recall":          "Show learned facts about you",
             "/workspace":       "Set active directory",
             "/expand thinking": "View last reasoning trace",
             "/backup":          "Create a full data backup",
             "/export-memory":   "Save learnings to JSON",
-            "/import-memory":   "Import external learnings",
+            "/import-memory":   "Import external learnings (paste or file)",
             "/restart":         "Reload Lirox",
             "/update":          "Check for updates",
             "/uninstall":       "Delete all Lirox data",
