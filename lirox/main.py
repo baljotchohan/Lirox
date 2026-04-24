@@ -389,6 +389,11 @@ def main():
             try:
                 run_setup_wizard(profile)
                 orchestrator.profile_data = profile.data
+                
+                # Re-pin model if it was set during setup
+                _new_provider = profile.data.get("llm_provider", "")
+                if _new_provider and _new_provider != "auto":
+                    os.environ["_LIROX_PINNED_MODEL"] = _new_provider
             except KeyboardInterrupt:
                 console.print("\n  [dim]Setup skipped.[/]")
 

@@ -130,7 +130,7 @@ def run_setup_wizard(profile) -> None:
         console.print(f"\n  [yellow]⚠ Seeding warning: {e}[/]")
 
     # Step 7 — LLM setup
-    _llm_setup_flow()
+    _llm_setup_flow(profile)
 
     # Step 8 — Memory import (optional, one-paste)
     if Confirm.ask(
@@ -204,7 +204,7 @@ def _pick_niche() -> str:
     return selected
 
 
-def _llm_setup_flow() -> None:
+def _llm_setup_flow(profile) -> None:
     console.print("\n")
     console.print(Panel(
         "[bold #FFC107]🧠 Let's connect your brain.[/]\n\n"
@@ -216,14 +216,14 @@ def _llm_setup_flow() -> None:
     llm_type = Prompt.ask("\n  [bold #FFC107]Which setup?[/]",
                           choices=["cloud", "local", "both", "skip"], default="cloud")
     if llm_type in ("local", "both"):
-        _setup_ollama()
+        _setup_ollama(profile)
     if llm_type in ("cloud", "both"):
-        _setup_cloud_keys()
+        _setup_cloud_keys(profile)
     if llm_type == "skip":
         console.print("  [dim]Skipped. Run /setup later to add keys.[/]")
 
 
-def _setup_ollama() -> None:
+def _setup_ollama(profile) -> None:
     import requests
     console.print("\n  [bold green]🏠 Local LLM Setup (Ollama)[/]")
     console.print("  [dim]Install: https://ollama.ai  ·  Start: ollama serve[/]\n")
@@ -247,6 +247,7 @@ def _setup_ollama() -> None:
     os.environ["LOCAL_LLM_ENABLED"] = "true"
     os.environ["OLLAMA_ENDPOINT"] = endpoint
     os.environ["OLLAMA_MODEL"]    = model
+    profile.update("llm_provider", "ollama")
     console.print(f"  [bold green]✓ Ollama configured: {model} @ {endpoint}[/]")
 
 
@@ -285,7 +286,7 @@ def _verify_api_key(provider: str, key: str) -> bool:
         return True
 
 
-def _setup_cloud_keys() -> None:
+def _setup_cloud_keys(profile) -> None:
     providers = {
         "1": ("Groq",       "GROQ_API_KEY",       "console.groq.com",     "Free, fastest"),
         "2": ("Gemini",     "GEMINI_API_KEY",     "aistudio.google.com",  "Free, versatile"),
@@ -317,6 +318,8 @@ def _setup_cloud_keys() -> None:
         set_key(_ENV_PATH, env, key)
         os.environ[env] = key
         console.print(f"  [bold green]✓ {name} key saved.[/]")
+        if not profile.data.get("llm_provider"):
+            profile.update("llm_provider", name.lower())
         if not Confirm.ask("  Add another?", default=False):
             break
 

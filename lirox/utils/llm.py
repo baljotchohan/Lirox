@@ -327,7 +327,7 @@ _PROVIDER_ENV_MAP = {
     "deepseek": "DEEPSEEK_API_KEY", "nvidia": "NVIDIA_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
 }
-_PROVIDER_PRIORITY = ["groq", "openrouter", "gemini", "anthropic", "nvidia", "openai", "deepseek"]
+_PROVIDER_PRIORITY = ["ollama", "hf_bnb", "groq", "openrouter", "gemini", "anthropic", "nvidia", "openai", "deepseek"]
 
 TASK_KEYWORDS = [
     "create", "build", "run", "install", "download", "execute", "pip", "npm",
@@ -398,10 +398,15 @@ def provider_has_key(provider: str) -> bool:
 
 def pick_default_provider() -> Optional[str]:
     avail = available_providers()
+    if not avail:
+        return None
+    # 1. Try to follow the established priority order
     for p in _PROVIDER_PRIORITY:
         if p in avail:
             return p
-    return None
+    # 2. Fallback: if we have providers but none are in our priority list, 
+    # just pick the first one available.
+    return avail[0]
 
 
 def smart_router(prompt: str) -> Optional[str]:
