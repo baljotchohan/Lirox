@@ -295,37 +295,45 @@ class PersonalAgent(BaseAgent):
             user_name = ""
 
         # ──────────────────────────────────────────────────────────────────
-        # PHASE 1 — DESIGN THINKING (Multi-Agent Debate)
+        # PHASE 1 — REAL MULTI-AGENT THINKING
         # ──────────────────────────────────────────────────────────────────
-        yield {"type": "agent_progress", "message": "🎨 Analyzing topic and audience…"}
+        yield {"type": "agent_progress", "message": "🧠 Multi-agent analysis..."}
         
         try:
-            from lirox.ui.thinking_display import ThinkingEngine, LiveThinkingDisplay
-            import time
-            start_t = time.time()
+            from lirox.thinking.real_engine import RealThinkingEngine
+            from lirox.ui.real_thinking_display import RealThinkingDisplay
             
-            thinking_engine = ThinkingEngine()
-            thinking_display = LiveThinkingDisplay()
+            thinking_engine = RealThinkingEngine()
+            thinking_display = RealThinkingDisplay()
             
             # Show compact thinking
             thinking_display.show_thinking_compact(query, num_agents=5)
             
-            # Run multi-agent thinking
+            # Run REAL multi-agent thinking with REAL LLM calls
             think_result = thinking_engine.think_and_decide(
                 task=query,
                 context=context
             )
             
-            # If user expanded, show full thinking
-            if thinking_display.is_expanded:
-                agents = list(thinking_engine.agents.keys())
-                thinking_display.show_thinking_expanded(query, agents)
+            # If user wants details, show expanded view
+            # (Can be triggered by /expand command or user preference)
+            if self.profile_data.get('show_thinking_details', False):
+                thinking_display.show_thinking_expanded(think_result)
             
-            think_result['time_taken'] = round(time.time() - start_t, 2)
-            yield {"type": "agent_progress", "message": f"🤖 Synthesis: {think_result['decision']}"}
+            # Use thinking results to inform file generation
+            decision = think_result['decision']
+            confidence = think_result['synthesis']['confidence']
+            
+            yield {
+                "type": "agent_progress", 
+                "message": f"✓ Decision: {decision} (confidence: {confidence}%)"
+            }
+            
         except Exception as e:
-            _logger.warning("Thinking engine failed: %s", e)
-
+            import logging
+            logging.warning("Thinking engine failed: %s", e)
+            # Continue with default approach
+            
         file_type = DesignEngine.detect_file_type(query)
         try:
             design = DesignEngine.plan_document(query, query[:80], file_type=file_type)

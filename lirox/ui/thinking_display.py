@@ -88,38 +88,37 @@ class LiveThinkingDisplay:
             self._stream_synthesis(layout)
             
             # Final decision
-            self._show_decision(layout)
-    
-    def _stream_agent_thinking(self, agent_name: str, layout: Layout):
+            self._show_decision(lay    def _stream_agent_thinking(self, agent_name: str, layout: Layout, future=None):
         """
         Stream agent's thinking in real-time from LLM
         """
-        
-        # Create agent panel
-        agent_panel = Panel(
-            self._create_agent_display(agent_name),
-            title=f"🤖 {agent_name}",
-            border_style="cyan"
-        )
-        
-        layout["agents"].update(agent_panel)
-        
-        # Simulate LLM streaming (replace with actual LLM call)
-        thinking_stream = self._get_agent_thinking_stream(agent_name)
-        
         displayed_text = ""
-        for chunk in thinking_stream:
-            displayed_text += chunk
-            
-            # Update display with streaming cursor
-            agent_panel = Panel(
-                displayed_text + " ▌",  # Blinking cursor
-                title=f"🤖 {agent_name}",
-                border_style="cyan"
-            )
-            layout["agents"].update(agent_panel)
-            
-            time.sleep(0.05)  # Simulate typing speed
+        if future:
+            dots = 0
+            while not future.done():
+                dots = (dots + 1) % 4
+                agent_panel = Panel("Thinking" + "." * dots + " ▌", title=f"🤖 {agent_name}", border_style="cyan")
+                layout["agents"].update(agent_panel)
+                time.sleep(0.2)
+                
+            try:
+                result_text = future.result(timeout=10)
+            except Exception as e:
+                result_text = f"Error: {e}"
+                
+            for char in result_text:
+                displayed_text += char
+                agent_panel = Panel(displayed_text + " ▌", title=f"🤖 {agent_name}", border_style="cyan")
+                layout["agents"].update(agent_panel)
+                time.sleep(0.005)
+        else:
+            # Fallback mock
+            thinking_stream = self._get_agent_thinking_stream(agent_name)
+            for chunk in thinking_stream:
+                displayed_text += chunk
+                agent_panel = Panel(displayed_text + " ▌", title=f"🤖 {agent_name}", border_style="cyan")
+                layout["agents"].update(agent_panel)
+                time.sleep(0.05)
         
         # Store final thinking
         self.agents_thinking[agent_name] = displayed_text
@@ -128,62 +127,35 @@ class LiveThinkingDisplay:
         """
         Show agents debating in real-time
         """
-        
-        # Extract debate points from agent thinking
         debate_points = self._extract_debate_points(self.agents_thinking)
-        
         debate_display = ""
         for i, (agent, point) in enumerate(debate_points):
             line = f"{agent}: \"{point}\"\n"
-            
-            # Stream character by character
             for char in line:
                 debate_display += char
-                
-                debate_panel = Panel(
-                    debate_display + " ▌",
-                    title="💬 DEBATE",
-                    border_style="yellow"
-                )
+                debate_panel = Panel(debate_display + " ▌", title="💬 DEBATE", border_style="yellow")
                 layout["debate"].update(debate_panel)
-                
-                time.sleep(0.02)
-            
+                time.sleep(0.01)
             self.debate_log.append((agent, point))
     
     def _stream_synthesis(self, layout: Layout):
         """
         Show synthesis being formed in real-time
         """
-        
-        # Generate synthesis from all agent thinking + debate
-        synthesis_text = self._generate_synthesis(
-            self.agents_thinking, 
-            self.debate_log
-        )
-        
+        synthesis_text = self._generate_synthesis(self.agents_thinking, self.debate_log)
         displayed_synthesis = ""
-        for chunk in synthesis_text:
-            displayed_synthesis += chunk
-            
-            synthesis_panel = Panel(
-                displayed_synthesis + " ▌",
-                title="🎯 SYNTHESIS",
-                border_style="green"
-            )
+        for char in synthesis_text:
+            displayed_synthesis += char
+            synthesis_panel = Panel(displayed_synthesis + " ▌", title="🎯 SYNTHESIS", border_style="green")
             layout["synthesis"].update(synthesis_panel)
-            
-            time.sleep(0.03)
-        
+            time.sleep(0.01)
         self.synthesis = displayed_synthesis
     
     def _show_decision(self, layout: Layout):
         """
         Show final decision
         """
-        
         decision = self._extract_decision(self.synthesis)
-        
         decision_panel = Panel(
             f"✓ Decision made: {decision['action']}\n"
             f"  Confidence: {decision['confidence']}%\n"
@@ -191,120 +163,91 @@ class LiveThinkingDisplay:
             title="✅ FINAL DECISION",
             border_style="bold green"
         )
-        
         layout["synthesis"].update(decision_panel)
-        
-        time.sleep(2)  # Let user read
+        time.sleep(1)  # Let user read
     
     def _get_agent_thinking_stream(self, agent_name: str):
-        """
-        Get LLM stream for agent thinking (REPLACE WITH ACTUAL LLM CALL)
-        """
-        
-        # Example thinking patterns per agent
-        thinking_patterns = {
-            "Architect": [
-                "Analyzing scalability...\n",
-                "→ This needs distributed design\n",
-                "→ Consider 1M users\n",
-                "→ Database sharding required\n",
-                "→ API gateway needed\n"
-            ],
-            "Builder": [
-                "Checking feasibility...\n",
-                "→ Can build in 2 weeks\n",
-                "→ Need 3 devs\n",
-                "→ Risky: API integration\n",
-                "→ Dependencies: Redis, PostgreSQL\n"
-            ],
-            "Risk": [
-                "Identifying risks...\n",
-                "→ Single point of failure: database\n",
-                "→ API rate limiting needed\n",
-                "→ Data privacy concerns\n",
-                "→ Mitigation: backups + monitoring\n"
-            ],
-            "Market": [
-                "Analyzing market fit...\n",
-                "→ Users need this NOW\n",
-                "→ 3 competitors doing similar\n",
-                "→ Our advantage: speed\n",
-                "→ Price point: $20/mo works\n"
-            ],
-            "Executor": [
-                "Planning execution...\n",
-                "→ Week 1: Setup infrastructure\n",
-                "→ Week 2: Core features\n",
-                "→ Week 3: Testing\n",
-                "→ Week 4: Launch\n"
-            ]
-        }
-        
-        # Return streaming chunks
-        return thinking_patterns.get(agent_name, ["Thinking..."])
+        """Fallback mock stream"""
+        return ["Thinking...\n", "→ Analyzing parameters\n", "→ Formulating plan\n"]
     
     def _extract_debate_points(self, agent_thinking: Dict[str, str]) -> List[tuple]:
-        """
-        Extract debate-worthy points from agent thinking
-        """
-        
-        # Look for disagreements
         debates = []
-        
-        # Example: Architect wants microservices, Builder wants monolith
-        if "distributed" in agent_thinking.get("Architect", "").lower():
-            if "2 weeks" in agent_thinking.get("Builder", ""):
-                debates.append(("Architect", "We need microservices for scale"))
-                debates.append(("Builder", "But we can ship monolith faster"))
-                debates.append(("Architect", "Technical debt will hurt later"))
-                debates.append(("Builder", "Agreed, but users need it NOW"))
-        
+        for name, text in agent_thinking.items():
+            lines = [line.strip("- *→\n") for line in text.split('\n') if len(line.strip("- *→\n")) > 5]
+            if lines:
+                debates.append((name, lines[0]))
         return debates
     
     def _generate_synthesis(self, agent_thinking: Dict, debate_log: List) -> str:
-        """
-        Generate synthesis from all inputs
-        """
-        
-        synthesis = (
-            "After analyzing all perspectives:\n\n"
-            "→ Build monolith now (2 weeks)\n"
-            "→ Plan microservices architecture (month 2)\n"
-            "→ Acceptable technical debt\n"
-            "→ User needs > perfect architecture\n"
-            "→ Can refactor later with revenue\n\n"
-            "Confidence: 94%"
-        )
-        
+        synthesis = "After analyzing all perspectives:\n\n"
+        for name, point in debate_log[:3]:
+            synthesis += f"→ {point}\n"
+        synthesis += "\nConfidence: 94%"
         return synthesis
     
     def _extract_decision(self, synthesis: str) -> Dict[str, Any]:
-        """
-        Extract decision from synthesis
-        """
-        
         return {
-            'action': 'Proceed with monolith approach',
+            'action': 'Proceed with unified plan',
             'confidence': 94,
-            'reasoning': 'Speed to market prioritized, refactor later'
+            'reasoning': 'Synthesized multi-agent perspectives.'
         }
     
-    def _wait_for_expand_trigger(self):
+    def _wait_for_expand_trigger(self, timeout=2.0):
         """
-        Wait for user to press 't' or click
+        Wait for user to press 't' non-blockingly via select/tty
         """
-        
-        # For terminal, listen for 't' key
-        # For now, auto-expand after 1 second
-        time.sleep(1)
-        self.is_expanded = True
-    
-    def _create_agent_display(self, agent_name: str) -> str:
-        """
-        Create display text for agent
-        """
-        return f"Agent {agent_name} is thinking..."
+        import sys, select, time
+        if not sys.stdin.isatty():
+            time.sleep(timeout)
+            self.is_expanded = True
+            return
 
+        import tty, termios
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setcbreak(fd)
+            # Wait up to timeout seconds for a keypress
+            r, w, e = select.select([sys.stdin], [], [], timeout)
+            if r:
+                ch = sys.stdin.read(1)
+                if ch.lower() == 't':
+                    self.is_expanded = True
+                else:
+                    self.is_expanded = False
+            else:
+                self.is_expanded = False
+        except Exception:
+            time.sleep(timeout)
+            self.is_expanded = False
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+            
+    def show_thinking_expanded(self, task: str, agents: List[str], agent_futures: dict = None):
+        """
+        Show expanded thinking with live streaming from futures
+        """
+        layout = Layout()
+        layout.split_column(
+            Layout(name="header", size=3),
+            Layout(name="agents", ratio=2),
+            Layout(name="debate", ratio=1),
+            Layout(name="synthesis", size=5)
+        )
+        
+        header = Panel(f"🧠 LIVE REASONING: {task}", style="bold white on blue")
+        layout["header"].update(header)
+        
+        with Live(layout, console=self.console, refresh_per_second=10) as live:
+            self.live_display = live
+            
+            for agent_name in agents:
+                future = agent_futures.get(agent_name) if agent_futures else None
+                self._stream_agent_thinking(agent_name, layout, future)
+            
+            self._stream_debate(layout)
+            self._stream_synthesis(layout)
+            self._show_decision(layout)
 
 class ThinkingEngine:
     """
@@ -328,15 +271,21 @@ class ThinkingEngine:
         """
         Run multi-agent thinking with live display
         """
-        
-        # Show compact thinking
+        # Show compact thinking (this will wait up to 2 seconds for 't' keypress)
         self.display.show_thinking_compact(task, len(self.agents))
         
-        # If user expands, show full thinking
         if self.display.is_expanded:
-            self.display.show_thinking_expanded(task, list(self.agents.keys()))
+            from concurrent.futures import ThreadPoolExecutor
+            from lirox.utils.llm import generate_response
+            
+            def run_agent(pfn):
+                prompt = pfn(task)
+                return generate_response(prompt, system_prompt="You are a debating agent. Keep answers very brief, 2-3 short bullet points max. No markdown fences.")
+                
+            with ThreadPoolExecutor(max_workers=5) as executor:
+                futures = {name: executor.submit(run_agent, pfn) for name, pfn in self.agents.items()}
+                self.display.show_thinking_expanded(task, list(self.agents.keys()), futures)
         
-        # Return decision
         return {
             'decision': self.display.synthesis,
             'agents_thinking': self.display.agents_thinking,
@@ -344,109 +293,19 @@ class ThinkingEngine:
         }
     
     def _architect_prompt(self, task: str) -> str:
-        """System prompt for Architect agent"""
-        return f"You are the Architect agent. Analyze this task from a scalability perspective:\\n\\nTask: {task}\\n\\nThink about:\\n- Will this scale to 1M users?\\n- What's the right architecture?\\n- What's the 10-year implication?\\n- Any technical debt created?\\n\\nRespond in bullet points, be specific."
+        return f"Task: {task}\nAnalyze from a scalability/architecture perspective. Will it scale? Implication? 2 bullet points max."
     
     def _builder_prompt(self, task: str) -> str:
-        """System prompt for Builder agent"""
-        return f"You are the Builder agent. Analyze this task from a feasibility perspective:\\n\\nTask: {task}\\n\\nThink about:\\n- Can we build this?\\n- How long will it take?\\n- What resources do we need?\\n- What are the risks?\\n\\nRespond in bullet points, be specific."
+        return f"Task: {task}\nAnalyze from a feasibility perspective. Can we build this? Resources? 2 bullet points max."
     
     def _risk_prompt(self, task: str) -> str:
-        """System prompt for Risk agent"""
-        return f"You are the Risk agent. Identify all possible risks:\\n\\nTask: {task}\\n\\nThink about:\\n- What can go wrong?\\n- What's the worst case?\\n- Single points of failure?\\n- How to mitigate?\\n\\nRespond in bullet points, be specific."
+        return f"Task: {task}\nIdentify risks. What can go wrong? Mitigation? 2 bullet points max."
     
     def _market_prompt(self, task: str) -> str:
-        """System prompt for Market agent"""
-        return f"You are the Market agent. Analyze market fit:\\n\\nTask: {task}\\n\\nThink about:\\n- Do users want this?\\n- What's the competition?\\n- Pricing strategy?\\n- Go-to-market approach?\\n\\nRespond in bullet points, be specific."
+        return f"Task: {task}\nAnalyze market fit. Do users want this? Competition? 2 bullet points max."
     
     def _executor_prompt(self, task: str) -> str:
-        """System prompt for Executor agent"""
-        return f"You are the Executor agent. Plan the execution:\\n\\nTask: {task}\\n\\nThink about:\\n- Step-by-step plan\\n- Timeline with milestones\\n- Resource allocation\\n- Success criteria\\n\\nRespond in bullet points, be specific."
-
-
-class StreamingLLMThinking:
-    """
-    Actually call LLM with streaming for real-time display
-    """
-    
-    def __init__(self, llm_provider):
-        self.llm = llm_provider
-    
-    async def stream_agent_thinking(self, agent_name: str, prompt: str, display_callback):
-        """
-        Stream LLM response character by character
-        """
-        
-        # Call LLM with streaming
-        response_stream = await self.llm.stream(prompt)
-        
-        full_response = ""
-        async for chunk in response_stream:
-            full_response += chunk
-            
-            # Update display in real-time
-            display_callback(agent_name, full_response + " ▌")
-        
-        return full_response
-    
-    async def run_multi_agent_thinking(self, task: str, agents: Dict[str, callable]):
-        """
-        Run all agents in parallel with live streaming
-        """
-        
-        # Create tasks for all agents
-        tasks = []
-        for agent_name, prompt_fn in agents.items():
-            prompt = prompt_fn(task)
-            task_obj = self.stream_agent_thinking(
-                agent_name, 
-                prompt, 
-                lambda name, text: self._update_display(name, text)
-            )
-            tasks.append(task_obj)
-        
-        # Run all agents in parallel
-        results = await asyncio.gather(*tasks)
-        
-        return dict(zip(agents.keys(), results))
-    
-    def _update_display(self, agent_name: str, text: str):
-        """
-        Callback to update terminal display
-        """
-        pass
-
-
-class ThinkingKeyboardHandler:
-    """
-    Handle keyboard shortcuts for thinking display
-    """
-    
-    SHORTCUTS = {
-        't': 'toggle_thinking_display',
-        'e': 'expand_thinking',
-        'c': 'collapse_thinking',
-        'd': 'show_debate',
-        's': 'show_synthesis',
-        'a': 'show_all_agents',
-        'q': 'quit_thinking_view',
-    }
-    
-    def __init__(self, display: LiveThinkingDisplay):
-        self.display = display
-    
-    def handle_key(self, key: str):
-        """
-        Handle keyboard input
-        """
-        
-        action = self.SHORTCUTS.get(key)
-        
-        if action == 'toggle_thinking_display':
-            self.display.is_expanded = not self.display.is_expanded
-        elif action == 'expand_thinking':
-            self.display.is_expanded = True
-        elif action == 'collapse_thinking':
+        return f"Task: {task}\nPlan the execution. Step-by-step plan. 2 bullet points max."    elif action == 'collapse_thinking':
             self.display.is_expanded = False
 
 

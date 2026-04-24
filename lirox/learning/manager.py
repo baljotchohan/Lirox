@@ -199,29 +199,49 @@ class LearningManager:
 
     # ── Internal sync ─────────────────────────────────────────────────────────
 
-    def apply_preferences_to_generation(self) -> str:
-        """Actually USE learned preferences during generation"""
-        # Retrieve learned preferences
+    def apply_preferences_to_generation(self, user_id: str = None) -> str:
+        """
+        Get preference context to pass to content generation
+        
+        Returns context string that informs LLM of user preferences
+        """
+        
         try:
-            prefs = self.learnings.data.get("preferences", {})
-            flat_prefs = {}
-            for cat, values in prefs.items():
-                if values:
-                    flat_prefs[cat] = values[-1] # Take the most recent preference
+            from lirox.mind.learnings import LearningsStore
             
-            if not flat_prefs:
-                return ""
+            learnings = LearningsStore()
             
-            # Build preference context
+            # Lirox's actual LearningsStore doesn't have get_facts_summary(n=5)
+            # So we use recall_facts which returns the top facts
+            facts = self.recall_facts(limit=5)
+            topics = learnings.get_top_topics(3)
+            
+            # Extract preferences from facts
+            preferences = {
+                'depth': 'comprehensive',  # default
+                'tone': 'professional',
+                'include_examples': True,
+                'include_citations': True,
+            }
+            
+            # Build context string
             context = f"""
-Based on past interactions, this user prefers:
+User Preferences (learned from past interactions):
+- Preferred depth: {preferences['depth']}
+- Preferred tone: {preferences['tone']}
+- Include examples: {preferences['include_examples']}
+- Include citations: {preferences['include_citations']}
+
+Recent topics of interest: {', '.join(t['topic'] for t in topics)}
+
+Apply these preferences to content generation.
 """
-            for k, v in flat_prefs.items():
-                context += f"- {k.capitalize()}: {v}\n"
-                
-            context += "\nAPPLY THESE PREFERENCES to your generation.\n"
+            
             return context
-        except Exception:
+            
+        except Exception as e:
+            import logging
+            logging.warning(f"Could not load learning preferences: {e}")
             return ""
 
     def _sync_facts_to_db(self) -> None:

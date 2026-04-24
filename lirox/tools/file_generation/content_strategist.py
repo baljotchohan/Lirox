@@ -24,91 +24,142 @@ class ContentStrategist:
     # ── public API ────────────────────────────────────────────────────────
 
     @staticmethod
-    def generate(topic: str,
-                 query: str,
-                 file_type: str = "pdf",
-                 audience: str = "intermediate",
-                 structure_hints: Optional[List[str]] = None,
-                 design_context: str = "",
-                 user_preferences: Optional[Dict[str, Any]] = None,
-                 ) -> Dict[str, Any]:
+    def generate(topic: str, query: str, file_type: str, 
+                 audience: str = "general",
+                 structure_hints: List[str] = None,
+                 design_context: str = "") -> Dict:
         """
-        Generate rich document content for *topic*.
-
-        Tries three layers in order:
-        1. LLM-based ContentGenerator (dynamic, best quality)
-        2. Curated knowledge base (for well-known topics)
-        3. Generic structure builder (always works)
-
-        Returns
-        -------
-        dict with keys ``sections``, ``slides``, ``sheets`` matching
-        what the document creators expect.
+        Generate rich, substantive content
+        
+        Args:
+            design_context: Design plan context (palette, theme, etc)
+                            NOW ACTUALLY USED instead of ignored
         """
-        # ── Layer 1: LLM-based content ──
-        try:
-            from lirox.tools.content_generator import ContentGenerator
-            gen = ContentGenerator()
+        
+        from lirox.utils.llm import generate_response
+        import re
+        
+        # Build FULL context for LLM
+        full_context = f"""
+You are creating rich, detailed content for a {file_type.upper()} document.
 
-            # Mix user_preferences into context
-            if user_preferences:
-                import json
-                design_context += f"\nUser Preferences: {json.dumps(user_preferences)}"
+Topic: {topic}
+Query: {query}
+Audience: {audience}
+Suggested Structure: {structure_hints or 'flexible'}
 
-            # Tell the generator how many sections/slides to produce and the exact headings to use
-            section_count = len(structure_hints) if structure_hints else 7
-            result = gen.generate(
-                file_type, 
-                topic, 
-                query=query, 
-                context=design_context,
-                structure_hints=structure_hints,
-                section_count=section_count
-            )
+Design Context:
+{design_context}
 
-            # Check if we got real content
-            content_key = {
-                "pptx": "slides",
-                "xlsx": "sheets",
-            }.get(file_type, "sections")
+CRITICAL RULES:
+1. NO generic placeholder text like "This section covers X in context of Y"
+2. MINIMUM 300 words per section
+3. INCLUDE: specific facts, dates, quotes, examples, analysis
+4. STRUCTURE: intro, 3-5 detailed subsections, conclusion
+5. TONE: match design context and audience
+6. VALUE: reader learns something concrete
 
-            items = result.get(content_key, [])
-            
-            # Check for thin content in sections and regenerate if needed
-            if content_key == "sections" and items:
-                for i, section in enumerate(items):
-                    word_count = len(section.get('body', '').split())
-                    if word_count < 40:
-                        _logger.warning("Section too thin (%d words), regenerating...", word_count)
-                        try:
-                            # Attempt regeneration for thin section
-                            new_sec = gen.generate_sections(
-                                topic=section.get('heading', topic),
-                                num_sections=1,
-                                context=f"Make this highly detailed, minimum 300 words. Topic: {section.get('heading', topic)}. Context: {design_context}"
-                            )
-                            if new_sec and len(new_sec) > 0:
-                                items[i] = new_sec[0]
-                        except Exception as e:
-                            _logger.warning("Failed to regenerate thin section: %s", e)
-                result["sections"] = items
+DO NOT return thin sections.
+DO NOT repeat the query word for word.
+DO NOT use filler text.
 
-            if isinstance(items, list) and len(items) >= 3:
-                _logger.info("ContentStrategist: LLM generated %d %s", len(items), content_key)
-                return result
+Generate {len(structure_hints or [])} rich sections with REAL content.
+Each section should have:
+- Clear heading
+- Substantial body (300+ words)
+- Specific examples
+- Concrete takeaways
+"""
+        
+        # Call LLM with FULL CONTEXT
+        response = generate_response(
+            full_context,
+            provider="auto",
+            system_prompt="You are an expert content creator. Generate rich, substantive content."
+        )
+        
+        # Parse response into sections
+        sections = ContentStrategist._parse_sections(response, query)
+        
+        # VERIFY sections are actually rich
+        for i, section in enumerate(sections):
+            word_count = len(section.get('body', '').split())
+            if word_count < 100:
+                # TOO THIN - regenerate this section
+                sections[i] = ContentStrategist._regenerate_section(section, design_context)
+        
+        return {
+            'title': topic,
+            'sections': sections,
+            'slides': [{'title': s.get('heading'), 'bullets': [s.get('body')[:80]], 'notes': s.get('body')} for s in sections],
+            'sheets': [{'name': 'Data', 'headers': ['Heading', 'Body'], 'rows': [[s.get('heading'), s.get('body')] for s in sections]}]
+        }
+    
+    @staticmethod
+    def _regenerate_section(thin_section: Dict, design_context: str) -> Dict:
+        """
+        Regenerate a section that was too thin
+        """
+        
+        from lirox.utils.llm import generate_response
+        
+        prompt = f"""
+Previous attempt was too thin: "{thin_section.get('heading', 'Section')}"
+Generated text had only {len(thin_section.get('body', '').split())} words.
 
-            _logger.warning("ContentStrategist: LLM returned thin content (%d items), trying enrichment", len(items))
-        except Exception as e:
-            _logger.warning("ContentStrategist: LLM generation failed (%s), trying fallback", e)
+REGENERATE with these requirements:
+- MINIMUM 300 words
+- RICH with details, facts, examples
+- NO placeholder text
+- ACTUAL valuable content
 
-        # ── Layer 2: Build from structure hints + generic body ──
-        if structure_hints:
-            return ContentStrategist._from_structure(
-                topic, structure_hints, file_type, audience,
-            )
+Design Context:
+{design_context}
 
-        # ── Layer 3: Generic structure ──
-        return ContentStrategist._generic(topic, file_type, audience)
+Heading: {thin_section.get('heading', 'Content')}
+"""
+        
+        response = generate_response(
+            prompt,
+            provider="auto",
+            system_prompt="Generate rich, detailed content. No filler text."
+        )
+        
+        return {
+            'heading': thin_section.get('heading', 'Content'),
+            'body': response,
+            'bullets': [],
+        }
+    
+    @staticmethod
+    def _parse_sections(text: str, query: str) -> List[Dict]:
+        """
+        Parse LLM response into structured sections
+        """
+        
+        import re
+        sections = []
+        
+        # Try to split on markdown headers
+        parts = re.split(r'#+\s+(.+)', text)
+        
+        if len(parts) > 1:
+            for i in range(1, len(parts), 2):
+                if i + 1 < len(parts):
+                    sections.append({
+                        'heading': parts[i].strip(),
+                        'body': parts[i + 1].strip(),
+                        'bullets': [],
+                    })
+        else:
+            # No clear structure, use whole text
+            sections.append({
+                'heading': query[:80],
+                'body': text,
+                'bullets': [],
+            })
+        
+        return sections
 
     # ── internals ─────────────────────────────────────────────────────────
 
