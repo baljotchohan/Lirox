@@ -35,12 +35,32 @@ def _get_sys(profile_data: dict = None) -> str:
     agent_name = profile_data.get("agent_name", "Lirox")
     user_name  = profile_data.get("user_name", "")
 
+    # Collect Runtime Context
+    import platform
+    import os
+    from lirox.utils.llm import available_providers
+    
+    os_info = platform.system()
+    if os_info == "Darwin": os_info = "macOS"
+    
+    pinned = os.getenv("_LIROX_PINNED_MODEL", "auto")
+    ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
+    
+    runtime_lines = [
+        f"• OS: {os_info}",
+        f"• Active Provider: {pinned}",
+    ]
+    if "ollama" in pinned or pinned == "auto":
+        runtime_lines.append(f"• Local Model: {ollama_model}")
+    
+    runtime_ctx = "\n".join(runtime_lines)
+
     try:
         from lirox.mind.soul import LivingSoul
         from lirox.mind.learnings import LearningsStore
         soul = LivingSoul()
         learnings = LearningsStore()
-        base = soul.to_system_prompt(learnings.to_context_string())
+        base = soul.to_system_prompt(learnings.to_context_string(), runtime_context=runtime_ctx)
     except Exception:
         base = (f"You are {agent_name}, a personal AI agent "
                 f"{'for ' + user_name if user_name else ''}. "
@@ -68,6 +88,7 @@ def _get_sys(profile_data: dict = None) -> str:
         "  When it says FAILED — report failure HONESTLY.\n"
         "• NEVER say 'I have created' unless you have a verified receipt.\n"
         "• Address the user by name when known.\n"
+        f"• Your current operating system is {os_info}. Use appropriate commands.\n"
     )
     return base
 
@@ -287,16 +308,15 @@ class PersonalAgent(BaseAgent):
             "hey there", "hello there", "hi there",
         }
         if q_stripped in _GREETINGS or (len(query.split()) <= 3 and q_stripped.split()[0] in {"hi", "hello", "hey", "yo", "sup"}):
-            # Direct greeting — no context injection, no hallucination
+            # Direct greeting — use enriched system prompt but force brevity
             greeting_prompt = (
                 f"The user '{user_name or 'the user'}' just greeted you with: \"{query}\"\n\n"
                 "Respond with a brief, warm greeting. Be direct and natural.\n"
                 "Ask what they'd like to work on. Do NOT reference any past projects or topics.\n"
                 "Keep it to 2-3 sentences max."
             )
-            # CRITICAL: Use a clean system prompt for greetings to avoid project-related hallucinations
-            clean_sys = f"You are {agent_name}, a warm and direct personal AI assistant. You help the user with their digital tasks."
-            answer = generate_response(greeting_prompt, provider="auto", system_prompt=clean_sys)
+            # Use the full enriched system prompt so it knows who it is (Lirox) and who the user is (boss)
+            answer = generate_response(greeting_prompt, provider="auto", system_prompt=base_sys)
             for chunk in _STREAMER.stream_words(answer, delay=0.025):
                 yield {"type": "streaming", "message": chunk}
             yield {"type": "done", "answer": answer}

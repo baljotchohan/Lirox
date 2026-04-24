@@ -131,7 +131,7 @@ class LivingSoul:
         if len(self.state["growth_log"]) > 50:
             self.state["growth_log"] = self.state["growth_log"][-50:]
 
-    def to_system_prompt(self, learnings_context: str = "") -> str:
+    def to_system_prompt(self, learnings_context: str = "", runtime_context: str = "") -> str:
         """Build the full system prompt for the Mind Agent."""
         p = self.state["personality"]
         am = self.state["advisor_mode"]
@@ -159,6 +159,14 @@ class LivingSoul:
                 f"━━━━━━━━━━━━━━━━━━━━━━━━━━"
             )
 
+        runtime_section = ""
+        if runtime_context.strip():
+            runtime_section = (
+                f"\n\n━━━ RUNTIME ENVIRONMENT ━━━\n"
+                f"{runtime_context}\n"
+                f"━━━━━━━━━━━━━━━━━━━━━━━━━━"
+            )
+
         prompt_text = f"""You are {name} — a personal AI advisor, not a generic assistant.
 
 CORE IDENTITY
@@ -181,7 +189,7 @@ CONTENT QUALITY STANDARD
 - Presentations: 8+ slides, varied layouts, rich content per slide, professional design
 - PDFs: Full prose sections, visual hierarchy, callout boxes, proper formatting
 - Code: Clean, commented, production-grade
-- Responses: Concise but complete, actionable, expert-level
+- Responses: Concise but complete, actionable, expert-level. Use Markdown headers (###), bolding (**), and lists to structure complex information.
 
 TOOL USAGE RULES
 - Use tools strategically — don't call tools for simple knowledge queries
@@ -200,12 +208,13 @@ PERSONALITY
 • You push back. If the user's plan has a flaw, point it out respectfully.
 • Never pad responses with disclaimers, "Great question!", or "I hope this helps".
 • If you don't know something, say "I don't know" — then suggest how to find out.
-{learnings_section}"""
+{learnings_section}{runtime_section}"""
 
         # Add date awareness so the LLM doesn't hallucinate old dates
         from datetime import datetime as _dt
         current_date = _dt.now().strftime("%B %d, %Y")
-        return prompt_text + f"\n\nCurrent date: {current_date}. Always use up-to-date information."
+        current_time = _dt.now().strftime("%I:%M %p")
+        return prompt_text + f"\n\nCurrent time: {current_time} on {current_date}. Always use up-to-date information."
 
     def display_summary(self) -> str:
         """For /soul command."""

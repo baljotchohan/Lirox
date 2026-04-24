@@ -199,21 +199,42 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         info_panel(f"Session ID: {s.session_id}\nCreated: {s.created_at}\nEntries: {len(s.entries)}")
 
     elif base == "/models":
-        info_panel("Available LLM Providers: " + ", ".join(available_providers()))
+        avail = available_providers()
+        lines = []
+        for p in avail:
+            if p == "ollama":
+                m = os.getenv("OLLAMA_MODEL", "llama3")
+                lines.append(f"• [bold green]ollama[/] (Local) -> [cyan]{m}[/]")
+            elif p == "groq":
+                lines.append(f"• [bold green]groq[/] (Cloud) -> [cyan]llama-3.3-70b-versatile[/]")
+            elif p == "gemini":
+                lines.append(f"• [bold green]gemini[/] (Cloud) -> [cyan]gemini-2.0-flash[/]")
+            else:
+                lines.append(f"• [bold green]{p}[/] (Cloud)")
+        
+        if not avail:
+            info_panel("No providers configured. Run /setup to add one.")
+        else:
+            info_panel("Active LLM Providers:\n" + "\n".join(lines))
 
     elif base == "/use-model":
         if len(parts) < 2:
             error_panel("USAGE", "/use-model <provider_name>")
             return
         p = parts[1].lower()
-        if p not in available_providers():
-            error_panel("INVALID", f"'{p}' not in {available_providers()}")
+        avail = available_providers()
+        if p not in avail:
+            error_panel("INVALID", f"'{p}' not in {avail}")
             return
         profile.data["llm_provider"] = p
         profile.save()
         # Actually set the env var that generate_response() reads
         os.environ["_LIROX_PINNED_MODEL"] = p
-        success_message(f"LLM provider pinned to: {p}")
+        
+        msg = f"LLM provider pinned to: [bold cyan]{p}[/]"
+        if p == "ollama":
+            msg += f"\nLocal model: [bold cyan]{os.getenv('OLLAMA_MODEL', 'llama3')}[/]"
+        success_message(msg)
 
     elif base == "/memory":
         from lirox.learning.manager import LearningManager
