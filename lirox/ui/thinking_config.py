@@ -23,7 +23,7 @@ class ThinkingDisplayConfig:
     # Agents
     num_agents: int = 5
     show_all_agents: bool = True
-    agents_in_parallel: bool = False  # Show all at once or sequential?
+    agents_in_parallel: bool = True  # Show all at once or sequential?
     
     # Debate
     show_debate: bool = True
