@@ -861,6 +861,36 @@ class PersonalAgent(BaseAgent):
 
     def _self(self, query, context, sp=""):
         from lirox.config import LIROX_SOURCE_DIR
+        q = query.lower()
+        
+        # ── AUTONOMOUS SELF-AUDIT ──
+        if any(kw in q for kw in ["fix", "audit", "check errors", "diagnostic", "test yourself"]):
+            yield {"type": "agent_progress", "message": "🩺 Running internal diagnostics…"}
+            from lirox.tools.shell_verified import shell_run_verified
+            
+            # 1. Run tests to see what's broken
+            receipt = shell_run_verified("pytest --maxfail=2")
+            yield {"type": "tool_result", "message": receipt.as_user_summary()}
+            
+            if receipt.ok and receipt.verified:
+                answer = "✅ All systems normal! All internal tests passed. I'm running perfectly. 🚀"
+            else:
+                yield {"type": "agent_progress", "message": "🔬 Analyzing failures…"}
+                # 2. If broken, analyze the output and files
+                prompt = (
+                    f"Task: {query}\n"
+                    f"Test Output:\n{receipt.output[:2000]}\n\n"
+                    "I am Lirox. I just ran my own tests and they failed. "
+                    "Analyze the error and suggest which file needs fixing and what the fix is."
+                )
+                answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
+            
+            for chunk in _STREAMER.stream_words(answer, delay=0.025):
+                yield {"type": "streaming", "message": chunk}
+            yield {"type": "done", "answer": answer}
+            return
+
+        # ── STANDARD INFORMATIONAL SELF ──
         yield {"type": "agent_progress", "message": "🔍 Reading own source code…"}
         source_dir = Path(LIROX_SOURCE_DIR)
         file_map = {}

@@ -76,7 +76,7 @@ class TopicAnalyzer:
         # Determine primary domain based on keywords
         domains = {
             "technology": ["ai", "machine learning", "code", "software", "algorithm", 
-                          "neural", "data", "computation", "programming", "tech", "digital"],
+                          "neural", "data", "computation", "programming", "tech", "digital", "intelligence", "artificial"],
             "business": ["finance", "sales", "market", "profit", "revenue", "investment", 
                         "strategy", "growth", "business", "corporate", "company"],
             "culture": ["history", "art", "music", "literature", "society", "culture", 
@@ -85,6 +85,7 @@ class TopicAnalyzer:
                        "scientific", "quantum", "energy"],
             "nature": ["ecology", "environment", "wildlife", "plants", "weather", "climate", 
                       "natural", "forest", "ocean"],
+            "general": [],
         }
         
         # Score each domain
