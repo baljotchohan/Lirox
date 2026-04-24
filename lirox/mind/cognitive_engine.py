@@ -1082,49 +1082,31 @@ class VerificationLoop:
 # ─────────────────────────────────────────────────────────────────────────────
 
 class ThinkingDisplay:
-    _MAX_STATUS_LEN = 70  # max chars shown in the inline status line
-
     def __init__(self, console):
         self.console = console
-        self.live = None
         self.start_time = None
         self.complexity = None
-        self._steps: list = []  # stored for /expand thinking
-        self.elapsed: float = 0.0  # stored for /expand thinking
-
-    def start(self, query: str, intent_name: str):
-        from rich.live import Live
-        from rich.text import Text
-        self.start_time = time.time()
         self._steps = []
         self.elapsed = 0.0
+        
+    def start(self, query: str, intent_name: str):
+        import time
+        from lirox.mind.intent import IntentClassifier, Complexity, CognitiveContext
+        self.start_time = time.time()
+        self.query = query
         _, self.complexity = IntentClassifier.classify(query, CognitiveContext())
+        
         if self.complexity == Complexity.TRIVIAL:
             return
-        # Single animated line for all non-trivial queries
-        self.live = Live(
-            Text("  ⟳ thinking...", style="dim #a78bfa"),
-            console=self.console,
-            refresh_per_second=10,
-            transient=True,
-        )
-        self.live.start()
+            
+        from lirox.ui.thinking_display import ThinkingEngine
+        engine = ThinkingEngine()
+        # Trigger the live multi-agent thinking UI simulation right when reasoning starts
+        engine.think_and_decide(query, "")
+        self.elapsed = time.time() - self.start_time
 
     def add_step(self, icon: str, message: str, status: str = "running"):
-        if self.live is None:
-            return
         self._steps.append({"icon": icon, "message": message, "status": status})
-        from rich.text import Text
-        short_msg = message[:self._MAX_STATUS_LEN]
-        if status == "running":
-            self.live.update(Text(f"  ⟳ {icon} {short_msg}...", style="dim #a78bfa"))
-        elif status == "done":
-            self.live.update(Text(f"  ✓ {icon} {short_msg}", style="dim #10b981"))
-        elif status == "error":
-            self.live.update(Text(f"  ✗ {icon} {short_msg}", style="dim #ef4444"))
-        else:
-            self.live.update(Text(f"  · {icon} {short_msg}", style="dim"))
-        self.live.refresh()
 
     def add_tool_call(self, tool_name: str, description: str):
         self.add_step("🔧", f"{tool_name}: {description}", "running")
@@ -1136,23 +1118,8 @@ class ThinkingDisplay:
         self.add_step("📋", f"Strategy: {strategy_name}", "done")
 
     def finish(self):
-        self.elapsed = time.time() - self.start_time if self.start_time else 0.0
-        if self.complexity == Complexity.TRIVIAL:
-            return
-        if self.live:
-            self.live.stop()
-            self.live = None
-        # Print compact single-line summary (Claude-style collapsible hint)
-        step_count = len(self._steps)
-        cplx = self.complexity.name.lower() if self.complexity else "moderate"
-        detail = f"· {cplx}"
-        if step_count > 0:
-            detail += f" · {step_count} step{'s' if step_count != 1 else ''}"
-        detail += f" · {self.elapsed:.1f}s"
-        self.console.print(
-            f"  [bold #a78bfa]⟳ Thinking[/]  "
-            f"[dim]{detail}  — /expand thinking for details[/dim]"
-        )
+        if self.start_time:
+            self.elapsed = __import__("time").time() - self.start_time
 
 class ReasoningPatterns: pass
 class SessionMemory: pass

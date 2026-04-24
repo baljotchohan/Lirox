@@ -165,12 +165,13 @@ Output ONLY the JSON array, no other text."""
         except Exception:
             pass
 
-        # Attempt 2: Direct regex for JSON array
+        # Attempt 2: Direct regex for JSON array or single object
         try:
-            m = re.search(r'\[\s*\{', raw)
-            if m:
-                # Find the matching closing bracket
-                start = m.start()
+            import json
+            # Check for array
+            m_array = re.search(r'\[\s*\{', raw)
+            if m_array:
+                start = m_array.start()
                 depth = 0
                 for i in range(start, len(raw)):
                     if raw[i] == '[': depth += 1
@@ -180,6 +181,21 @@ Output ONLY the JSON array, no other text."""
                         items = json.loads(candidate)
                         if isinstance(items, list) and items:
                             return items
+                        break
+            
+            # Check for single object
+            m_obj = re.search(r'\{\s*"(heading|title|name)"', raw)
+            if m_obj:
+                start = m_obj.start()
+                depth = 0
+                for i in range(start, len(raw)):
+                    if raw[i] == '{': depth += 1
+                    elif raw[i] == '}': depth -= 1
+                    if depth == 0:
+                        candidate = raw[start:i+1]
+                        item = json.loads(candidate)
+                        if isinstance(item, dict):
+                            return [item]
                         break
         except Exception:
             pass

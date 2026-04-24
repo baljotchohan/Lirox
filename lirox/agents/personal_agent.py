@@ -300,15 +300,29 @@ class PersonalAgent(BaseAgent):
         yield {"type": "agent_progress", "message": "🎨 Analyzing topic and audience…"}
         
         try:
-            from lirox.agents.thinking_engine import ThinkingEngine
-            from lirox.ui.thinking_display import ThinkingDisplay
+            from lirox.ui.thinking_display import ThinkingEngine, LiveThinkingDisplay
             import time
             start_t = time.time()
-            engine = ThinkingEngine()
-            think_result = engine.think_and_decide(query, context)
+            
+            thinking_engine = ThinkingEngine()
+            thinking_display = LiveThinkingDisplay()
+            
+            # Show compact thinking
+            thinking_display.show_thinking_compact(query, num_agents=5)
+            
+            # Run multi-agent thinking
+            think_result = thinking_engine.think_and_decide(
+                task=query,
+                context=context
+            )
+            
+            # If user expanded, show full thinking
+            if thinking_display.is_expanded:
+                agents = list(thinking_engine.agents.keys())
+                thinking_display.show_thinking_expanded(query, agents)
+            
             think_result['time_taken'] = round(time.time() - start_t, 2)
-            ThinkingDisplay.show_thinking_process(think_result['thinking'])
-            yield {"type": "agent_progress", "message": f"🤖 Synthesis: {think_result['thinking']['final_decision']}"}
+            yield {"type": "agent_progress", "message": f"🤖 Synthesis: {think_result['decision']}"}
         except Exception as e:
             _logger.warning("Thinking engine failed: %s", e)
 
