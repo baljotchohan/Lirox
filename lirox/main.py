@@ -40,7 +40,7 @@ def get_prompt_label(agent_name: str) -> list:
 
 
 # Module-level storage for the last thinking session (used by /expand thinking)
-_last_thinking: dict = {"steps": [], "complexity": "", "elapsed": 0.0, "query": ""}
+_last_thinking: dict = {"steps": [], "complexity": "", "elapsed": 0.0, "query": "", "full_result": None}
 
 
 def process_query(orch, query: str, verbose: bool = False):
@@ -81,6 +81,10 @@ def process_query(orch, query: str, verbose: bool = False):
             elif etype == "done":
                 if last_event_type == "streaming":
                     console.print() # Finish the line
+                # Check if this is a thinking-done event with full data
+                thinking_data = event.data.get("thinking_result")
+                if thinking_data:
+                    _last_thinking["full_result"] = thinking_data
                 show_answer(event.message)
                 _last_thinking["elapsed"] = event.data.get("total_time", 0.0)
                 
@@ -149,6 +153,7 @@ def _handle(orch, profile, cmd, base, parts, verbose):
             ("/recall",             "Show everything Lirox knows about you"),
             ("/workspace [path]",   "Show or change workspace directory"),
             ("/expand thinking",    "Show detailed reasoning from last query"),
+            ("/thinking-help",      "Thinking display controls and legend"),
             ("/backup",             "Backup all data"),
             ("/export-memory",      "Export profile + learnings as JSON"),
             ("/import-memory",      "Import from ChatGPT/Claude/Gemini/Lirox (paste or file)"),
@@ -242,13 +247,22 @@ def _handle(orch, profile, cmd, base, parts, verbose):
 
     elif base == "/expand":
         if len(parts) > 1 and parts[1] == "thinking":
-            if not _last_thinking["steps"]:
+            if not _last_thinking["steps"] and not _last_thinking.get("full_result"):
                 error_panel("NO DATA", "No recent thinking trace to expand.")
                 return
             from lirox.ui.display import show_thinking
-            show_thinking(_last_thinking["query"], _last_thinking["steps"], _last_thinking["elapsed"])
+            show_thinking(
+                _last_thinking["query"],
+                _last_thinking["steps"],
+                _last_thinking["elapsed"],
+                full_result=_last_thinking.get("full_result"),
+            )
         else:
             error_panel("USAGE", "/expand thinking")
+
+    elif base == "/thinking-help":
+        from lirox.ui.thinking_controls import ThinkingControls
+        ThinkingControls.show_help()
 
     elif base == "/backup":
         from lirox.core.backup import create_backup
@@ -359,6 +373,7 @@ def main():
             "/recall":          "Show learned facts about you",
             "/workspace":       "Set active directory",
             "/expand thinking": "View last reasoning trace",
+            "/thinking-help":  "Thinking display controls and legend",
             "/backup":          "Create a full data backup",
             "/export-memory":   "Save learnings to JSON",
             "/import-memory":   "Import external learnings (paste or file)",

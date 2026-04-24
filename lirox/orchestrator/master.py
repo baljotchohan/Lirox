@@ -97,14 +97,23 @@ class MasterOrchestrator:
         full_context = context
         agent = self._get_agent()
         result_text = ""
+        last_thinking_result = None
         try:
             for event in agent.run(query, context=full_context):
                 event_type = event.get("type", "agent_progress")
                 if event_type == "done":
                     result_text = event.get("answer", event.get("message", ""))
+                    # Capture thinking result if agent included it
+                    if "thinking_result" in event:
+                        last_thinking_result = event["thinking_result"]
                 else:
+                    # Capture thinking done events from the engine
+                    if event_type == "thinking_done" or (event.get("data") and isinstance(event.get("data"), dict)):
+                        thinking_data = event.get("data", {})
+                        if isinstance(thinking_data, dict) and "agent_views" in thinking_data:
+                            last_thinking_result = thinking_data
                     yield OrchestratorEvent(
-                        type=event_type, agent="personal",
+                        type=event_type, agent=event.get("agent", "personal"),
                         message=event.get("message", ""), data=event)
         except (SystemExit, KeyboardInterrupt):
             raise
@@ -127,9 +136,13 @@ class MasterOrchestrator:
             self.session_store.save_current()
         except Exception as e:
             _logger.warning("session_store.save_current failed: %s", e)
+
+        done_data = {"total_time": time.time() - start}
+        if last_thinking_result:
+            done_data["thinking_result"] = last_thinking_result
         yield OrchestratorEvent(
             type="done", agent="personal", message=result_text,
-            data={"total_time": time.time() - start})
+            data=done_data)
 
         if self._interaction_count % 5 == 0:
             self._auto_train()

@@ -300,13 +300,13 @@ class PersonalAgent(BaseAgent):
         # ──────────────────────────────────────────────────────────────────
         yield {"type": "agent_progress", "message": "🧠 Initiating Multi-Agent Thinking Engine..."}
         
+        think_result = None
         try:
             from lirox.thinking.real_engine import RealThinkingEngine
             
             thinking_engine = RealThinkingEngine()
             
             # Run REAL multi-agent thinking generator
-            think_result = None
             for event in thinking_engine.think_and_decide(task=query, context=context):
                 if event["type"] == "done":
                     think_result = event["data"]
@@ -321,7 +321,7 @@ class PersonalAgent(BaseAgent):
                 
                 yield {
                     "type": "agent_progress", 
-                    "message": f"✓ Consensus reached: {decision} (confidence: {confidence}%)"
+                    "message": f"✓ Consensus reached: {decision[:100]} (confidence: {confidence}%)"
                 }
             
         except Exception as e:
@@ -528,7 +528,10 @@ class PersonalAgent(BaseAgent):
 
                 for chunk in _STREAMER.stream_words(answer, delay=0.025):
                     yield {"type": "streaming", "message": chunk}
-                yield {"type": "done", "answer": answer}
+                done_event = {"type": "done", "answer": answer}
+                if think_result:
+                    done_event["thinking_result"] = think_result
+                yield done_event
                 return
 
             else:

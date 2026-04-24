@@ -57,102 +57,73 @@ LOGO = f"  [bold #FF8C00]╔{'═' * _box_inner}╗[/]\n" + "\n".join(_logo_line
 
 
 class ThinkingDisplayManager:
-    """Manages the Live thinking display for multi-agent reasoning."""
+    """Manages the Live thinking display with progress bars for multi-agent reasoning."""
     def __init__(self):
         self.live: Optional[Live] = None
         self.layout: Optional[Layout] = None
-        self.agent_statuses = {}
-        self.steps = []
-        self.phase_info = {}
+        self.progress = None
+        self.agent_tasks: Dict[str, Any] = {}
+        self.steps: List[str] = []
         self.current_phase_idx = -1
+        self._display = None
         try:
             from lirox.ui.thinking_config import DEFAULT_THINKING_CONFIG
             self.config = DEFAULT_THINKING_CONFIG
         except ImportError:
             self.config = None
 
+    @property
+    def _adv(self):
+        if self._display is None:
+            from lirox.ui.advanced_thinking_display import AdvancedThinkingDisplay
+            self._display = AdvancedThinkingDisplay()
+        return self._display
+
     def start(self, task_summary: str):
-        if self.config and self.config.display_style == 'minimal':
-            # Support minimal mode if needed
+        if self.config and getattr(self.config, 'display_style', 'full') == 'minimal':
             return
-            
-        self.layout = Layout()
+        if self.live:
+            return  # already running
 
-        self.layout.split_column(
-            Layout(name="header", size=3),
-            Layout(name="body", ratio=1),
-            Layout(name="footer", size=3)
-        )
-        self.layout["body"].split_row(
-            Layout(name="agents", ratio=2),
-            Layout(name="log", ratio=1)
-        )
-        # Agents grid (2 rows, 3 cols)
-        self.layout["agents"].split_column(
-            Layout(name="row1"),
-            Layout(name="row2")
-        )
-        self.layout["row1"].split_row(Layout(name="Arch"), Layout(name="Build"), Layout(name="Res"))
-        self.layout["row2"].split_row(Layout(name="Exec"), Layout(name="Ver"), Layout(name="Sys"))
-        
-        self.update_header(task_summary)
-        self.update_footer("Initializing multi-agent protocols...")
-        
-        for agent in ["Arch", "Build", "Res", "Exec", "Ver", "Sys"]:
-            self.agent_statuses[agent] = "Waiting..."
-            self._update_agent_panel(agent)
+        self.progress, self.agent_tasks = self._adv.create_live_progress()
+        self.layout = self._adv.build_live_layout(self.progress, task_summary)
 
-        self.live = Live(self.layout, console=console, refresh_per_second=10, transient=True)
+        self.live = Live(self.layout, console=console, refresh_per_second=12, transient=True)
         self.live.start()
 
-    def update_header(self, task: str):
-        if self.layout:
-            self.layout["header"].update(Panel(f"🧠 [bold white]REASONING:[/] {task[:70]}...", border_style="#a78bfa"))
-
-    def update_footer(self, msg: str):
-        if self.layout:
-            self.layout["footer"].update(Panel(f" [cyan]●[/] {msg}", border_style="dim"))
-
-    def _update_agent_panel(self, agent_id: str, status: str = None, style: str = "dim"):
-        if not self.layout: return
-        if status: self.agent_statuses[agent_id] = status
-        
-        names = {"Arch": "Architect", "Build": "Builder", "Res": "Researcher", "Exec": "Executor", "Ver": "Verifier", "Sys": "Consensus"}
-        name = names.get(agent_id, agent_id)
-        
-        icon = "🤖"
-        if "finished" in self.agent_statuses[agent_id].lower(): icon = "✅"; style = "green"
-        elif "running" in self.agent_statuses[agent_id].lower(): icon = Spinner("dots", style="cyan"); style = "cyan"
-        elif "warning" in self.agent_statuses[agent_id].lower(): icon = "⚠️"; style = "yellow"
-        
-        panel = Panel(
-            Text.assemble((f"{icon} ", style), (self.agent_statuses[agent_id], "italic")),
-            title=f"[bold]{name}[/]",
-            border_style=style
-        )
-        try: self.layout[agent_id].update(panel)
-        except: pass
-
     def update_agent(self, agent_name: str, message: str, status: str = "done"):
-        mapping = {"Architect": "Arch", "Builder": "Build", "Researcher": "Res", "Executor": "Exec", "Verifier": "Ver", "System": "Sys"}
-        aid = mapping.get(agent_name)
-        if aid:
-            self._update_agent_panel(aid, message, style="green" if status == "done" else "cyan")
+        """Update a specific agent's progress bar."""
+        if self.progress and agent_name in self.agent_tasks:
+            task_id = self.agent_tasks[agent_name]
+            if status == "done":
+                self.progress.update(task_id, completed=100)
+            elif status == "running":
+                self.progress.update(task_id, advance=25)
+            elif status == "warning":
+                self.progress.update(task_id, completed=100)
+        self.steps.append(f"{agent_name}: {message}")
+
+    def update_status(self, icon: str, message: str, border: str = "cyan"):
+        if self.layout:
+            self._adv.update_status(self.layout, icon, message, border)
+
+    def show_synthesis(self, decision: str, confidence: int, elapsed: float):
+        if self.layout:
+            self._adv.show_synthesis_panel(self.layout, decision, confidence, elapsed)
 
     def add_log(self, message: str):
         self.steps.append(message)
-        if self.layout:
-            table = Table(show_header=False, box=None, padding=(0,1))
-            table.add_column(style="dim")
-            for s in self.steps[-8:]: # Last 8 steps
-                table.add_row(f"├─ {s[:40]}")
-            self.layout["log"].update(Panel(table, title="[dim]LOG[/]", border_style="dim"))
 
     def stop(self):
         if self.live:
-            self.live.stop()
+            try:
+                self.live.stop()
+            except Exception:
+                pass
             self.live = None
             self.layout = None
+            self.progress = None
+            self.agent_tasks = {}
 
 # Global manager instance
 thinking_manager = ThinkingDisplayManager()
@@ -177,7 +148,7 @@ def show_status_card(profile_data: dict, providers: list):
 
 
 def show_thinking_phase(event: dict):
-    """Render a live, animated thinking phase."""
+    """Render a live, animated thinking phase with progress bars."""
     if not thinking_manager.live:
         thinking_manager.start(event.get("phase_tagline", "Analyzing task..."))
     
@@ -186,8 +157,9 @@ def show_thinking_phase(event: dict):
     icon = event.get("phase_icon", "🧠")
     total = event.get("phase_total", 3)
     steps = event.get("steps", [])
+    confidence = event.get("confidence", 0)
     
-    thinking_manager.update_footer(f"{icon} {name} [{idx+1}/{total}]")
+    thinking_manager.update_status(icon, f"{name} [{idx+1}/{total}]", "cyan")
     for step in steps:
         thinking_manager.add_log(step)
 
@@ -202,22 +174,26 @@ def show_agent_event(message: str, agent: str = "personal", etype: str = "agent_
 
     # If it's a specific agent result from the real_engine
     if etype == "agent_progress":
+        # Determine agent name and status from the event
+        known_agents = ["Architect", "Builder", "Researcher", "Executor", "Verifier", "System"]
+        status = "done" if "finished" in message.lower() or "✓" in message else "running"
+        
         # Check if the agent parameter is one of our specialists
-        if agent in ["Architect", "Builder", "Researcher", "Executor", "Verifier", "System"]:
-            thinking_manager.update_agent(agent, message)
+        if agent in known_agents:
+            thinking_manager.update_agent(agent, message, status)
             return
             
         # Fallback to parsing message if agent is generic
         if ":" in message:
             parts = message.split(":", 1)
-            agent_name = parts[0].strip()
+            agent_name = parts[0].strip().lstrip("✓ ")
             msg = parts[1].strip()
-            if agent_name in ["Architect", "Builder", "Researcher", "Executor", "Verifier", "System"]:
-                thinking_manager.update_agent(agent_name, msg)
+            if agent_name in known_agents:
+                thinking_manager.update_agent(agent_name, msg, status)
                 return
         
         thinking_manager.add_log(message)
-        thinking_manager.update_footer(message)
+        thinking_manager.update_status("⏳", message)
 
 
 def show_answer(text: str, agent: str = "personal"):
@@ -249,8 +225,18 @@ def show_answer(text: str, agent: str = "personal"):
 
     console.print(f"  [{CLR_SUCCESS}]✓ Done[/]")
 
-def show_thinking(query: str, steps: list, elapsed: float):
-    """Show full, expanded thinking results (for /expand thinking)."""
+def show_thinking(query: str, steps: list, elapsed: float, full_result: Optional[Dict] = None):
+    """Show full, expanded thinking results (for /expand thinking).
+    
+    If full_result is provided (from RealThinkingEngine), shows the rich
+    agent perspective view. Otherwise falls back to step-based display.
+    """
+    if full_result:
+        from lirox.ui.advanced_thinking_display import AdvancedThinkingDisplay
+        AdvancedThinkingDisplay().show_expanded_result(full_result)
+        return
+    
+    # Fallback: step-based display
     table = Table(show_header=True, header_style="bold cyan", box=None)
     table.add_column("Agent / Step", style="bold white")
     table.add_column("Details", style="dim")
