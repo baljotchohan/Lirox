@@ -338,14 +338,28 @@ def main():
         from prompt_toolkit.completion import Completer, Completion
 
         cmd_docs = {
-            "/help": "Show this help",
-            "/setup": "Configure Lirox",
-            "/history": "View past conversations",
-            "/models": "List AI models",
-            "/memory": "AI stats",
-            "/workspace": "Manage files location",
-            "/expand thinking": "See detailed reasoning",
-            "/exit": "Quit",
+            "/help":            "Show all commands",
+            "/setup":           "Re-run setup wizard",
+            "/history":         "View past conversations",
+            "/session":         "Current session details",
+            "/models":          "List available AI providers",
+            "/use-model":       "Switch default AI provider",
+            "/memory":          "Show learning statistics",
+            "/profile":         "View user profile",
+            "/reset":           "Clear current session",
+            "/test":            "Run quick diagnostics",
+            "/health":          "Deep subsystem health checks",
+            "/train":           "Force background learning",
+            "/recall":          "Show learned facts about you",
+            "/workspace":       "Set active directory",
+            "/expand thinking": "View last reasoning trace",
+            "/backup":          "Create a full data backup",
+            "/export-memory":   "Save learnings to JSON",
+            "/import-memory":   "Import external learnings",
+            "/restart":         "Reload Lirox",
+            "/update":          "Check for updates",
+            "/uninstall":       "Delete all Lirox data",
+            "/exit":            "Shutdown",
         }
 
         class SlashCompleter(Completer):
