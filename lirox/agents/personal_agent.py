@@ -357,7 +357,7 @@ class PersonalAgent(BaseAgent):
             if prefs_context:
                 design_context += "\n" + prefs_context
                 
-            content = ContentStrategist.generate(
+            content_generator = ContentStrategist.generate(
                 topic=design.topic,
                 query=query,
                 file_type=file_type,
@@ -365,13 +365,26 @@ class PersonalAgent(BaseAgent):
                 structure_hints=design.structure,
                 design_context=design_context,
             )
+            
+            content = None
+            for event in content_generator:
+                if event["type"] == "progress":
+                    yield {"type": "agent_progress", "message": event["message"]}
+                elif event["type"] == "result":
+                    content = event["data"]
+                    
+            if not content:
+                raise ValueError("Content generation yielded no result")
+                
         except Exception as e:
-            _logger.error(f"[ERROR] Content generation failed: {str(e)}")
+            _logger.error(f"[ERROR] Content generation failed: {str(e)}", exc_info=True)
             yield {"type": "warning", "message": f"⚠️ Content generation issue: {str(e)}. Retrying with simpler approach..."}
             content = self._filegen_fallback(query)
             yield {"type": "agent_progress", "message": "✓ Generated with fallback method"}
 
         title = content.get("title", "") or design.topic or query[:80]
+
+
 
         # ──────────────────────────────────────────────────────────────────
         # PHASE 3 — RESOLVE OUTPUT PATH

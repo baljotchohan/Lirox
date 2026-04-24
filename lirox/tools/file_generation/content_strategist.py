@@ -13,7 +13,7 @@ knowledge base for common topics, then to a generic structure builder.
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Any, Optional
+from typing import Dict, List, Any, Optional, Callable, Generator
 
 _logger = logging.getLogger("lirox.file_generation.content_strategist")
 
@@ -25,41 +25,47 @@ class ContentStrategist:
 
     @staticmethod
     def generate(topic: str, query: str, file_type: str, 
-                 audience: str = "general",
-                 structure_hints: List[str] = None,
-                 design_context: str = "") -> Dict:
+                  audience: str = "general",
+                  structure_hints: List[str] = None,
+                  design_context: str = "") -> Generator[Dict[str, Any], None, None]:
         """
-        Generate rich, substantive content
-        
-        Args:
-            design_context: Design plan context (palette, theme, etc)
-                            NOW ACTUALLY USED instead of ignored
+        Generate rich, substantive content.
+        Yields progress events and finally the complete content dict.
         """
         
         from lirox.tools.content_generator import ContentGenerator
         generator = ContentGenerator()
         
-        # Generate rich sections using the specialized generator
-        sections = generator.generate_sections(
+        sections = []
+        # Generate rich sections iteratively
+        for event in generator.generate_sections(
             topic=topic,
             num_sections=len(structure_hints) if structure_hints else 5,
             context=f"{query}\n{design_context}",
             structure_hints=structure_hints
-        )
+        ):
+            if event["type"] == "progress":
+                yield {"type": "progress", "message": event["message"]}
+            elif event["type"] == "section":
+                section = event["data"]
+                
+                # VERIFY section richness
+                word_count = len(section.get('body', '').split())
+                if word_count < 100:
+                    yield {"type": "progress", "message": f"Refining Section: {section.get('heading')}..."}
+                    section = ContentStrategist._regenerate_section(section, design_context)
+                
+                sections.append(section)
 
-        
-        # VERIFY sections are actually rich
-        for i, section in enumerate(sections):
-            word_count = len(section.get('body', '').split())
-            if word_count < 100:
-                # TOO THIN - regenerate this section
-                sections[i] = ContentStrategist._regenerate_section(section, design_context)
-        
-        return {
-            'title': topic,
-            'sections': sections,
-            'slides': [{'title': s.get('heading'), 'bullets': [s.get('body')[:80]], 'notes': s.get('body')} for s in sections],
-            'sheets': [{'name': 'Data', 'headers': ['Heading', 'Body'], 'rows': [[s.get('heading'), s.get('body')] for s in sections]}]
+        # Yield the final result
+        yield {
+            "type": "result",
+            "data": {
+                'title': topic,
+                'sections': sections,
+                'slides': [{'title': s.get('heading'), 'bullets': [s.get('body')[:80]], 'notes': s.get('body')} for s in sections],
+                'sheets': [{'name': 'Data', 'headers': ['Heading', 'Body'], 'rows': [[s.get('heading'), s.get('body')] for s in sections]}]
+            }
         }
     
     @staticmethod
@@ -67,7 +73,6 @@ class ContentStrategist:
         """
         Regenerate a section that was too thin
         """
-        
         from lirox.utils.llm import generate_response
         
         prompt = f"""
@@ -85,7 +90,6 @@ Design Context:
 
 Heading: {thin_section.get('heading', 'Content')}
 """
-        
         response = generate_response(
             prompt,
             provider="auto",
@@ -97,36 +101,23 @@ Heading: {thin_section.get('heading', 'Content')}
             'body': response,
             'bullets': [],
         }
-    
+
     @staticmethod
     def _parse_sections(text: str, query: str) -> List[Dict]:
-        """
-        Robustly parse LLM response into structured sections.
-        Handles markdown headers, bold headers, and unstructured text.
-        """
         import re
         sections = []
         lines = text.strip().split('\n')
-        
         current_heading = ""
         current_body = []
-        
-        # Regex to match various header styles
-        # 1. Markdown: # Heading, ## Heading
-        # 2. Bold: **Heading**
-        # 3. Numbered: 1. Heading
         header_pattern = re.compile(r'^(?:#+\s+|\*\*\d*[\.\)]?\s*|\d+[\.\)]\s+)(.+?)(?:\s*\**)?:?$')
 
         for line in lines:
             stripped = line.strip()
             if not stripped: continue
-            
-            # Check if line is a header
             match = header_pattern.match(stripped)
             is_header = False
             if match:
                 header_text = match.group(1).strip()
-                # If it's short, it's probably a header
                 if len(header_text.split()) <= 10:
                     is_header = True
             elif stripped.endswith(':') and len(stripped.split()) <= 8:
@@ -134,7 +125,6 @@ Heading: {thin_section.get('heading', 'Content')}
                 is_header = True
             
             if is_header:
-                # Save previous section
                 if current_heading and current_body:
                     sections.append({
                         'heading': current_heading,
@@ -146,7 +136,6 @@ Heading: {thin_section.get('heading', 'Content')}
             else:
                 current_body.append(line)
         
-        # Add last section
         if current_heading and current_body:
             sections.append({
                 'heading': current_heading,
@@ -154,166 +143,26 @@ Heading: {thin_section.get('heading', 'Content')}
                 'bullets': []
             })
         
-        # Fallback for completely unstructured text
         if not sections:
             sections.append({
                 'heading': query[:60].strip() or "General Overview",
                 'body': text.strip(),
                 'bullets': []
             })
-        
         return sections
 
-
-    # ── internals ─────────────────────────────────────────────────────────
-
     @staticmethod
-    def _from_structure(topic: str,
-                        sections: List[str],
-                        file_type: str,
-                        audience: str) -> Dict[str, Any]:
-        """Build content using the design engine's structure plan."""
-        result: Dict[str, Any] = {
-            "title": topic,
-            "sections": [],
-            "slides": [],
-            "sheets": [],
-        }
-
+    def _from_structure(topic: str, sections: List[str], file_type: str, audience: str) -> Dict[str, Any]:
+        result: Dict[str, Any] = {"title": topic, "sections": [], "slides": [], "sheets": []}
         if file_type == "pptx":
-            slides = []
-            for heading in sections:
-                slides.append({
-                    "title": heading.split("—")[0].strip() if "—" in heading else heading,
-                    "bullets": [
-                        f"Key aspect of {topic} related to {heading.lower()}",
-                        f"Important facts and context for {heading.lower()}",
-                        f"Practical implications and real-world relevance",
-                        f"Best practices and recommendations",
-                    ],
-                    "notes": f"Discuss {heading} in context of {topic}.",
-                })
-            result["slides"] = slides
-
+            result["slides"] = [{"title": h.split("—")[0].strip() if "—" in h else h, "bullets": [f"Key aspect of {topic}", "Important facts"], "notes": ""} for h in sections]
         elif file_type == "xlsx":
-            result["sheets"] = [{
-                "name": topic[:31],
-                "headers": ["Category", "Detail", "Notes"],
-                "rows": [[s, f"Details about {s}", ""] for s in sections],
-            }]
-
-        else:  # pdf / docx
-            secs = []
-            for heading in sections:
-                clean = heading.split("—")[0].strip() if "—" in heading else heading
-                depth = "accessible, step-by-step" if audience == "beginner" else "detailed, professional"
-                secs.append({
-                    "heading": clean,
-                    "body": (
-                        f"This section covers {clean.lower()} in the context of {topic}. "
-                        f"The content is presented in a {depth} manner appropriate for "
-                        f"the intended audience. Key concepts, practical examples, and "
-                        f"actionable insights are included to ensure thorough understanding."
-                    ),
-                    "bullets": [],
-                })
-            result["sections"] = secs
-
+            result["sheets"] = [{"name": topic[:31], "headers": ["Category", "Detail"], "rows": [[s, f"Details about {s}"] for s in sections]}]
+        else:
+            result["sections"] = [{"heading": h, "body": f"Overview of {h}", "bullets": []} for h in sections]
         return result
 
     @staticmethod
-    def _generic(topic: str,
-                 file_type: str,
-                 audience: str) -> Dict[str, Any]:
-        """Absolute last resort — generic but complete structure."""
-        depth = "beginner-friendly" if audience == "beginner" else "comprehensive"
-
-        sections = [
-            {
-                "heading": f"Introduction to {topic}",
-                "body": (
-                    f"{topic} represents one of the most significant areas of focus today. "
-                    f"This document provides a {depth} overview, covering fundamental concepts, "
-                    f"real-world applications, and practical guidance. Whether you're exploring "
-                    f"this topic for the first time or deepening your understanding, the following "
-                    f"sections offer structured, actionable content."
-                ),
-                "bullets": [],
-            },
-            {
-                "heading": "Core Concepts and Principles",
-                "body": (
-                    f"At its foundation, {topic} relies on several interconnected principles. "
-                    f"Understanding these core concepts is essential for appreciating both the "
-                    f"current capabilities and future potential of this field. Each principle "
-                    f"builds upon the previous, creating a cohesive framework for mastery."
-                ),
-                "bullets": [
-                    "Foundational terminology and definitions",
-                    "Key mechanisms and how they interact",
-                    "Historical context and evolution",
-                    "Comparison with related concepts",
-                ],
-            },
-            {
-                "heading": "Practical Applications",
-                "body": (
-                    f"The practical applications of {topic} span multiple industries and "
-                    f"domains. From technology and education to business and healthcare, "
-                    f"organizations are finding innovative ways to leverage these capabilities. "
-                    f"The examples below illustrate the breadth and depth of real-world impact."
-                ),
-                "bullets": [
-                    "Industry-specific use cases",
-                    "Implementation patterns and strategies",
-                    "Measurable outcomes and success metrics",
-                    "Emerging applications and opportunities",
-                ],
-            },
-            {
-                "heading": "Best Practices and Recommendations",
-                "body": (
-                    f"Effective use of {topic} requires a thoughtful approach. The following "
-                    f"best practices have been distilled from expert experience and real-world "
-                    f"deployments. Adopting these recommendations can significantly improve "
-                    f"outcomes and reduce common pitfalls."
-                ),
-                "bullets": [
-                    "Start with clear objectives and success criteria",
-                    "Build incrementally — avoid over-engineering",
-                    "Seek feedback early and iterate quickly",
-                    "Document decisions and lessons learned",
-                ],
-            },
-            {
-                "heading": "Conclusion and Next Steps",
-                "body": (
-                    f"{topic} stands at an inflection point, with rapid advancement creating "
-                    f"new possibilities while also raising important questions. The key is to "
-                    f"start with the fundamentals, build practical experience, and stay current "
-                    f"with evolving best practices. Continued learning is the path to mastery."
-                ),
-                "bullets": [
-                    "Review and reinforce core concepts",
-                    "Apply knowledge to a real project",
-                    "Explore advanced topics as confidence grows",
-                    "Connect with communities and stay updated",
-                ],
-            },
-        ]
-
-        slides = [
-            {"title": s["heading"], "bullets": s.get("bullets") or [s["body"][:80]], "notes": ""}
-            for s in sections
-        ]
-
-        return {
-            "title": topic,
-            "sections": sections,
-            "slides": slides,
-            "sheets": [{
-                "name": topic[:31],
-                "headers": ["Section", "Summary"],
-                "rows": [[s["heading"], s["body"][:120]] for s in sections],
-            }],
-        }
+    def _generic(topic: str, file_type: str, audience: str) -> Dict[str, Any]:
+        sections = [{"heading": f"Introduction to {topic}", "body": f"Overview of {topic}.", "bullets": []}]
+        return {"title": topic, "sections": sections, "slides": [], "sheets": []}
