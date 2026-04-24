@@ -297,42 +297,37 @@ class PersonalAgent(BaseAgent):
         # ──────────────────────────────────────────────────────────────────
         # PHASE 1 — REAL MULTI-AGENT THINKING
         # ──────────────────────────────────────────────────────────────────
-        yield {"type": "agent_progress", "message": "🧠 Multi-agent analysis..."}
+        yield {"type": "agent_progress", "message": "🧠 Initiating Multi-Agent Thinking Engine..."}
         
         try:
             from lirox.thinking.real_engine import RealThinkingEngine
-            from lirox.ui.real_thinking_display import RealThinkingDisplay
             
             thinking_engine = RealThinkingEngine()
-            thinking_display = RealThinkingDisplay()
             
-            # Show compact thinking
-            thinking_display.show_thinking_compact(query, num_agents=5)
+            # Run REAL multi-agent thinking generator
+            think_result = None
+            for event in thinking_engine.think_and_decide(task=query, context=context):
+                if event["type"] == "done":
+                    think_result = event["data"]
+                else:
+                    # Pass the thinking progress up to the orchestrator
+                    yield event
             
-            # Run REAL multi-agent thinking with REAL LLM calls
-            think_result = thinking_engine.think_and_decide(
-                task=query,
-                context=context
-            )
-            
-            # If user wants details, show expanded view
-            # (Can be triggered by /expand command or user preference)
-            if self.profile_data.get('show_thinking_details', False):
-                thinking_display.show_thinking_expanded(think_result)
-            
-            # Use thinking results to inform file generation
-            decision = think_result['decision']
-            confidence = think_result['synthesis']['confidence']
-            
-            yield {
-                "type": "agent_progress", 
-                "message": f"✓ Decision: {decision} (confidence: {confidence}%)"
-            }
+            if think_result:
+                # Use thinking results to inform file generation
+                decision = think_result['decision']
+                confidence = think_result['synthesis']['confidence']
+                
+                yield {
+                    "type": "agent_progress", 
+                    "message": f"✓ Consensus reached: {decision} (confidence: {confidence}%)"
+                }
             
         except Exception as e:
             import logging
-            logging.warning("Thinking engine failed: %s", e)
-            # Continue with default approach
+            logging.error("Thinking engine encountered a critical error: %s", e, exc_info=True)
+            yield {"type": "agent_progress", "message": "⚠️ Thinking engine failed, falling back to standard reasoning."}
+
             
         file_type = DesignEngine.detect_file_type(query)
         try:

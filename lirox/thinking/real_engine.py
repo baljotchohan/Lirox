@@ -1,17 +1,21 @@
 """
 Real multi-agent thinking with actual LLM calls
-Every agent thinks independently, then they debate
+Every agent thinks independently, then they debate.
+Updated to yield events for streaming UI.
 """
 
 import time
-from typing import Dict, List, Any
+import logging
+from typing import Dict, List, Any, Generator
 from lirox.utils.llm import generate_response
 
+_logger = logging.getLogger("lirox.thinking.real_engine")
 
 class RealThinkingEngine:
     """
     ACTUAL multi-agent reasoning with LLM calls
     Not simulated, not hardcoded - REAL thinking
+    Yields events for real-time UI streaming.
     """
     
     def __init__(self, provider="auto"):
@@ -24,59 +28,39 @@ class RealThinkingEngine:
             'Verifier': VerifierAgent(),
         }
     
-    def think_and_decide(self, task: str, context: str = "") -> Dict[str, Any]:
+    def think_and_decide(self, task: str, context: str = "") -> Generator[Dict[str, Any], None, Dict[str, Any]]:
         """
-        Complete thinking pipeline:
-        1. Each agent analyzes with REAL LLM call
-        2. Agents debate differences
-        3. Synthesize final decision
+        Complete thinking pipeline yielding events for the UI.
         """
         
         start_time = time.time()
-        
-        # PHASE 1: EACH AGENT THINKS (REAL LLM CALLS)
         agent_views = {}
+        
+        # ── PHASE 1: EACH AGENT THINKS ─────────────────────────────────────────
+        yield {"type": "thinking_phase", "message": "Agents starting independent analysis...", "phase": "analysis"}
+        
         for agent_name, agent in self.agents.items():
+            yield {"type": "agent_progress", "agent": agent_name, "message": f"{agent_name} is analyzing...", "status": "running"}
+            
             view = agent.analyze(task, context, provider=self.provider)
             agent_views[agent_name] = view
+            
+            yield {"type": "agent_progress", "agent": agent_name, "message": f"{agent_name} finished: {view['summary'][:100]}...", "status": "done"}
         
-        # PHASE 2: DETECT DISAGREEMENTS (REAL ANALYSIS)
-        debate = self._run_real_debate(agent_views)
-        
-        # PHASE 3: SYNTHESIZE (REAL LLM SYNTHESIS)
-        synthesis = self._synthesize_decision(agent_views, debate)
-        
-        elapsed = round(time.time() - start_time, 2)
-        
-        return {
-            'agent_views': agent_views,
-            'debate': debate,
-            'synthesis': synthesis,
-            'decision': synthesis['final_decision'],
-            'time_taken': elapsed,
-            'reasoning_shown': True,
-        }
-    
-    def _run_real_debate(self, agent_views: Dict[str, Dict]) -> Dict:
-        """
-        REAL debate - agents challenge each other via LLM
-        """
+        # ── PHASE 2: DETECT DISAGREEMENTS ──────────────────────────────────────
+        yield {"type": "thinking_phase", "message": "Entering multi-agent debate phase...", "phase": "debate"}
         
         debate_log = []
+        positions = {name: view['summary'] for name, view in agent_views.items()}
         
-        # Extract positions
-        positions = {
-            name: view['summary']
-            for name, view in agent_views.items()
-        }
-        
-        # Find disagreements
-        for agent_a, pos_a in positions.items():
-            for agent_b, pos_b in positions.items():
-                if agent_a >= agent_b:  # Avoid duplicates
-                    continue
+        agent_names = list(positions.keys())
+        for i in range(len(agent_names)):
+            for j in range(i + 1, len(agent_names)):
+                agent_a, agent_b = agent_names[i], agent_names[j]
+                pos_a, pos_b = positions[agent_a], positions[agent_b]
                 
-                # Ask LLM: do these positions conflict?
+                yield {"type": "agent_progress", "agent": "System", "message": f"Comparing {agent_a} and {agent_b}...", "status": "running"}
+                
                 conflict_check = generate_response(
                     f"Position A ({agent_a}): {pos_a}\n"
                     f"Position B ({agent_b}): {pos_b}\n\n"
@@ -87,23 +71,43 @@ class RealThinkingEngine:
                 
                 if "CONFLICT:" in conflict_check:
                     conflict_text = conflict_check.replace("CONFLICT:", "").strip()
+                    yield {"type": "agent_progress", "agent": "System", "message": f"CONFLICT FOUND: {conflict_text}", "status": "warning"}
+                    
+                    resolution = self._resolve_conflict(agent_a, pos_a, agent_b, pos_b)
                     debate_log.append({
                         'agent_a': agent_a,
                         'agent_b': agent_b,
                         'conflict': conflict_text,
-                        'resolution': self._resolve_conflict(agent_a, pos_a, agent_b, pos_b)
+                        'resolution': resolution
                     })
+                    yield {"type": "agent_progress", "agent": "System", "message": f"Resolution: {resolution[:100]}...", "status": "done"}
+                else:
+                    yield {"type": "agent_progress", "agent": "System", "message": f"No conflict between {agent_a} and {agent_b}.", "status": "done"}
         
-        return {
+        debate = {
             'conflicts': debate_log,
             'summary': f"Found {len(debate_log)} disagreements, all resolved"
         }
+        
+        # ── PHASE 3: SYNTHESIZE ────────────────────────────────────────────────
+        yield {"type": "thinking_phase", "message": "Synthesizing final consensus...", "phase": "synthesis"}
+        
+        synthesis = self._synthesize_decision(agent_views, debate)
+        elapsed = round(time.time() - start_time, 2)
+        
+        final_result = {
+            'agent_views': agent_views,
+            'debate': debate,
+            'synthesis': synthesis,
+            'decision': synthesis['final_decision'],
+            'time_taken': elapsed,
+            'reasoning_shown': True,
+        }
+        
+        yield {"type": "done", "message": "Thinking complete.", "data": final_result}
+        return final_result
     
     def _resolve_conflict(self, agent_a: str, pos_a: str, agent_b: str, pos_b: str) -> str:
-        """
-        Use LLM to resolve conflict between two positions
-        """
-        
         resolution = generate_response(
             f"{agent_a} says: {pos_a}\n"
             f"{agent_b} counters: {pos_b}\n\n"
@@ -111,24 +115,11 @@ class RealThinkingEngine:
             provider=self.provider,
             system_prompt="You are a mediator finding middle ground between conflicting views."
         )
-        
         return resolution.strip()
     
     def _synthesize_decision(self, agent_views: Dict, debate: Dict) -> Dict:
-        """
-        REAL synthesis using LLM to combine all views
-        """
-        
-        # Build synthesis prompt from all agent views
-        views_text = "\n".join([
-            f"{name}: {view['summary']}"
-            for name, view in agent_views.items()
-        ])
-        
-        conflicts_text = "\n".join([
-            f"Conflict: {c['conflict']} → Resolved: {c['resolution']}"
-            for c in debate['conflicts']
-        ]) if debate['conflicts'] else "No conflicts"
+        views_text = "\n".join([f"{name}: {view['summary']}" for name, view in agent_views.items()])
+        conflicts_text = "\n".join([f"Conflict: {c['conflict']} -> Resolved: {c['resolution']}" for c in debate['conflicts']]) if debate['conflicts'] else "No conflicts"
         
         synthesis_prompt = f"""
 You are synthesizing multiple expert perspectives into ONE final decision.
@@ -156,22 +147,14 @@ CONFIDENCE: <0-100>
             system_prompt="You are a strategic decision synthesizer. Be concise and actionable."
         )
         
-        # Parse response
         lines = response.split('\n')
-        decision = ""
-        reasoning = ""
-        confidence = 0
-        
+        decision, reasoning, confidence = "", "", 75
         for line in lines:
-            if line.startswith("DECISION:"):
-                decision = line.replace("DECISION:", "").strip()
-            elif line.startswith("REASONING:"):
-                reasoning = line.replace("REASONING:", "").strip()
+            if line.startswith("DECISION:"): decision = line.replace("DECISION:", "").strip()
+            elif line.startswith("REASONING:"): reasoning = line.replace("REASONING:", "").strip()
             elif line.startswith("CONFIDENCE:"):
-                try:
-                    confidence = int(line.replace("CONFIDENCE:", "").strip().replace("%", ""))
-                except:
-                    confidence = 75
+                try: confidence = int(line.replace("CONFIDENCE:", "").strip().replace("%", ""))
+                except: pass
         
         return {
             'final_decision': decision,
@@ -180,232 +163,63 @@ CONFIDENCE: <0-100>
             'all_views_considered': len(agent_views),
         }
 
-
+# Agent classes remain mostly same but updated with cleaner parsing
 class ArchitectAgent:
-    """Architect perspective - scalability, design, long-term"""
-    
-    def analyze(self, task: str, context: str, provider="auto") -> Dict:
-        prompt = f"""
-Task: {task}
-Context: {context}
-
-Analyze from ARCHITECT perspective:
-- Will this scale to 1M users?
-- Is this the right long-term design?
-- What's the technical debt?
-- What's the 10-year implication?
-
-Respond with:
-SUMMARY: <one sentence>
-ANALYSIS: <2-3 bullet points>
-CONCERNS: <1-2 sentences>
-"""
-        
-        response = generate_response(
-            prompt,
-            provider=provider,
-            system_prompt="You are a senior software architect focused on scalability and design."
-        )
-        
-        return self._parse_response(response)
-    
-    def _parse_response(self, text: str) -> Dict:
-        lines = text.split('\n')
-        result = {'summary': '', 'analysis': '', 'concerns': ''}
-        
-        for line in lines:
-            if line.startswith("SUMMARY:"):
-                result['summary'] = line.replace("SUMMARY:", "").strip()
-            elif line.startswith("ANALYSIS:"):
-                result['analysis'] = line.replace("ANALYSIS:", "").strip()
-            elif line.startswith("CONCERNS:"):
-                result['concerns'] = line.replace("CONCERNS:", "").strip()
-        
-        if not result['summary']:
-            result['summary'] = text[:100]
-        
-        return result
-
+    def analyze(self, task, context, provider="auto"):
+        prompt = f"Task: {task}\nContext: {context}\nAnalyze from ARCHITECT perspective (scalability, design, long-term). Respond with:\nSUMMARY: <one sentence>\nANALYSIS: <2-3 bullets>\nCONCERNS: <1 sentence>"
+        return self._parse(generate_response(prompt, provider=provider, system_prompt="Senior Architect."))
+    def _parse(self, text):
+        res = {'summary': text.split('\n')[0], 'analysis': '', 'concerns': ''}
+        for line in text.split('\n'):
+            if line.startswith("SUMMARY:"): res['summary'] = line.replace("SUMMARY:", "").strip()
+            elif line.startswith("ANALYSIS:"): res['analysis'] = line.replace("ANALYSIS:", "").strip()
+            elif line.startswith("CONCERNS:"): res['concerns'] = line.replace("CONCERNS:", "").strip()
+        return res
 
 class BuilderAgent:
-    """Builder perspective - execution, timeline, resources"""
-    
-    def analyze(self, task: str, context: str, provider="auto") -> Dict:
-        prompt = f"""
-Task: {task}
-Context: {context}
-
-Analyze from BUILDER perspective:
-- Can we actually build this?
-- How long will it take (realistically)?
-- What resources do we need?
-- What are the blockers?
-
-Respond with:
-SUMMARY: <one sentence>
-ANALYSIS: <2-3 bullet points>
-CONCERNS: <1-2 sentences>
-"""
-        
-        response = generate_response(
-            prompt,
-            provider=provider,
-            system_prompt="You are a pragmatic engineering lead focused on shipping."
-        )
-        
-        return self._parse_response(response)
-    
-    def _parse_response(self, text: str) -> Dict:
-        lines = text.split('\n')
-        result = {'summary': '', 'analysis': '', 'concerns': ''}
-        
-        for line in lines:
-            if line.startswith("SUMMARY:"):
-                result['summary'] = line.replace("SUMMARY:", "").strip()
-            elif line.startswith("ANALYSIS:"):
-                result['analysis'] = line.replace("ANALYSIS:", "").strip()
-            elif line.startswith("CONCERNS:"):
-                result['concerns'] = line.replace("CONCERNS:", "").strip()
-        
-        if not result['summary']:
-            result['summary'] = text[:100]
-        
-        return result
-
+    def analyze(self, task, context, provider="auto"):
+        prompt = f"Task: {task}\nContext: {context}\nAnalyze from BUILDER perspective (feasibility, execution). Respond with:\nSUMMARY: <one sentence>\nANALYSIS: <2-3 bullets>\nCONCERNS: <1 sentence>"
+        return self._parse(generate_response(prompt, provider=provider, system_prompt="Pragmatic Builder."))
+    def _parse(self, text):
+        res = {'summary': text.split('\n')[0], 'analysis': '', 'concerns': ''}
+        for line in text.split('\n'):
+            if line.startswith("SUMMARY:"): res['summary'] = line.replace("SUMMARY:", "").strip()
+            elif line.startswith("ANALYSIS:"): res['analysis'] = line.replace("ANALYSIS:", "").strip()
+            elif line.startswith("CONCERNS:"): res['concerns'] = line.replace("CONCERNS:", "").strip()
+        return res
 
 class ResearcherAgent:
-    """Researcher perspective - data, evidence, best practices"""
-    
-    def analyze(self, task: str, context: str, provider="auto") -> Dict:
-        prompt = f"""
-Task: {task}
-Context: {context}
-
-Analyze from RESEARCHER perspective:
-- What do we know about this topic?
-- What are the best practices?
-- What does the data say?
-- What patterns should we follow?
-
-Respond with:
-SUMMARY: <one sentence>
-ANALYSIS: <2-3 bullet points>
-CONCERNS: <1-2 sentences>
-"""
-        
-        response = generate_response(
-            prompt,
-            provider=provider,
-            system_prompt="You are a research analyst focused on evidence and best practices."
-        )
-        
-        return self._parse_response(response)
-    
-    def _parse_response(self, text: str) -> Dict:
-        lines = text.split('\n')
-        result = {'summary': '', 'analysis': '', 'concerns': ''}
-        
-        for line in lines:
-            if line.startswith("SUMMARY:"):
-                result['summary'] = line.replace("SUMMARY:", "").strip()
-            elif line.startswith("ANALYSIS:"):
-                result['analysis'] = line.replace("ANALYSIS:", "").strip()
-            elif line.startswith("CONCERNS:"):
-                result['concerns'] = line.replace("CONCERNS:", "").strip()
-        
-        if not result['summary']:
-            result['summary'] = text[:100]
-        
-        return result
-
+    def analyze(self, task, context, provider="auto"):
+        prompt = f"Task: {task}\nContext: {context}\nAnalyze from RESEARCHER perspective (evidence, best practices). Respond with:\nSUMMARY: <one sentence>\nANALYSIS: <2-3 bullets>\nCONCERNS: <1 sentence>"
+        return self._parse(generate_response(prompt, provider=provider, system_prompt="Research Expert."))
+    def _parse(self, text):
+        res = {'summary': text.split('\n')[0], 'analysis': '', 'concerns': ''}
+        for line in text.split('\n'):
+            if line.startswith("SUMMARY:"): res['summary'] = line.replace("SUMMARY:", "").strip()
+            elif line.startswith("ANALYSIS:"): res['analysis'] = line.replace("ANALYSIS:", "").strip()
+            elif line.startswith("CONCERNS:"): res['concerns'] = line.replace("CONCERNS:", "").strip()
+        return res
 
 class ExecutorAgent:
-    """Executor perspective - planning, steps, timeline"""
-    
-    def analyze(self, task: str, context: str, provider="auto") -> Dict:
-        prompt = f"""
-Task: {task}
-Context: {context}
-
-Analyze from EXECUTOR perspective:
-- What are the concrete steps?
-- What's the timeline?
-- What's the success criteria?
-- How do we measure progress?
-
-Respond with:
-SUMMARY: <one sentence>
-ANALYSIS: <2-3 bullet points>
-CONCERNS: <1-2 sentences>
-"""
-        
-        response = generate_response(
-            prompt,
-            provider=provider,
-            system_prompt="You are a project executor focused on concrete plans and milestones."
-        )
-        
-        return self._parse_response(response)
-    
-    def _parse_response(self, text: str) -> Dict:
-        lines = text.split('\n')
-        result = {'summary': '', 'analysis': '', 'concerns': ''}
-        
-        for line in lines:
-            if line.startswith("SUMMARY:"):
-                result['summary'] = line.replace("SUMMARY:", "").strip()
-            elif line.startswith("ANALYSIS:"):
-                result['analysis'] = line.replace("ANALYSIS:", "").strip()
-            elif line.startswith("CONCERNS:"):
-                result['concerns'] = line.replace("CONCERNS:", "").strip()
-        
-        if not result['summary']:
-            result['summary'] = text[:100]
-        
-        return result
-
+    def analyze(self, task, context, provider="auto"):
+        prompt = f"Task: {task}\nContext: {context}\nAnalyze from EXECUTOR perspective (planning, steps). Respond with:\nSUMMARY: <one sentence>\nANALYSIS: <2-3 bullets>\nCONCERNS: <1 sentence>"
+        return self._parse(generate_response(prompt, provider=provider, system_prompt="Project Executor."))
+    def _parse(self, text):
+        res = {'summary': text.split('\n')[0], 'analysis': '', 'concerns': ''}
+        for line in text.split('\n'):
+            if line.startswith("SUMMARY:"): res['summary'] = line.replace("SUMMARY:", "").strip()
+            elif line.startswith("ANALYSIS:"): res['analysis'] = line.replace("ANALYSIS:", "").strip()
+            elif line.startswith("CONCERNS:"): res['concerns'] = line.replace("CONCERNS:", "").strip()
+        return res
 
 class VerifierAgent:
-    """Verifier perspective - quality, testing, validation"""
-    
-    def analyze(self, task: str, context: str, provider="auto") -> Dict:
-        prompt = f"""
-Task: {task}
-Context: {context}
-
-Analyze from VERIFIER perspective:
-- How do we verify this works?
-- What could go wrong?
-- What tests do we need?
-- What's the quality bar?
-
-Respond with:
-SUMMARY: <one sentence>
-ANALYSIS: <2-3 bullet points>
-CONCERNS: <1-2 sentences>
-"""
-        
-        response = generate_response(
-            prompt,
-            provider=provider,
-            system_prompt="You are a quality engineer focused on verification and testing."
-        )
-        
-        return self._parse_response(response)
-    
-    def _parse_response(self, text: str) -> Dict:
-        lines = text.split('\n')
-        result = {'summary': '', 'analysis': '', 'concerns': ''}
-        
-        for line in lines:
-            if line.startswith("SUMMARY:"):
-                result['summary'] = line.replace("SUMMARY:", "").strip()
-            elif line.startswith("ANALYSIS:"):
-                result['analysis'] = line.replace("ANALYSIS:", "").strip()
-            elif line.startswith("CONCERNS:"):
-                result['concerns'] = line.replace("CONCERNS:", "").strip()
-        
-        if not result['summary']:
-            result['summary'] = text[:100]
-        
-        return result
+    def analyze(self, task, context, provider="auto"):
+        prompt = f"Task: {task}\nContext: {context}\nAnalyze from VERIFIER perspective (quality, testing). Respond with:\nSUMMARY: <one sentence>\nANALYSIS: <2-3 bullets>\nCONCERNS: <1 sentence>"
+        return self._parse(generate_response(prompt, provider=provider, system_prompt="Quality Verifier."))
+    def _parse(self, text):
+        res = {'summary': text.split('\n')[0], 'analysis': '', 'concerns': ''}
+        for line in text.split('\n'):
+            if line.startswith("SUMMARY:"): res['summary'] = line.replace("SUMMARY:", "").strip()
+            elif line.startswith("ANALYSIS:"): res['analysis'] = line.replace("ANALYSIS:", "").strip()
+            elif line.startswith("CONCERNS:"): res['concerns'] = line.replace("CONCERNS:", "").strip()
+        return res

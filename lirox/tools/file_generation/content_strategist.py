@@ -134,32 +134,69 @@ Heading: {thin_section.get('heading', 'Content')}
     @staticmethod
     def _parse_sections(text: str, query: str) -> List[Dict]:
         """
-        Parse LLM response into structured sections
+        Robustly parse LLM response into structured sections.
+        Handles markdown headers, bold headers, and unstructured text.
         """
-        
         import re
         sections = []
+        lines = text.strip().split('\n')
         
-        # Try to split on markdown headers
-        parts = re.split(r'#+\s+(.+)', text)
+        current_heading = ""
+        current_body = []
         
-        if len(parts) > 1:
-            for i in range(1, len(parts), 2):
-                if i + 1 < len(parts):
+        # Regex to match various header styles
+        # 1. Markdown: # Heading, ## Heading
+        # 2. Bold: **Heading**
+        # 3. Numbered: 1. Heading
+        header_pattern = re.compile(r'^(?:#+\s+|\*\*\d*[\.\)]?\s*|\d+[\.\)]\s+)(.+?)(?:\s*\**)?:?$')
+
+        for line in lines:
+            stripped = line.strip()
+            if not stripped: continue
+            
+            # Check if line is a header
+            match = header_pattern.match(stripped)
+            is_header = False
+            if match:
+                header_text = match.group(1).strip()
+                # If it's short, it's probably a header
+                if len(header_text.split()) <= 10:
+                    is_header = True
+            elif stripped.endswith(':') and len(stripped.split()) <= 8:
+                header_text = stripped[:-1].strip()
+                is_header = True
+            
+            if is_header:
+                # Save previous section
+                if current_heading and current_body:
                     sections.append({
-                        'heading': parts[i].strip(),
-                        'body': parts[i + 1].strip(),
-                        'bullets': [],
+                        'heading': current_heading,
+                        'body': '\n'.join(current_body).strip(),
+                        'bullets': []
                     })
-        else:
-            # No clear structure, use whole text
+                current_heading = header_text
+                current_body = []
+            else:
+                current_body.append(line)
+        
+        # Add last section
+        if current_heading and current_body:
             sections.append({
-                'heading': query[:80],
-                'body': text,
-                'bullets': [],
+                'heading': current_heading,
+                'body': '\n'.join(current_body).strip(),
+                'bullets': []
+            })
+        
+        # Fallback for completely unstructured text
+        if not sections:
+            sections.append({
+                'heading': query[:60].strip() or "General Overview",
+                'body': text.strip(),
+                'bullets': []
             })
         
         return sections
+
 
     # ── internals ─────────────────────────────────────────────────────────
 

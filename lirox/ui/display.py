@@ -136,18 +136,19 @@ def show_thinking_panel_close(total_ms: int, complexity: str):
     )
 
 
-def show_agent_event(agent: str, etype: str, msg: str):
+def show_agent_event(message: str, agent: str = "personal", etype: str = "agent_progress"):
     if etype == "agent_start": return
     elif etype == "tool_call":
-        console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(msg)}[/]")
+        console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(message)}[/]")
     elif etype == "tool_result":
-        if msg and msg.strip() and len(msg.strip()) > 3:
-            console.print(f"  [{CLR_DIM}]  ├─ ✓ {escape(msg[:200])}[/]")
+        if message and message.strip() and len(message.strip()) > 3:
+            console.print(f"  [{CLR_DIM}]  ├─ ✓ {escape(message[:200])}[/]")
     elif etype == "agent_progress":
-        if msg and msg.lower().strip() not in {"thinking…", "analyzing…"}:
-            console.print(f"  [{CLR_DIM}]  ├─ {escape(msg)}[/]")
+        if message and message.lower().strip() not in {"thinking…", "analyzing…"}:
+            console.print(f"  [{CLR_DIM}]  ├─ {escape(message)}[/]")
     elif etype == "error":
-        console.print(f"  [{CLR_ERROR}]  ├─ ✖ {escape(msg)}[/]")
+        console.print(f"  [{CLR_ERROR}]  ├─ ✖ {escape(message)}[/]")
+
 
 
 def show_answer(text: str, agent: str = "personal"):

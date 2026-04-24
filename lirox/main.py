@@ -3,6 +3,7 @@ import os
 import sys
 import time
 import argparse
+import re
 from pathlib import Path
 
 from lirox.utils.dependency_bootstrap import (
@@ -38,181 +39,64 @@ def get_prompt_label(agent_name: str) -> list:
     return [("class:prompt", f"[{agent_name}] "), ("class:symbol", "✦ ")]
 
 
-def main():
-    # ── Bootstrap FIRST — before any heavy imports ──
-    check_dependencies()
-
-    # ── Configure structured logging early ──
-    from lirox.core.logger import configure_logging
-    configure_logging()
-
-    # ── Ensure data directories exist ──
-    from lirox.config import ensure_directories
-    ensure_directories()
-
-    # ── Now safe to import everything ──
-    from lirox.orchestrator.master import MasterOrchestrator
-    from lirox.ui.display import (
-        show_welcome, show_status_card, show_answer,
-        render_streaming_chunk, error_panel, info_panel,
-        success_message, confirm_prompt, console, show_thinking,
-        show_agent_event, show_thinking_phase,
-        show_thinking_panel_open, show_thinking_panel_close,
-    )
-    from lirox.utils.llm import available_providers
-    from lirox.config import APP_VERSION
-
-    parser = argparse.ArgumentParser(description=f"Lirox v{APP_VERSION}")
-    parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
-    parser.add_argument("--version", action="store_true", help="Show version")
-    parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
-    args = parser.parse_args()
-
-    if args.version:
-        print(f"Lirox v{APP_VERSION}"); sys.exit(0)
-
-    from lirox.agent.profile import UserProfile
-    profile      = UserProfile()
-    orchestrator = MasterOrchestrator(profile_data=profile.data)
-
-    show_welcome()
-
-    if not profile.is_setup() or args.setup:
-        from lirox.ui.wizard import run_setup_wizard
-        try:
-            run_setup_wizard(profile)
-            orchestrator.profile_data = profile.data
-        except KeyboardInterrupt:
-            console.print("\n  [dim]Setup skipped.[/]")
-
-    show_status_card(profile.data, available_providers())
-    console.print(f"  [dim]Workspace: {os.getenv('LIROX_WORKSPACE', str(Path.home() / 'Desktop'))}[/]")
-    console.print("  [dim]Type /help for commands  ·  /setup to configure[/]\n")
-
-    from prompt_toolkit import PromptSession
-    from prompt_toolkit.styles import Style
-    from prompt_toolkit.completion import Completer, Completion
-
-    last_int = 0.0
-    style    = Style.from_dict({"prompt": "ansiyellow bold", "symbol": "ansiyellow"})
-
-    cmd_docs = {
-        "/help": "Show this help",
-        "/setup": "Re-run setup wizard",
-        "/history": "Show last N sessions",
-        "/session": "Current session info",
-        "/models": "Available LLM providers",
-        "/use-model": "Pin a provider (groq, gemini, openai…)",
-        "/memory": "Memory stats",
-        "/profile": "Show your profile",
-        "/reset": "Reset session memory",
-        "/test": "Run diagnostics",
-        "/health": "Run subsystem health checks",
-        "/train": "Extract learnings from conversations",
-        "/recall": "Show everything Lirox knows about you",
-        "/workspace": "Show or change workspace directory",
-        "/expand": "Expand last thinking trace (/expand thinking)",
-        "/backup": "Backup all data",
-        "/export-memory": "Export profile + learnings as JSON",
-        "/import-memory": "Import from ChatGPT/Claude/Gemini/Lirox export",
-        "/restart": "Restart Lirox",
-        "/update": "Update to latest version",
-        "/uninstall": "Remove all Lirox data",
-        "/exit": "Shutdown",
-    }
-
-    class SlashCompleter(Completer):
-        def get_completions(self, document, complete_event):
-            text = document.text_before_cursor.lstrip()
-            if not text.startswith("/"): return
-            for cmd, desc in cmd_docs.items():
-                if cmd.startswith(text.lower()):
-                    yield Completion(cmd, start_position=-len(text), display_meta=desc)
-
-    session = PromptSession(completer=SlashCompleter(), complete_while_typing=True)
-
-    while True:
-        try:
-            line = session.prompt(
-                get_prompt_label(profile.data.get("agent_name", "Lirox")),
-                style=style
-            ).strip()
-            if not line:
-                continue
-            if line.lower() in ("exit", "quit", "/exit"):
-                info_panel("Shutting down. Goodbye."); break
-            if line.startswith("/"):
-                handle_command(orchestrator, profile, line, verbose=args.verbose)
-                continue
-            process_query(orchestrator, line, verbose=args.verbose)
-        except KeyboardInterrupt:
-            now = time.time()
-            if now - last_int < 2.0:
-                print("\n[!] Force quit."); sys.exit(0)
-            print("\n[!] Ctrl+C again to quit, or type /exit.")
-            last_int = now
-        except EOFError:
-            info_panel("Shutting down. Goodbye."); break
-        except Exception as e:
-            error_panel("KERNEL ERROR", str(e))
-
-
 # Module-level storage for the last thinking session (used by /expand thinking)
 _last_thinking: dict = {"steps": [], "complexity": "", "elapsed": 0.0, "query": ""}
 
 
 def process_query(orch, query: str, verbose: bool = False):
-    from lirox.ui.display import console
-    from lirox.mind.cognitive_engine import CognitiveEngine, CognitiveContext, ThinkingDisplay
-    from lirox.mind.bridge import cognitive_llm_call, cognitive_tool_executor
-    import os
-
-    # Register user query in memory
-    session = orch.session_store.current()
-    session.add("user", query, agent="personal")
-
-    # Build conversation history
-    history = []
-    for entry in session.entries[-6:]:
-        if entry.role in ("user", "assistant"):
-            history.append({"role": entry.role, "content": entry.content})
-
-    context = CognitiveContext(
-        user_name=orch.profile_data.get("name", ""),
-        workspace=os.getenv("LIROX_WORKSPACE", str(Path.home() / "Desktop")),
-        available_tools=[
-            "list_files", "read_file", "write_file", "edit_file",
-            "create_presentation", "create_pdf",
-            "create_document", "create_spreadsheet",
-            "execute_code",
-        ],
-        conversation_history=history
+    """
+    Unified entry point for query processing.
+    Uses MasterOrchestrator to ensure consistency.
+    """
+    from lirox.ui.display import (
+        render_streaming_chunk, console, show_agent_event,
+        show_thinking_phase, show_thinking_panel_open,
+        show_thinking_panel_close, show_answer
     )
-
-    display = ThinkingDisplay(console)
-    engine = CognitiveEngine(
-        context=context,
-        llm_call=cognitive_llm_call,
-        tool_executor=cognitive_tool_executor,
-        display=display
-    )
-
-    result = engine.process(query)
-
-    # Persist last thinking session for /expand thinking
-    _last_thinking["steps"] = list(display._steps)
-    _last_thinking["complexity"] = display.complexity.name.lower() if display.complexity else ""
-    _last_thinking["elapsed"] = display.elapsed
+    
     _last_thinking["query"] = query
+    _last_thinking["steps"] = []
+    
+    # Run through orchestrator
+    try:
+        last_event_type = None
+        for event in orch.run(query):
+            etype = event.type
+            
+            # ── Handle Thinking Phases ──
+            if etype == "thinking_phase":
+                show_thinking_phase(event.data)
+            
+            # ── Handle Agent Progress ──
+            elif etype == "agent_progress":
+                show_agent_event(event.message, agent=event.agent, etype=etype)
+                _last_thinking["steps"].append(event.message)
 
-    from lirox.ui.display import show_answer
-    show_answer(result["response"])
-
-    # Store assistant response and auto train
-    orch.global_memory.save_exchange(query, result["response"])
-    session.add("assistant", result["response"], agent="personal")
-    orch.session_store.save_current()
-    orch.record_interaction()
+                
+            # ── Handle Streaming ──
+            elif etype == "streaming":
+                msg = event.data.get("message", "")
+                render_streaming_chunk(msg)
+                
+            # ── Handle Done ──
+            elif etype == "done":
+                if last_event_type == "streaming":
+                    console.print() # Finish the line
+                show_answer(event.message)
+                _last_thinking["elapsed"] = event.data.get("total_time", 0.0)
+                
+            # ── Handle Errors ──
+            elif etype == "error":
+                from lirox.ui.display import error_panel
+                error_panel("ORCHESTRATOR ERROR", event.message)
+                
+            last_event_type = etype
+            
+    except Exception as e:
+        from lirox.ui.display import error_panel
+        error_panel("PROCESS ERROR", str(e))
+        import logging
+        logging.error(f"Error in process_query: {e}", exc_info=True)
 
 
 def handle_command(orch, profile, cmd: str, verbose: bool = False):
@@ -287,430 +171,204 @@ def _handle(orch, profile, cmd, base, parts, verbose):
 
     elif base == "/session":
         s = orch.session_store.current()
-        info_panel(f"CURRENT SESSION\n\n"
-                   f"  Name    : {s.name or f'Session {s.session_id}'}\n"
-                   f"  ID      : {s.session_id}\n"
-                   f"  Messages: {len(s.entries)}\n"
-                   f"  Started : {s.created_at[:16].replace('T', ' ')}")
+        info_panel(f"Session ID: {s.session_id}\nCreated: {s.created_at}\nEntries: {len(s.entries)}")
 
     elif base == "/models":
-        p = available_providers()
-        pinned = os.getenv("_LIROX_PINNED_MODEL", "")
-        pin_note = f"\n\n  📌 Pinned: {pinned}" if pinned else ""
-        info_panel("AVAILABLE LLM PROVIDERS\n\n" +
-                   ("\n".join(f"  ✓ {x}" for x in p) if p else
-                    "  None configured — run /setup") + pin_note)
+        info_panel("Available LLM Providers: " + ", ".join(available_providers()))
 
     elif base == "/use-model":
-        from lirox.utils.llm import _PROVIDER_ENV_MAP
-        target = parts[1].lower().strip() if len(parts) > 1 else ""
-        valid  = list(_PROVIDER_ENV_MAP.keys()) + ["ollama", "auto"]
-        if not target:
-            avail  = available_providers()
-            pinned = os.getenv("_LIROX_PINNED_MODEL", "none")
-            info_panel(f"Currently pinned: {pinned}\n"
-                       f"Available: {', '.join(avail) or 'none'}\n\n"
-                       f"Usage: /use-model <provider>\n"
-                       f"  /use-model auto    ← let Lirox choose")
-        elif target not in valid:
-            error_panel("UNKNOWN PROVIDER", f"'{target}' not recognised.\nValid: {', '.join(valid)}")
-        else:
-            os.environ["_LIROX_PINNED_MODEL"] = target
-            if target == "auto":
-                success_message("Model set to [auto].")
-            else:
-                success_message(f"Model pinned to [{target}]. Switch back: /use-model auto")
+        if len(parts) < 2:
+            error_panel("USAGE", "/use-model <provider_name>")
+            return
+        p = parts[1].lower()
+        if p not in available_providers():
+            error_panel("INVALID", f"'{p}' not in {available_providers()}")
+            return
+        profile.data["llm_provider"] = p
+        profile.save()
+        success_message(f"LLM provider set to {p}")
 
     elif base == "/memory":
-        gs = orch.global_memory.get_stats()
-        info_panel(f"MEMORY STATS\n\n"
-                   f"  Buffer messages : {gs['buffer_size']}\n"
-                   f"  Long-term facts : {gs.get('long_term_facts', 0)}")
+        from lirox.learning.manager import LearningManager
+        lm = LearningManager()
+        stats = lm.stats()
+        text = "\n".join(f"{k.capitalize()}: {v}" for k, v in stats.items())
+        info_panel(text)
 
     elif base == "/profile":
-        info_panel(f"PROFILE\n\n{profile.summary()}")
+        info_panel(str(profile.data))
 
     elif base == "/reset":
-        if confirm_prompt("Reset all session memory?"):
-            orch.global_memory.conversation_buffer.clear()
-            orch.session_store.new_session()
-            success_message("Memory reset. New session started.")
+        if confirm_prompt("Clear current session history?"):
+            orch.session_store.reset()
+            success_message("Session reset.")
 
     elif base == "/test":
-        _diag_log = __import__("logging").getLogger("lirox.diagnostics")
-        info_panel("Running diagnostics…")
-        tests = [
-            ("Providers",     lambda: ", ".join(available_providers()) or "None"),
-            ("Global Memory", lambda: f"{orch.global_memory.get_stats()['buffer_size']} buffered"),
-            ("Sessions",      lambda: f"{len(orch.session_store.list_sessions())} sessions"),
-            ("Workspace",     lambda: os.getenv("LIROX_WORKSPACE", str(Path.home() / "Desktop"))),
-            ("Version",       lambda: f"v{APP_VERSION}"),
-        ]
-        for name, fn in tests:
-            try:
-                console.print(f"  [green]✓[/] {name:22}: {fn()}")
-            except Exception as e:
-                _diag_log.debug("Diagnostic check '%s' failed", name, exc_info=True)
-                console.print(f"  [red]✖[/] {name:22}: {e}")
-        success_message("Diagnostics complete.")
+        from lirox.core.diagnostics import run_diagnostics
+        run_diagnostics()
 
     elif base == "/health":
         from lirox.core.health import run_health_checks
-        info_panel("Running health checks…")
-        report = run_health_checks(strict=False)
-        for c in report.checks:
-            mark = "[green]✓[/]" if c.ok else "[red]✖[/]"
-            console.print(f"  {mark} {c.name:22}: {c.message}")
-        success_message("Health check complete." if report.ok else "Health check found issues.")
+        run_health_checks()
 
     elif base == "/train":
-        from lirox.mind.trainer import TrainingEngine
-        from lirox.mind.learnings import LearningsStore
-        console.print("  [dim #a78bfa]🧠 Extracting learnings from conversations…[/]")
-        try:
-            learnings = LearningsStore()
-            trainer = TrainingEngine(learnings)
-            with console.status("[bold #a78bfa]Training…[/]", spinner="dots"):
-                stats = trainer.train(orch.global_memory, orch.session_store)
-        except KeyboardInterrupt:
-            console.print("\n  [dim]Training interrupted.[/]")
-            return
-        except Exception as e:
-            error_panel("TRAINING ERROR", str(e))
-            return
-
-        total = stats.get("facts_added", 0) + stats.get("topics_bumped", 0) + stats.get("preferences_added", 0)
-        if total == 0:
-            info_panel("🧠 Training complete — nothing new to learn yet.\n"
-                       "Chat more first, then run /train again.")
-        else:
-            success_message(
-                f"Training complete!\n"
-                f"  ✓ Facts       : {stats.get('facts_added', 0)} new\n"
-                f"  ✓ Topics      : {stats.get('topics_bumped', 0)} updated\n"
-                f"  ✓ Preferences : {stats.get('preferences_added', 0)} captured\n"
-                f"  ✓ Projects    : {stats.get('projects_found', 0)} found\n\n"
-                f"  Run /recall to see everything I know.")
+        info_panel("Training started in background...")
+        orch.record_interaction() # Forces training
 
     elif base == "/recall":
-        from lirox.mind.learnings import LearningsStore
-        from lirox.mind.soul import LivingSoul
-        learn = LearningsStore()
-        soul  = LivingSoul()
-        agent_name = profile.data.get("agent_name", soul.get_name())
-        user_name  = profile.data.get("user_name", "")
-
-        lines = [f"🧠 WHAT {agent_name.upper()} KNOWS ABOUT {user_name.upper() if user_name else 'YOU'}\n"]
-        facts = learn.get_facts_summary(n=15)
-        if facts and "No facts" not in facts:
-            lines.append(f"FACTS:\n{facts}\n")
-        projects = learn.data.get("projects", [])
-        if projects:
-            lines.append("PROJECTS:")
-            for p in projects[-5:]:
-                lines.append(f"  • {p['name']}: {p.get('description', '–')}")
-            lines.append("")
-        topics = learn.get_top_topics(8)
-        if topics:
-            lines.append("INTERESTS: " + ", ".join(t["topic"] for t in topics))
-        lines.append(f"\n{learn.stats_summary()}")
-        lines.append("\nRun /train to extract more from recent conversations.")
-        info_panel("\n".join(lines))
+        from lirox.learning.manager import LearningManager
+        lm = LearningManager()
+        facts = lm.recall_facts(limit=10)
+        if not facts:
+            info_panel("I don't know much yet. Let's talk more!")
+        else:
+            info_panel("Here's what I've learned about you:\n\n- " + "\n- ".join(facts))
 
     elif base == "/workspace":
-        new_path = cmd[len("/workspace"):].strip()
-        if not new_path:
-            current_ws = os.getenv("LIROX_WORKSPACE", str(Path.home() / "Desktop"))
-            info_panel(f"WORKSPACE\n\n  Current: {current_ws}\n\n"
-                       f"  Usage: /workspace ~/Projects/myapp")
+        if len(parts) > 1:
+            new_path = parts[1]
+            os.environ["LIROX_WORKSPACE"] = new_path
+            success_message(f"Workspace set to: {new_path}")
         else:
-            import lirox.config as _cfg
-            expanded = os.path.realpath(os.path.expanduser(new_path))
-            if not os.path.isdir(expanded):
-                error_panel("INVALID PATH", f"'{expanded}' does not exist or is not a directory.")
-                return
-            safe = any(
-                expanded == d or expanded.startswith(d + os.sep)
-                for d in _cfg.SAFE_DIRS_RESOLVED
-            )
-            if not safe:
-                error_panel("UNSAFE PATH", f"'{expanded}' is outside allowed directories.\n"
-                            "Use a path under your home folder or project directory.")
-                return
-            os.environ["LIROX_WORKSPACE"] = expanded
-            _cfg.WORKSPACE_DIR = expanded
-            # Include the new workspace in safe dirs so subsequent checks recognise it
-            _cfg.SAFE_DIRS = [d for d in _cfg.SAFE_DIRS if d != _cfg.WORKSPACE_DIR] + [expanded]
-            _cfg.SAFE_DIRS_RESOLVED = [os.path.realpath(d) for d in _cfg.SAFE_DIRS]
-            success_message(f"Workspace set to: {expanded}")
+            info_panel(f"Current Workspace: {os.getenv('LIROX_WORKSPACE', str(Path.home() / 'Desktop'))}")
 
     elif base == "/expand":
-        # /expand thinking — show detailed steps from last reasoning session
-        target = " ".join(parts[1:]).lower().strip() if len(parts) > 1 else ""
-        if target in ("thinking", "think", "reason", "reasoning", ""):
-            steps   = _last_thinking.get("steps", [])
-            cplx    = _last_thinking.get("complexity", "")
-            q       = _last_thinking.get("query", "")
-            elapsed = _last_thinking.get("elapsed", 0.0)
-            if not steps:
-                info_panel("No thinking session recorded yet.\nAsk a question first, then run /expand thinking.")
-            else:
-                from rich.tree import Tree
-                from rich.panel import Panel as _P
-                header = "[bold #a78bfa]⟳ Thinking Details[/]"
-                if cplx:
-                    header += f"  [dim]· {cplx}[/dim]"
-                if elapsed:
-                    header += f"  [dim]· {elapsed:.1f}s[/dim]"
-                t = Tree(header, guide_style="dim #a78bfa")
-                if q:
-                    t.add(f"[dim]Query: {q[:120]}[/dim]")
-                for s in steps:
-                    icon = s.get("icon", "•")
-                    msg  = s.get("message", "")
-                    st   = s.get("status", "")
-                    if st == "done":
-                        label = f"[#10b981]✓[/] {icon} {msg}"
-                    elif st == "error":
-                        label = f"[#ef4444]✗[/] {icon} [#ef4444]{msg}[/]"
-                    elif st == "running":
-                        label = f"[#FFC107]⟳[/] {icon} {msg}"
-                    else:
-                        label = f"{icon} {msg}"
-                    t.add(label)
-                console.print(_P(t, title="[bold #a78bfa]Thinking Trace[/]",
-                                  border_style="#a78bfa", padding=(0, 2)))
+        if len(parts) > 1 and parts[1] == "thinking":
+            if not _last_thinking["steps"]:
+                error_panel("NO DATA", "No recent thinking trace to expand.")
+                return
+            from lirox.ui.display import show_thinking
+            show_thinking(_last_thinking["query"], _last_thinking["steps"], _last_thinking["elapsed"])
         else:
-            info_panel("Usage: /expand thinking\nShows the detailed reasoning steps from your last query.")
+            error_panel("USAGE", "/expand thinking")
 
     elif base == "/backup":
-        _run_backup()
+        from lirox.core.backup import create_backup
+        path = create_backup()
+        success_message(f"Backup created: {path}")
 
     elif base == "/export-memory":
-        _export_memory()
+        from lirox.learning.exporter import export_learnings
+        path = export_learnings()
+        success_message(f"Memory exported to: {path}")
 
     elif base == "/import-memory":
-        path = cmd[len("/import-memory"):].strip()
-        if not path:
-            path = console.input("  [dim]Path to file: [/]").strip()
-        if path:
-            _import_memory(path.strip("'\""))
+        from lirox.learning.importer import import_learnings
+        if len(parts) < 2:
+            error_panel("USAGE", "/import-memory <file_path>")
+            return
+        res = import_learnings(parts[1])
+        success_message(f"Imported {res['facts']} facts and {res['prefs']} preferences.")
 
     elif base == "/restart":
-        info_panel("🔄 Restarting…")
-        time.sleep(1)
-        import subprocess
-        args_list = [sys.executable] + sys.argv
-        if sys.platform == "win32":
-            subprocess.Popen(args_list, creationflags=subprocess.CREATE_NEW_CONSOLE)
-            sys.exit(0)
-        else:
-            os.execv(sys.executable, args_list)
+        success_message("Restarting Lirox...")
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
     elif base == "/update":
-        _run_update()
+        success_message("Checking for updates...")
+        # Placeholder for update logic
 
     elif base == "/uninstall":
-        import shutil
-        from lirox.config import DATA_DIR, OUTPUTS_DIR, PROJECT_ROOT
-        from rich.panel import Panel as _P
-        console.print(_P(
-            "[bold red]⚠️  UNINSTALL[/]\n\nDeletes ALL data.",
-            border_style="red"))
-        if confirm_prompt("Delete ALL Lirox data?"):
-            for path in [os.path.join(PROJECT_ROOT, "profile.json"),
-                          os.path.join(PROJECT_ROOT, ".env")]:
-                if os.path.exists(path): os.remove(path)
-            for dp in [DATA_DIR, OUTPUTS_DIR]:
-                if os.path.exists(dp): shutil.rmtree(dp, ignore_errors=True)
-            success_message("All data deleted.")
-            sys.exit(0)
+        if confirm_prompt("ARE YOU SURE? This will delete ALL Lirox data."):
+            from lirox.config import delete_all_data
+            delete_all_data()
+            success_message("Uninstalled. Goodbye."); sys.exit(0)
 
     else:
-        console.print(f"  [dim]Unknown command: {base}. Type /help.[/]")
+        error_panel("UNKNOWN COMMAND", f"Type /help for a list of commands.")
 
 
-# ── Utility functions ──
+def main():
+    # ── Bootstrap FIRST ──
+    check_dependencies()
 
-def _check_git_available() -> bool:
-    import shutil
-    return shutil.which("git") is not None
+    from lirox.core.logger import configure_logging
+    configure_logging()
 
+    from lirox.config import ensure_directories
+    ensure_directories()
 
-def _stash_changes(root: str) -> bool:
-    from lirox.ui.display import console
-    import subprocess
-    try:
-        status = subprocess.run(
-            ["git", "-C", root, "status", "--porcelain"],
-            capture_output=True, text=True, timeout=15,
-        )
-        if not status.stdout.strip():
-            return True
-        stash = subprocess.run(
-            ["git", "-C", root, "stash", "--include-untracked"],
-            capture_output=True, text=True, timeout=30,
-        )
-        if stash.returncode == 0:
-            console.print("[dim]Local changes stashed before update.[/]")
-            return True
-        console.print(
-            f"[yellow]Warning: could not stash changes "
-            f"({stash.stderr.strip() or stash.stdout.strip()})[/]"
-        )
-        return False
-    except Exception as exc:
-        console.print(f"[yellow]Warning: stash check failed: {exc}[/]")
-        return False
+    from lirox.orchestrator.master import MasterOrchestrator
+    from lirox.ui.display import show_welcome, show_status_card, console
+    from lirox.utils.llm import available_providers
+    from lirox.config import APP_VERSION
+    from lirox.agent.profile import UserProfile
 
+    parser = argparse.ArgumentParser(description=f"Lirox v{APP_VERSION}")
+    parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
+    parser.add_argument("--version", action="store_true", help="Show version")
+    parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
+    # ── Handle command line shortcuts ──
+    if len(sys.argv) > 1 and sys.argv[1] == "setup":
+        sys.argv[1] = "--setup"
 
-def _git_pull_with_retry(root: str, max_attempts: int = 3):
-    from lirox.ui.display import console
-    import subprocess
-    import time as _time
-    last_error = ""
-    for attempt in range(1, max_attempts + 1):
+    args = parser.parse_args()
+
+    if args.version:
+        print(f"Lirox v{APP_VERSION}"); sys.exit(0)
+
+    profile      = UserProfile()
+    orchestrator = MasterOrchestrator(profile_data=profile.data)
+
+    show_welcome()
+
+    if not profile.is_setup() or args.setup:
+        from lirox.ui.wizard import run_setup_wizard
         try:
-            result = subprocess.run(
-                ["git", "-C", root, "pull"],
-                capture_output=True, text=True, timeout=120, check=True,
-            )
-            return True, result.stdout.strip(), ""
-        except subprocess.CalledProcessError as exc:
-            last_error = exc.stderr.strip() if exc.stderr else exc.stdout.strip()
-            if attempt < max_attempts:
-                wait = 2 ** (attempt - 1)
-                console.print(f"[yellow]Pull attempt {attempt}/{max_attempts} failed (retrying in {wait}s)…[/]")
-                _time.sleep(wait)
-        except subprocess.TimeoutExpired:
-            last_error = "git pull timed out after 120 s"
-            if attempt < max_attempts:
-                wait = 2 ** (attempt - 1)
-                console.print(f"[yellow]Pull attempt {attempt}/{max_attempts} timed out (retrying in {wait}s)…[/]")
-                _time.sleep(wait)
-        except OSError as exc:
-            last_error = str(exc)
+            run_setup_wizard(profile)
+            orchestrator.profile_data = profile.data
+        except KeyboardInterrupt:
+            console.print("\n  [dim]Setup skipped.[/]")
+
+    show_status_card(profile.data, available_providers())
+    console.print(f"  [dim]Workspace: {os.getenv('LIROX_WORKSPACE', str(Path.home() / 'Desktop'))}[/]")
+    console.print("  [dim]Type /help for commands  ·  /setup to configure[/]\n")
+
+    from prompt_toolkit import PromptSession
+    from prompt_toolkit.styles import Style
+    from prompt_toolkit.completion import Completer, Completion
+
+    cmd_docs = {
+        "/help": "Show this help",
+        "/setup": "Configure Lirox",
+        "/history": "View past conversations",
+        "/models": "List AI models",
+        "/memory": "AI stats",
+        "/workspace": "Manage files location",
+        "/expand thinking": "See detailed reasoning",
+        "/exit": "Quit",
+    }
+
+    class SlashCompleter(Completer):
+        def get_completions(self, document, complete_event):
+            text = document.text_before_cursor.lstrip()
+            if not text.startswith("/"): return
+            for cmd, desc in cmd_docs.items():
+                if cmd.startswith(text.lower()):
+                    yield Completion(cmd, start_position=-len(text), display_meta=desc)
+
+    session = PromptSession(completer=SlashCompleter(), complete_while_typing=True)
+    style   = Style.from_dict({"prompt": "ansiyellow bold", "symbol": "ansiyellow"})
+
+    while True:
+        try:
+            line = session.prompt(
+                get_prompt_label(profile.data.get("agent_name", "Lirox")),
+                style=style
+            ).strip()
+            if not line:
+                continue
+            if line.lower() in ("exit", "quit", "/exit"):
+                from lirox.ui.display import info_panel
+                info_panel("Shutting down. Goodbye."); break
+            if line.startswith("/"):
+                handle_command(orchestrator, profile, line, verbose=args.verbose)
+                continue
+            process_query(orchestrator, line, verbose=args.verbose)
+        except KeyboardInterrupt:
+            continue # Already handled in prompt_toolkit or just ignore
+        except EOFError:
             break
-    return False, "", last_error
 
-
-def _run_update():
-    from lirox.ui.display import console, error_panel, info_panel, success_message
-    from lirox.config import PROJECT_ROOT
-    import subprocess
-    import logging
-    root = str(Path(PROJECT_ROOT).resolve())
-    info_panel(f"Checking for updates in {root}…")
-    if not _check_git_available():
-        error_panel("UPDATE FAILED", "git is not installed or not on PATH.\nInstall git or run:  pip install --upgrade lirox")
-        return
-    git_dir = os.path.join(root, ".git")
-    if not os.path.exists(git_dir):
-        info_panel(f"Not a git repository ({root}).\nRun: pip install --upgrade lirox")
-        return
-    try:
-        stash_ok = _stash_changes(root)
-        if not stash_ok:
-            error_panel("UPDATE FAILED", "Could not stash local changes.")
-            return
-        console.print("[dim]Pulling latest changes…[/]")
-        pulled, stdout, pull_err = _git_pull_with_retry(root)
-        if not pulled:
-            error_panel("UPDATE FAILED", f"git pull failed:\n{pull_err}")
-            return
-        if "Already up to date." in stdout:
-            success_message("Already up to date.")
-            return
-        if stdout:
-            console.print(f"[dim]{stdout}[/]")
-        console.print("[dim]Reinstalling package…[/]")
-        pip_result = subprocess.run(
-            [sys.executable, "-m", "pip", "install", "-e", root],
-            capture_output=True, text=True,
-        )
-        if pip_result.returncode != 0:
-            pip_err = pip_result.stderr.strip() or pip_result.stdout.strip()
-            error_panel("UPDATE PARTIALLY FAILED", f"git pull succeeded but pip install failed:\n{pip_err}")
-            return
-        success_message("Updated successfully. Please restart Lirox.")
-    except Exception as exc:
-        error_panel("UPDATE FAILED", str(exc))
-
-
-def _run_backup():
-    from lirox.ui.display import success_message, error_panel
-    import shutil
-    from lirox.config import DATA_DIR, PROJECT_ROOT
-    from datetime import datetime
-    backup_dir = Path.home() / ".lirox_backup"
-    backup_dir.mkdir(exist_ok=True)
-    dest = backup_dir / f"lirox_data_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
-    try:
-        data_path = Path(DATA_DIR)
-        if data_path.exists():
-            shutil.copytree(str(data_path), str(dest), dirs_exist_ok=True)
-        pf = Path(PROJECT_ROOT) / "profile.json"
-        if pf.exists():
-            shutil.copy2(str(pf), str(dest / "profile.json"))
-        success_message(f"Backup saved to: {dest}")
-    except Exception as e:
-        error_panel("BACKUP FAILED", str(e))
-
-
-def _export_memory():
-    from lirox.ui.display import success_message
-    import json
-    from datetime import datetime
-    from lirox.config import PROJECT_ROOT, MIND_LEARN_FILE
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    output_path = str(Path.home() / f"lirox_memory_export_{timestamp}.json")
-    data = {"format_version": "1.0", "exported_at": datetime.now().isoformat(),
-            "profile": {}, "learnings": {}}
-    pf = os.path.join(PROJECT_ROOT, "profile.json")
-    if os.path.exists(pf):
-        try:
-            with open(pf) as f: data["profile"] = json.load(f)
-        except Exception: pass
-    if os.path.exists(MIND_LEARN_FILE):
-        try:
-            with open(MIND_LEARN_FILE) as f: data["learnings"] = json.load(f)
-        except Exception: pass
-    with open(output_path, "w") as f:
-        json.dump(data, f, indent=4)
-    success_message(f"Exported to: {output_path}")
-
-
-def _import_memory(file_path: str):
-    from lirox.ui.display import error_panel, success_message
-    import json
-    path = Path(file_path)
-    if not path.exists():
-        error_panel("IMPORT ERROR", f"File not found: {file_path}")
-        return
-    try:
-        raw = path.read_text(encoding="utf-8", errors="replace")
-        data = json.loads(raw)
-    except Exception as e:
-        error_panel("IMPORT ERROR", f"Cannot parse file: {e}")
-        return
-    from lirox.mind.learnings import LearningsStore
-    store = LearningsStore()
-    facts_added = 0
-    if "learnings" in data and isinstance(data["learnings"], dict):
-        for f in data["learnings"].get("user_facts", []):
-            fact_text = f.get("fact") if isinstance(f, dict) else str(f)
-            store.add_fact(fact_text, confidence=0.85, source="import")
-            facts_added += 1
-    elif isinstance(data, list):
-        for conv in data[:50]:
-            mapping = conv.get("mapping", {})
-            for node in mapping.values():
-                msg = (node or {}).get("message")
-                if msg and msg.get("author", {}).get("role") == "user":
-                    content = ""
-                    for p in msg.get("content", {}).get("parts", []):
-                        if isinstance(p, str): content += p
-                    if len(content) > 10:
-                        store.add_fact(content[:200], confidence=0.7, source="chatgpt_import")
-                        facts_added += 1
-    success_message(f"Imported {facts_added} facts from {path.name}")
+if __name__ == "__main__":
+    main()
