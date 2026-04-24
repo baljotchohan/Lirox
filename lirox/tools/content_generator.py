@@ -80,32 +80,48 @@ Output ONLY the JSON array, no other text."""
 
     def generate_sections(self, topic: str, num_sections: int = 5,
                           context: str = "", structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
-        """Generate *num_sections* content sections for a PDF or DOCX dynamically.
+        """Generate *num_sections* content sections for a PDF or DOCX iteratively.
         """
-        hints_text = ""
-        if structure_hints:
-            hints_text = f"\nYou MUST use exactly these section headings:\n" + "\n".join([f"- {h}" for h in structure_hints]) + "\n"
+        if not structure_hints:
+            structure_hints = self._generate_structure(topic, num_sections, context)
             
-        prompt = f"""Design an ULTIMATE, deep-dive document for: "{topic}"
-{('Additional context: ' + context) if context else ''}{hints_text}
+        results = []
+        for i, heading in enumerate(structure_hints):
+            section = self._generate_single_section(topic, heading, i+1, len(structure_hints), context)
+            results.append(section)
+            
+        return results
 
-CRITICAL QUALITY RULES:
-1. WORD COUNT: Each section body MUST be at least 300-400 words. 
-2. DEPTH: No generic summaries. Provide deep technical, historical, or practical analysis.
-3. DATA: Include real statistics, specific dates, named people/locations, and concrete examples.
-4. STRUCTURE: Use multiple paragraphs per section body.
-5. NO PLACEHOLDERS: Do not say "This section covers..." - just provide the content.
+    def _generate_structure(self, topic: str, num: int, context: str) -> List[str]:
+        prompt = f"Topic: {topic}\nContext: {context}\nGenerate {num} logical, high-impact section headings for a deep-dive report. Output ONLY a JSON list of strings."
+        raw = self._call_llm(prompt, "Content Architect. Output ONLY JSON array.")
+        from lirox.utils.llm_json import try_extract_json
+        res = try_extract_json(raw)
+        if isinstance(res, list): return res
+        return [f"Chapter {i+1}" for i in range(num)]
 
-Output as a JSON array of objects:
-{{"heading": "Detailed Section Title", "body": "Full multi-paragraph text (300+ words)...", "bullets": ["detailed point 1", "detailed point 2"]}}
+    def _generate_single_section(self, topic: str, heading: str, index: int, total: int, context: str) -> Dict[str, Any]:
+        prompt = f"""Generate a DEEP DIVE section for: "{topic}"
+Section {index}/{total}: "{heading}"
+Context: {context}
 
-Output ONLY the JSON array. No preamble. No markdown fences unless required."""
+QUALITY RULES:
+1. WORD COUNT: MINIMUM 400 words.
+2. DEPTH: Provide historical, technical, or specific details. Use real names, dates, and facts.
+3. STRUCTURE: 3-5 rich paragraphs.
+4. BULLETS: Include 3-5 specific bullet points at the end for takeaways.
 
-        raw = self._call_llm(
-            prompt,
-            "Master Content Architect. You produce Pulitzer-prize quality deep dives. NO generic filler."
-        )
-        return self._parse_list(raw, "sections", num_sections, topic, structure_hints)
+Output as JSON:
+{{"heading": "{heading}", "body": "...", "bullets": ["..."]}}"""
+
+        raw = self._call_llm(prompt, "Expert Historian & Technical Writer. Output ONLY JSON.")
+        from lirox.utils.llm_json import try_extract_json
+        res = try_extract_json(raw)
+        if isinstance(res, dict) and "body" in res:
+            return res
+        # Fallback if JSON fails
+        return {"heading": heading, "body": raw, "bullets": []}
+
 
 
     # ── Sheet content ────────────────────────────────────────────────────────

@@ -14,9 +14,10 @@ from lirox.utils.managed_pool import get_default_pool as _get_pool
 _logger = logging.getLogger("lirox.llm")
 
 _OLLAMA_OPTIONS = {
-    "num_ctx": 8192, "num_thread": 4, "num_batch": 512,
-    "num_predict": 2048, "num_keep": 64, "repeat_last_n": 64,
+    "num_ctx": 32768, "num_thread": 4, "num_batch": 512,
+    "num_predict": 8192, "num_keep": 64, "repeat_last_n": 64,
 }
+
 
 
 def _get_api_key(provider: str) -> Optional[str]:
