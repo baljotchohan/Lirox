@@ -148,15 +148,15 @@ MEMORY_SIGNALS = [
 _FILEGEN_PATTERN = re.compile(
     r'\b(?:create|make|generate|build|prepare|draft|write|design)\b'
     r'.*\b(?:pdf|word|docx|doc|excel|xlsx|xls|spreadsheet|'
-    r'pptx?|powerpoint|presentation|slides?|report|resume|invoice|'
-    r'certificate|letter|memo|proposal|deck|document|file|paper)\b',
+    r'pptx?|powerpoint|presentation|slides?|report|repoty?|resume|invoice|'
+    r'certificate|letter|memo|proposal|deck|document|file|paper|chart)\b',
     re.IGNORECASE,
 )
 
 
 # Also match reversed order: "pdf about X" or "presentation on Y"
 _FILEGEN_PATTERN_REV = re.compile(
-    r'\b(?:pdf|word|docx|excel|xlsx|pptx?|powerpoint|presentation|slide|deck)\b'
+    r'\b(?:pdf|word|docx|excel|xlsx|pptx?|powerpoint|presentation|slide|deck|report|repoty?|chart)\b'
     r'.*\b(?:about|on|of|for|with|containing)\b',
     re.IGNORECASE,
 )
@@ -269,6 +269,9 @@ class PersonalAgent(BaseAgent):
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _chat(self, query, context, sp=""):
+        # Show immediate progress to avoid "stuck" feeling
+        yield {"type": "agent_progress", "message": "Analyzing request...", "agent": self.name}
+        
         base_sys = sp or _get_sys(self.profile_data)
         user_name = self.profile_data.get("user_name", "")
         agent_name = self.profile_data.get("agent_name", "Lirox")
@@ -291,19 +294,23 @@ class PersonalAgent(BaseAgent):
                 "Ask what they'd like to work on. Do NOT reference any past projects or topics.\n"
                 "Keep it to 2-3 sentences max."
             )
-            answer = generate_response(greeting_prompt, provider="auto", system_prompt=base_sys)
+            # CRITICAL: Use a clean system prompt for greetings to avoid project-related hallucinations
+            clean_sys = f"You are {agent_name}, a warm and direct personal AI assistant. You help the user with their digital tasks."
+            answer = generate_response(greeting_prompt, provider="auto", system_prompt=clean_sys)
             for chunk in _STREAMER.stream_words(answer, delay=0.025):
                 yield {"type": "streaming", "message": chunk}
             yield {"type": "done", "answer": answer}
             return
 
         # ── NORMAL CHAT (with context) ──
+        yield {"type": "agent_progress", "message": "Synthesizing response...", "agent": self.name}
         mem_ctx = self.memory.get_relevant_context(query)
         prompt = query
         if mem_ctx and mem_ctx.strip():
             prompt = f"Relevant context:\n{mem_ctx}\n\nUser: {query}"
         if context:
             prompt = f"Context:\n{context[:1500]}\n\n{prompt}"
+            
         answer = generate_response(prompt, provider="auto", system_prompt=base_sys)
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
