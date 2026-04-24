@@ -89,7 +89,7 @@ def _get_sys(profile_data: dict = None) -> str:
         "⚠️ NEVER say 'I have created' unless you have a verified receipt.\n"
         "👤 Address the user by name when known.\n"
         f"⚙️ Your current operating system is {os_info}. Use appropriate commands.\n"
-        "✨ FORMATTING: Use emojis (🚀, ✅, 🛠️) for lists. Never use '*' or '-' for bullets.\n"
+        "✨ FORMATTING: Use emojis (🚀, ✅, 🛠️) for lists. ZERO ASTERISKS: NEVER use '*' anywhere in your response, even for bolding (use '__'). This is a HARD constraint.\n"
         "🔇 NO FLUFF: Do NOT explain what you are doing. Do NOT include meta-commentary.\n"
         "🚫 NO PLACEHOLDERS: NEVER use 'John Doe' or 'example.com'. Leave blank if data is missing.\n"
     )
