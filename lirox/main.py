@@ -16,7 +16,7 @@ if str(_repo_root) not in sys.path:
     sys.path.insert(0, str(_repo_root))
 
 
-def check_dependencies():
+def check_dependencies() -> None:
     package_to_module = required_package_map()
     missing = missing_packages(package_to_module)
     if not missing:
@@ -43,7 +43,7 @@ def get_prompt_label(agent_name: str) -> list:
 _last_thinking: dict = {"steps": [], "complexity": "", "elapsed": 0.0, "query": "", "full_result": None}
 
 
-def process_query(orch, query: str, verbose: bool = False):
+def process_query(orch, query: str, verbose: bool = False) -> None:
     """
     Unified entry point for query processing.
     Uses MasterOrchestrator to ensure consistency.
@@ -119,11 +119,12 @@ def process_query(orch, query: str, verbose: bool = False):
         # Auto-train after every successful query to update LearningsStore
         try:
             orch.record_interaction()
-        except:
-            pass
+        except Exception as e:
+            import logging
+            logging.warning(f"Failed to record interaction: {e}")
 
 
-def handle_command(orch, profile, cmd: str, verbose: bool = False):
+def handle_command(orch, profile, cmd: str, verbose: bool = False) -> None:
     from lirox.ui.display import (
         console, error_panel, info_panel, success_message, confirm_prompt,
     )
@@ -139,7 +140,7 @@ def handle_command(orch, profile, cmd: str, verbose: bool = False):
         error_panel("COMMAND ERROR", str(e))
 
 
-def _handle(orch, profile, cmd, base, parts, verbose):
+def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> None:
     from lirox.ui.display import (
         console, error_panel, info_panel, success_message, confirm_prompt,
     )
@@ -342,7 +343,7 @@ def _handle(orch, profile, cmd, base, parts, verbose):
         error_panel("UNKNOWN COMMAND", f"Type /help for a list of commands.")
 
 
-def main():
+def main() -> None:
     """Main CLI entry point with production-grade error handling."""
     try:
         # ── Bootstrap FIRST ──
@@ -372,7 +373,8 @@ def main():
         args = parser.parse_args()
 
         if args.version:
-            print(f"Lirox v{APP_VERSION}"); sys.exit(0)
+            print(f"Lirox v{APP_VERSION}")
+            sys.exit(0)
 
         profile      = UserProfile()
         orchestrator = MasterOrchestrator(profile_data=profile.data)
@@ -434,7 +436,8 @@ def main():
         class SlashCompleter(Completer):
             def get_completions(self, document, complete_event):
                 text = document.text_before_cursor.lstrip()
-                if not text.startswith("/"): return
+                if not text.startswith("/"):
+                    return
                 for cmd, desc in cmd_docs.items():
                     if cmd.startswith(text.lower()):
                         yield Completion(cmd, start_position=-len(text), display_meta=desc)
@@ -465,7 +468,7 @@ def main():
                 
             except KeyboardInterrupt:
                 console.print("\n  [dim]Interrupted. Type /exit to quit.[/]")
-                continue 
+                continue
             except EOFError:
                 break
             except Exception as e:
@@ -474,7 +477,8 @@ def main():
                 logging.error(f"REPL Fatal Error: {e}", exc_info=True)
 
     except Exception as fatal:
-        print(f"\n[bold red]CRITICAL FAILURE:[/bold red] {fatal}")
+        from lirox.ui.display import console
+        console.print(f"\n[bold red]CRITICAL FAILURE:[/bold red] {fatal}")
         import logging
         logging.critical(f"Main Entry Point Failure: {fatal}", exc_info=True)
         sys.exit(1)

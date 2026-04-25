@@ -223,7 +223,7 @@ def delete_all_data():
                 f.unlink()
                 deleted.append(str(f))
             except Exception as e:
-                 print(f"✗ Failed to delete {f}: {e}")
+                print(f"✗ Failed to delete {f}: {e}")
 
     # 4. Workspace Artifacts (Optional cleanup of generated files)
     workspace = Path(WORKSPACE_DIR)
