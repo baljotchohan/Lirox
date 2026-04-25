@@ -69,15 +69,9 @@ def check_packages():
     
     for package, purpose in required_packages.items():
         try:
-            if '.' in package:
-                parts = package.split('.')
-                mod = __import__(parts[0])
-                for part in parts[1:]:
-                    mod = getattr(mod, part)
-            else:
-                __import__(package)
+            importlib.import_module(package)
             check_pass(f"{package:30s} - {purpose}")
-        except ImportError:
+        except (ImportError, ModuleNotFoundError):
             check_fail(f"{package:30s} - {purpose} (NOT INSTALLED)")
             all_ok = False
     

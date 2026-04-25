@@ -244,11 +244,14 @@ WEB_SIGNALS = [
     # Real-time data queries — must trigger web search, not chat
     "price of", "price today", "stock price", "share price",
     "market price", "exchange rate", "conversion rate",
+    "check price", "check the price", "check current",
     "weather in", "weather today", "weather forecast",
     "score of", "match score", "live score",
-    "nifty", "sensex", "dow jones", "nasdaq", "s&p 500",
+    "nifty", "nifty 50", "sensex", "dow jones", "nasdaq", "s&p 500",
     "bitcoin price", "crypto price", "gold price", "silver price",
     "today's", "right now", "currently",
+    "what is the", "who is", "when did", "where is",
+    "latest", "recent", "news",
 ]
 
 # File OPERATIONS — reading/writing/listing existing files
@@ -264,53 +267,40 @@ _FILE_OP_SIGNALS = [
 def _classify(query: str) -> str:
     """
     Classify query into task type.
-    
-    CRITICAL: Web search indicators must be checked FIRST.
+
+    Priority order (highest → lowest):
+      1. self / memory signals   — introspection queries
+      2. web signals             — real-time / search queries  ← checked BEFORE shell
+      3. file generation         — create pdf/docx/pptx/xlsx
+      4. file operations         — read/list/open existing files
+      5. shell commands          — explicit terminal/run/install keywords
+      6. chat                    — everything else
     """
     q = query.lower().strip()
-    
-    # ═══════════════════════════════════════════════════════
-    # WEB SEARCH - CHECK FIRST (highest priority)
-    # ═══════════════════════════════════════════════════════
-    web_indicators = [
-        "search", "find on web", "look up", "google",
-        "research", "find information", "search for",
-        "look for", "find me", "deep research",
-        "search web", "web search", "online",
-        "latest", "recent", "news about", "current",
-        "what is", "who is", "when did", "where is",
-        "how to find", "show me", "get me"
-    ]
-    
-    if any(indicator in q for indicator in web_indicators):
+
+    # ── 1. SELF / MEMORY ──────────────────────────────────────────────────
+    if any(sig in q for sig in SELF_SIGNALS):
+        return "self"
+    if any(sig in q for sig in MEMORY_SIGNALS):
+        return "memory"
+
+    # ── 2. WEB SEARCH (checked BEFORE shell so "check price" never hits shell) ──
+    if any(sig in q for sig in WEB_SIGNALS):
         return "web"
-    
-    # ═══════════════════════════════════════════════════════
-    # FILE GENERATION
-    # ═══════════════════════════════════════════════════════
-    if any(w in q for w in ["create", "generate", "make", "write", "build"]):
-        if any(w in q for w in ["pdf", "document", "docx", "presentation", 
-                                 "pptx", "spreadsheet", "xlsx", "resume", 
-                                 "report", "website", "site", "page"]):
-            return "filegen"
-    
-    # ═══════════════════════════════════════════════════════
-    # FILE OPERATIONS
-    # ═══════════════════════════════════════════════════════
-    if any(w in q for w in ["read", "open", "show", "list", "view", "cat"]):
-        if any(w in q for w in ["file", "folder", "directory", "document"]):
-            return "file"
-    
-    # ═══════════════════════════════════════════════════════
-    # SHELL COMMANDS
-    # ═══════════════════════════════════════════════════════
-    if any(w in q for w in ["run", "execute", "command", "terminal", 
-                            "shell", "install", "npm", "pip", "git"]):
+
+    # ── 3. FILE GENERATION ────────────────────────────────────────────────
+    if _FILEGEN_PATTERN.search(query) or _FILEGEN_PATTERN_REV.search(query):
+        return "filegen"
+
+    # ── 4. FILE OPERATIONS ────────────────────────────────────────────────
+    if any(sig in q for sig in _FILE_OP_SIGNALS):
+        return "file"
+
+    # ── 5. SHELL COMMANDS ─────────────────────────────────────────────────
+    if any(sig in q for sig in SHELL_SIGNALS):
         return "shell"
-    
-    # ═══════════════════════════════════════════════════════
-    # DEFAULT: CHAT
-    # ═══════════════════════════════════════════════════════
+
+    # ── 6. DEFAULT: CHAT ──────────────────────────────────────────────────
     return "chat"
 
 
