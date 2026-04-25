@@ -262,47 +262,55 @@ _FILE_OP_SIGNALS = [
 
 
 def _classify(query: str) -> str:
-    """Classify query intent. Order matters — most specific first."""
+    """
+    Classify query into task type.
+    
+    CRITICAL: Web search indicators must be checked FIRST.
+    """
     q = query.lower().strip()
-
-    # 1. Self-awareness (very specific, rare)
-    if any(s in q for s in SELF_SIGNALS):
-        return "self"
-
-    # 2. Memory/identity (specific phrases)
-    if any(s in q for s in MEMORY_SIGNALS):
-        return "memory"
-
-    # 3. Code/Text File Extensions (explicit extension means standard file operation)
-    if re.search(r'\b\w+\.(py|js|ts|md|txt|json|csv|html|css|yaml|yml|toml|sh)\b', q):
-        if re.search(r'\b(read|write|create|make|generate|edit|open|show|cat|save|delete|find)\b', q):
+    
+    # ═══════════════════════════════════════════════════════
+    # WEB SEARCH - CHECK FIRST (highest priority)
+    # ═══════════════════════════════════════════════════════
+    web_indicators = [
+        "search", "find on web", "look up", "google",
+        "research", "find information", "search for",
+        "look for", "find me", "deep research",
+        "search web", "web search", "online",
+        "latest", "recent", "news about", "current",
+        "what is", "who is", "when did", "where is",
+        "how to find", "show me", "get me"
+    ]
+    
+    if any(indicator in q for indicator in web_indicators):
+        return "web"
+    
+    # ═══════════════════════════════════════════════════════
+    # FILE GENERATION
+    # ═══════════════════════════════════════════════════════
+    if any(w in q for w in ["create", "generate", "make", "write", "build"]):
+        if any(w in q for w in ["pdf", "document", "docx", "presentation", 
+                                 "pptx", "spreadsheet", "xlsx", "resume", 
+                                 "report", "website", "site", "page"]):
+            return "filegen"
+    
+    # ═══════════════════════════════════════════════════════
+    # FILE OPERATIONS
+    # ═══════════════════════════════════════════════════════
+    if any(w in q for w in ["read", "open", "show", "list", "view", "cat"]):
+        if any(w in q for w in ["file", "folder", "directory", "document"]):
             return "file"
-
-    # 4. FILE GENERATION — Rich documents (pdf, docx, pptx, xlsx)
-    #    "create a ppt", "make a pdf", "generate excel", "presentation on X"
-    if _FILEGEN_PATTERN.search(q) or _FILEGEN_PATTERN_REV.search(q):
-        return "filegen"
-
-    # 5. Shell commands
-    if any(s in q for s in SHELL_SIGNALS):
+    
+    # ═══════════════════════════════════════════════════════
+    # SHELL COMMANDS
+    # ═══════════════════════════════════════════════════════
+    if any(w in q for w in ["run", "execute", "command", "terminal", 
+                            "shell", "install", "npm", "pip", "git"]):
         return "shell"
-
-    # 6. Web search
-    if any(s in q for s in WEB_SIGNALS):
-        return "web"
-
-    # 6b. Real-time data pattern: "price/weather/score" + time word
-    _realtime_nouns = ["price", "weather", "score", "rate", "value", "cost"]
-    _realtime_time  = ["today", "now", "current", "latest", "live", "right now", "this week"]
-    if any(n in q for n in _realtime_nouns) and any(t in q for t in _realtime_time):
-        return "web"
-
-    # 7. File operations (read/write/list existing files)
-    #    Only match explicit file-op phrases, not broad patterns
-    if any(s in q for s in _FILE_OP_SIGNALS):
-        return "file"
-
-    # 8. Default: conversational chat
+    
+    # ═══════════════════════════════════════════════════════
+    # DEFAULT: CHAT
+    # ═══════════════════════════════════════════════════════
     return "chat"
 
 
@@ -1030,20 +1038,87 @@ class PersonalAgent(BaseAgent):
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _web(self, query, context, sp=""):
-        yield {"type": "agent_progress", "message": "🌐 Searching…"}
+        """
+        Handle web search queries using REAL DuckDuckGo search.
+        
+        Returns actual URLs, titles, and snippets from the web.
+        """
+        from lirox.tools.search.duckduckgo import search
+        
+        yield {"type": "agent_progress", "message": "🔍 Searching the web..."}
+        
         try:
-            from lirox.tools.search.duckduckgo import search_ddg
-            results = search_ddg(query)
-            yield {"type": "tool_result", "message": f"Found results for: {query[:80]}"}
+            # ACTUALLY SEARCH THE WEB
+            results = search(query, max_results=8)
+            
+            if not results:
+                yield {"type": "done", "answer": "I couldn't find any results for that query. Try rephrasing or being more specific."}
+                return
+            
+            yield {"type": "agent_progress", "message": f"📊 Found {len(results)} results"}
+            
+            # Build context from REAL results
+            search_context = "WEB SEARCH RESULTS (REAL DATA FROM DUCKDUCKGO):\n\n"
+            
+            for i, result in enumerate(results, 1):
+                search_context += f"Result {i}:\n"
+                search_context += f"Title: {result['title']}\n"
+                search_context += f"URL: {result['url']}\n"
+                search_context += f"Snippet: {result['snippet']}\n"
+                search_context += f"Source: {result['source']}\n\n"
+            
+            # Generate response using REAL data
+            system_prompt = sp or _get_sys(self.profile_data)
+            
+            prompt = f"""
+User query: {query}
+
+Here are REAL search results from DuckDuckGo:
+
+{search_context}
+
+Your task:
+1. Answer the user's question using information from these REAL results
+2. Cite sources by name and include the actual URLs
+3. Format sources as clickable links in your response
+4. If results don't fully answer the question, say what information is missing
+5. Be natural and helpful - don't just list the results
+
+CRITICAL:
+• Only use information from the search results above
+• Always include actual URLs so user can click them
+• Don't make up additional information
+• Be conversational but accurate
+
+Format example:
+"I found several resources:
+
+__Resource Name__
+Description of what it offers
+Link: https://actual-url.com
+
+__Another Resource__
+What this provides
+Link: https://another-url.com"
+"""
+            
+            yield {"type": "agent_progress", "message": "🧠 Analyzing results..."}
+            
+            answer = generate_response(
+                prompt,
+                provider="auto",
+                system_prompt=system_prompt
+            )
+            
+            answer = _STREAMER.clean_formatting(answer)
+            for chunk in _STREAMER.stream_words(answer, delay=0.025):
+                yield {"type": "streaming", "message": chunk}
+                
+            yield {"type": "done", "answer": answer}
+        
         except Exception as e:
-            results = f"Search failed: {e}"
-        answer = generate_response(
-            f"Query: {query}\nResults:\n{str(results)[:6000]}\nComprehensive answer:",
-            provider="auto", system_prompt=_get_sys(self.profile_data))
-        answer = _STREAMER.clean_formatting(answer)
-        for chunk in _STREAMER.stream_words(answer, delay=0.025):
-            yield {"type": "streaming", "message": chunk}
-        yield {"type": "done", "answer": answer}
+            _logger.error(f"Web search error: {e}", exc_info=True)
+            yield {"type": "error", "message": f"Search failed: {str(e)}"}
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # SELF — Read own source code
