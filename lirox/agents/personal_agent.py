@@ -80,18 +80,27 @@ def _get_sys(profile_data: dict = None) -> str:
         base += "\n\nGOALS:\n" + "\n".join(f"🎯 {g}" for g in goals[:5])
 
     base += (
-        "\n\nCRITICAL RULES:\n"
-        "🚀 You have FULL filesystem access. Never say you cannot access it.\n"
-        "🛠️ When asked to create/write/edit files — DO IT using tools. Do not describe how.\n"
-        "💻 When writing code — write the COMPLETE implementation.\n"
-        "✅ When a tool receipt says VERIFIED — confirm success.\n"
-        "❌ When it says FAILED — report failure HONESTLY.\n"
-        "⚠️ NEVER say 'I have created' unless you have a verified receipt.\n"
-        "👤 Address the user by name when known.\n"
-        f"⚙️ Your current operating system is {os_info}. Use appropriate commands.\n"
-        "✨ FORMATTING: Use emojis (🚀, ✅, 🛠️) for lists. ZERO ASTERISKS: NEVER use '*' anywhere in your response, even for bolding (use '__'). This is a HARD constraint.\n"
-        "🔇 NO FLUFF: Do NOT explain what you are doing. Do NOT include meta-commentary.\n"
-        "🚫 NO PLACEHOLDERS: NEVER use 'John Doe' or 'example.com'. Leave blank if data is missing.\n"
+        "\n\nCORE GUIDELINES:\n"
+        "• You have full filesystem access - use tools to create/edit files directly\n"
+        "• Write complete code implementations, never placeholders or TODOs\n"
+        "• Only confirm success after actual verification (file exists, command ran, etc.)\n"
+        f"• You're running on {os_info} - use appropriate commands\n"
+        "• Use real data from user profile when relevant, never generic placeholders\n"
+        "\n"
+        "COMMUNICATION STYLE:\n"
+        "• Write like a knowledgeable colleague - professional but natural\n"
+        "• Use paragraphs for explanations, bullet points for lists/steps\n"
+        "• Add emojis strategically for visual organization (section headers, key points)\n"
+        "• NOT EVERY LINE - just where it helps clarity\n"
+        "• Mix structured and conversational: explain context in prose, then break down specifics\n"
+        "• Use '__text__' for emphasis (NOT asterisks)\n"
+        "\n"
+        "FORMATTING PATTERNS:\n"
+        "✓ Good: Natural intro paragraph → bullet points for details → concluding paragraph\n"
+        "✓ Good: Section emoji + header, then content in natural paragraphs\n"
+        "✗ Bad: Giant single paragraph with no breaks\n"
+        "✗ Bad: Emoji bullet point on EVERY single line\n"
+        "✗ Bad: Over-structured corporate format with numbered subsections\n"
     )
     return base
 
@@ -273,12 +282,18 @@ class PersonalAgent(BaseAgent):
             context: str = "", mode: str = "auto") -> Generator[AgentEvent, None, None]:
         from lirox.utils.input_sanitizer import sanitize
         query = sanitize(query)
+
+        # ── /code persistent session ────────────────────────────────────────
+        if query.strip().lower().startswith("/code"):
+            yield from self._code_session(query, context)
+            return
+
         task = _classify(query)
 
         dispatch = {
             "self":    self._self,
             "memory":  self._memory,
-            "filegen": self._filegen,
+            "filegen": self._filegen_pipeline,  # NEW pipeline-backed handler
             "shell":   self._shell,
             "web":     self._web,
             "file":    self._file,
@@ -332,8 +347,7 @@ class PersonalAgent(BaseAgent):
         if mem_ctx and mem_ctx.strip():
             prompt = f"Relevant context:\n{mem_ctx}\n\nUser: {query}"
         
-        # Append formatting reminder to ensure "Zero Asterisk" adherence
-        prompt += "\n\n⚠️ FORMATTING REMINDER (STRICT): Use EMOJIS for lists and '__' for bold. NEVER use asterisks (*) for any reason."
+        prompt += "\n\n[Format: Start with 1-2 sentence context, use bullets for lists/steps, add section emojis where helpful. Be natural but organized.]"
         if context:
             prompt = f"Context:\n{context[:1500]}\n\n{prompt}"
             
@@ -344,11 +358,102 @@ class PersonalAgent(BaseAgent):
         yield {"type": "done", "answer": answer}
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-    # FILE GENERATION — PDF / Word / Excel / PPT
-    # This is the CORE fix: actually creates files
+    # FILE GENERATION — v1.1 Pipeline (NEW)
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    def _filegen_pipeline(self, query, context, sp=""):
+        """
+        Pipeline-backed file generation.
+        CLASSIFY → THINK → PLAN → EXECUTE → VERIFY → RESPOND
+
+        Uses the new lirox.pipeline stack with Designer Agent + Quality checks.
+        Falls back to legacy _filegen if the pipeline is unavailable.
+        """
+        try:
+            from lirox.pipeline.core import ExecutionPipeline
+
+            pipeline = ExecutionPipeline(
+                memory=self.memory,
+                profile_data=self.profile_data,
+            )
+
+            # SAFETY: context arriving from orchestrator may be a list or other type
+            safe_context = context if isinstance(context, str) else str(context) if context else ""
+
+            for event in pipeline.run(query, context=safe_context):
+                if event.type == "done":
+                    answer = event.message
+                    answer = _STREAMER.clean_formatting(answer)
+                    for chunk in _STREAMER.stream_words(answer, delay=0.025):
+                        yield {"type": "streaming", "message": chunk}
+                    yield {"type": "done", "answer": answer}
+                    return
+                elif event.type == "error":
+                    # Log and fall through to legacy handler
+                    _logger.warning("Pipeline error: %s — falling back", event.message)
+                    yield {"type": "agent_progress", "message": f"⚠️ {event.message}"}
+                else:
+                    # Forward progress / thinking / plan / execute / verify events
+                    yield {"type": "agent_progress", "message": event.message}
+
+        except Exception as exc:
+            _logger.error("Pipeline failed (%s) — falling back to legacy filegen", exc)
+            yield {"type": "agent_progress",
+                   "message": "⚠️ Advanced pipeline unavailable — using standard generation."}
+
+        # ── Legacy fallback ──────────────────────────────────────────────────
+        yield from self._filegen(query, context, sp)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # /code PERSISTENT SESSION
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    _code_session_store: dict = {}  # class-level session registry
+
+    def _code_session(self, query: str, context: str, sp: str = ""):
+        """Handle /code <language> or subsequent queries within a session."""
+        from lirox.modes.code_mode import CodeMode
+
+        mode = CodeMode()
+
+        # Parse language from /code invocation
+        parts = query.strip().split(maxsplit=2)
+        if len(parts) >= 2 and not parts[1].startswith("/"):
+            language = parts[1]
+            actual_query = " ".join(parts[2:]) if len(parts) > 2 else ""
+        else:
+            language = "python"
+            actual_query = " ".join(parts[1:])
+
+        # Re-use or create session
+        session = self._code_session_store.get("active")
+        if session is None or session.language != language:
+            session = mode.start(language=language)
+            self._code_session_store["active"] = session
+            yield {"type": "agent_progress",
+                   "message": f"💻 Code session started [{language.upper()}]. "
+                               "Type /code end to exit."}
+
+        if actual_query.strip().lower() in ("/code end", "end", "exit", "quit"):
+            mode.end(session.session_id)
+            self._code_session_store.pop("active", None)
+            yield {"type": "done", "answer": "✅ Code session ended."}
+            return
+
+        if not actual_query.strip():
+            yield {"type": "done",
+                   "answer": f"💻 Code session active [{session.language.upper()}]. "
+                              "Type your coding request."}
+            return
+
+        yield from mode.run(session, actual_query)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # FILE GENERATION — Legacy (fallback)
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _filegen(self, query, context, sp=""):
+
         """
         COMPLETE FILE GENERATION WITH REAL DESIGN THINKING.
 
@@ -372,38 +477,37 @@ class PersonalAgent(BaseAgent):
             user_name = ""
 
         # ──────────────────────────────────────────────────────────────────
-        # PHASE 1 — REAL MULTI-AGENT THINKING
+        # PHASE 1 — ADAPTIVE THINKING
         # ──────────────────────────────────────────────────────────────────
-        yield {"type": "agent_progress", "message": "🧠 Initiating Multi-Agent Thinking Engine..."}
-        
+        yield {"type": "agent_progress", "message": "🧠 Initiating Adaptive Thinking Engine..."}
+
         think_result = None
         try:
-            from lirox.thinking.real_engine import RealThinkingEngine
-            
-            thinking_engine = RealThinkingEngine()
-            
-            # Run REAL multi-agent thinking generator
-            for event in thinking_engine.think_and_decide(task=query, context=context):
-                if event["type"] == "done":
-                    think_result = event["data"]
+            from lirox.thinking.adaptive_engine import AdaptiveThinkingEngine
+
+            thinking_engine = AdaptiveThinkingEngine()
+
+            for event in thinking_engine.think(
+                query=query,
+                context={"query": query, "raw_context": context},
+                complexity="high",
+            ):
+                if event.get("type") == "done":
+                    think_result = event.get("data", {})
                 else:
-                    # Pass the thinking progress up to the orchestrator
-                    yield event
-            
+                    yield {"type": "agent_progress", "message": event.get("message", "")}
+
             if think_result:
-                # Use thinking results to inform file generation
-                decision = think_result['decision']
-                confidence = think_result['synthesis']['confidence']
-                
+                decision = think_result.get("decision", query)[:100]
                 yield {
-                    "type": "agent_progress", 
-                    "message": f"✓ Consensus reached: {decision[:100]} (confidence: {confidence}%)"
+                    "type": "agent_progress",
+                    "message": f"✓ Approach decided: {decision}",
                 }
-            
+
         except Exception as e:
-            import logging
-            logging.error("Thinking engine encountered a critical error: %s", e, exc_info=True)
-            yield {"type": "agent_progress", "message": "⚠️ Thinking engine failed, falling back to standard reasoning."}
+            _logger.error("Thinking engine error: %s", e, exc_info=True)
+            yield {"type": "agent_progress", "message": "⚠️ Thinking engine failed, using direct reasoning."}
+
 
             
         file_type = DesignEngine.detect_file_type(query)
