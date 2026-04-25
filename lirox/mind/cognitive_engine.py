@@ -1,4 +1,5 @@
 import json
+import logging
 import time
 import re
 from enum import Enum, auto
@@ -6,6 +7,8 @@ from dataclasses import dataclass, field
 from typing import List, Dict, Optional, Any, Tuple, Callable
 from collections import defaultdict
 import traceback
+
+_logger = logging.getLogger("lirox.mind.cognitive_engine")
 
 
 # ─────────────────────────────────────────────────────────────────────────────

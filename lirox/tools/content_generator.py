@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 import re
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, Generator, List, Optional
 
 _logger = logging.getLogger("lirox.tools.content_generator")
 
@@ -47,8 +47,10 @@ class ContentGenerator:
             system_prompt=system_prompt or strict_sys,
         )
 
+    def generate_slides(self, topic: str, num_slides: int = 8,
+                        context: str = "", structure_hints: Optional[List[str]] = None) -> List[Dict[str, Any]]:
         """Generate content slides for a PPTX presentation."""
-        
+
         hints_text = ""
         if structure_hints:
             hints_text = f"\nYou MUST use exactly these slide titles:\n" + "\n".join([f"- {h}" for h in structure_hints]) + "\n"
@@ -81,13 +83,11 @@ Output ONLY the JSON array, no other text."""
         if not structure_hints:
             yield {"type": "progress", "message": "Planning document structure..."}
             structure_hints = self._generate_structure(topic, num_sections, context)
-            
+
         for i, heading in enumerate(structure_hints):
             yield {"type": "progress", "message": f"Generating Section {i+1}/{len(structure_hints)}: {heading}..."}
             section = self._generate_single_section(topic, heading, i+1, len(structure_hints), context)
             yield {"type": "section", "data": section}
-
-
 
     def _generate_structure(self, topic: str, num: int, context: str) -> List[str]:
         prompt = f"Topic: {topic}\nContext: {context}\nGenerate {num} logical, high-impact section headings for a deep-dive report. Output ONLY a JSON list of strings."
