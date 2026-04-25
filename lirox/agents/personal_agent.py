@@ -30,78 +30,114 @@ _logger = logging.getLogger("lirox.personal_agent")
 # SYSTEM PROMPT BUILDER
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-def _get_sys(profile_data: dict = None) -> str:
-    profile_data = profile_data or {}
-    agent_name = profile_data.get("agent_name", "Lirox")
-    user_name  = profile_data.get("user_name", "")
-
-    # Collect Runtime Context
+def _get_sys(profile_data: Dict[str, Any]) -> str:
+    """
+    Build system prompt with user context.
+    
+    UPDATED: Natural tone, clear limitations, smart formatting.
+    """
     import platform
     import os
-    from lirox.utils.llm import available_providers
     
-    os_info = platform.system()
-    if os_info == "Darwin": os_info = "macOS"
+    # Detect OS
+    os_type = platform.system().lower()
+    os_info = {
+        "darwin": "macOS",
+        "linux": "Linux",
+        "windows": "Windows"
+    }.get(os_type, platform.system())
     
-    pinned = os.getenv("_LIROX_PINNED_MODEL", "auto")
-    ollama_model = os.getenv("OLLAMA_MODEL", "llama3")
+    # Get workspace
+    from lirox.config import WORKSPACE_DIR
     
-    runtime_lines = [
-        f"💻 OS: {os_info}",
-        f"🔌 Active Provider: {pinned}",
-    ]
-    if "ollama" in pinned or pinned == "auto":
-        runtime_lines.append(f"🧠 Local Model: {ollama_model}")
-    
-    runtime_ctx = "\n".join(runtime_lines)
-
-    try:
-        from lirox.mind.soul import LivingSoul
-        from lirox.mind.learnings import LearningsStore
-        soul = LivingSoul()
-        learnings = LearningsStore()
-        base = soul.to_system_prompt(learnings.to_context_string(), runtime_context=runtime_ctx)
-    except Exception:
-        base = (f"You are {agent_name}, a personal AI agent "
-                f"{'for ' + user_name if user_name else ''}. "
-                "You are direct, capable, and deeply personalized.")
-
-    profile_lines = []
-    for key, label in [("user_name", "User"), ("niche", "Work"),
-                       ("current_project", "Project"), ("profession", "Profession")]:
-        val = profile_data.get(key, "")
-        if val and val not in ("Operator", "Generalist"):
-            profile_lines.append(f"🔹 {label}: {val}")
-    if profile_lines and "USER PROFILE" not in base:
-        base += "\n\nUSER PROFILE:\n" + "\n".join(profile_lines)
-
-    goals = profile_data.get("goals", [])
-    if goals:
-        base += "\n\nGOALS:\n" + "\n".join(f"🎯 {g}" for g in goals[:5])
-
-    base += (
-        "\n\nCORE GUIDELINES:\n"
-        "• You have full filesystem access - use tools to create/edit files directly\n"
-        "• Write complete code implementations, never placeholders or TODOs\n"
-        "• Only confirm success after actual verification (file exists, command ran, etc.)\n"
-        f"• You're running on {os_info} - use appropriate commands\n"
-        "• Use real data from user profile when relevant, never generic placeholders\n"
-        "\n"
-        "COMMUNICATION STYLE:\n"
-        "• Write like a knowledgeable colleague - professional but natural\n"
-        "• Use paragraphs for explanations, bullet points for lists/steps\n"
-        "• Add emojis strategically for visual organization (section headers, key points)\n"
-        "• NOT EVERY LINE - just where it helps clarity\n"
-        "• Mix structured and conversational: explain context in prose, then break down specifics\n"
-        "• Use '__text__' for emphasis (NOT asterisks)\n"
-        "\n"
-        "FORMATTING PATTERNS:\n"
-        "✓ Good: Natural intro paragraph → bullet points for details → concluding paragraph\n"
-        "✓ Good: Section emoji + header, then content in natural paragraphs\n"
-        "✗ Bad: Giant single paragraph with no breaks\n"
-        "✗ Bad: Emoji bullet point on EVERY single line\n"
-        "✗ Bad: Over-structured corporate format with numbered subsections\n"
+    # Base identity
+    base = (
+        "You are Lirox, a personal AI agent focused on autonomous execution and learning.\n"
+        "You help with coding, file operations, research, and building projects.\n"
+        f"You have full access to the filesystem (workspace: {WORKSPACE_DIR}).\n"
+        f"You're running on {os_info}.\n"
     )
+    
+    # Add user context if available
+    user_name = profile_data.get("user_name", "")
+    if user_name and user_name.lower() not in ("king", "boss", "user", "operator"):
+        base += f"You're assisting {user_name}.\n"
+    
+    # Add user background (but don't spam it in every response)
+    user_role = profile_data.get("role", "")
+    user_company = profile_data.get("company", "")
+    if user_role or user_company:
+        context_parts = []
+        if user_company:
+            context_parts.append(f"at {user_company}")
+        if user_role:
+            context_parts.append(f"working as {user_role}")
+        if context_parts:
+            base += f"They're {' '.join(context_parts)}.\n"
+    
+    # Core operational rules
+    base += (
+        "\n"
+        "CORE CAPABILITIES:\n"
+        "• Execute shell commands and verify results\n"
+        "• Create/edit files directly on the system\n"
+        "• Search the web for current information\n"
+        "• Generate documents (PDF, DOCX, XLSX, PPTX)\n"
+        "• Write complete code implementations\n"
+        "\n"
+        "CRITICAL LIMITATIONS:\n"
+        "• You CANNOT view images (JPEG, PNG, etc.) - you can only read text files\n"
+        "• If user shares an image path, tell them clearly: 'I can't view images yet. Can you describe what's in it or share it as text/PDF?'\n"
+        "• Never say 'I cannot see the image' repeatedly - say it ONCE then ask for alternatives\n"
+        "\n"
+        "EXECUTION RULES:\n"
+        "• Only confirm success after actual verification (file exists, command ran, etc.)\n"
+        "• Report failures honestly - never pretend something worked\n"
+        "• Write complete implementations - no TODOs or placeholders\n"
+        "• Use real data when available, never 'John Doe' or 'example.com'\n"
+        "\n"
+        "COMMUNICATION STYLE - CRITICAL:\n"
+        "• MATCH THE USER'S TONE:\n"
+        "  - If they're casual/friendly → be conversational and relaxed\n"
+        "  - If they use slang or another language → acknowledge it naturally\n"
+        "  - If they're formal/professional → be professional back\n"
+        "  - If they're stressed/urgent → be direct and helpful\n"
+        "\n"
+        "• FORMATTING BALANCE:\n"
+        "  - Mix paragraphs and bullet points naturally\n"
+        "  - Use emojis for section headers and visual breaks (NOT every line)\n"
+        "  - Write in prose when explaining, use bullets for lists/steps\n"
+        "  - Use '__text__' for emphasis (NEVER use asterisks)\n"
+        "\n"
+        "• GOOD RESPONSE PATTERN:\n"
+        "  [Brief context paragraph]\n"
+        "  \n"
+        "  🎯 __Section Header__ (only when needed)\n"
+        "  • Point one\n"
+        "  • Point two\n"
+        "  \n"
+        "  [Concluding paragraph or next steps]\n"
+        "\n"
+        "• AVOID:\n"
+        "  ✗ Giant single paragraphs with no breaks\n"
+        "  ✗ Emoji on every single line (🔹 like this 🔹 every 🔹 time)\n"
+        "  ✗ Over-structured corporate format (### headers everywhere)\n"
+        "  ✗ Repetitive responses - vary your approach each time\n"
+        "  ✗ Robotic language like 'I am operating at full capacity'\n"
+        "\n"
+        "• BE NATURAL:\n"
+        "  ✓ 'Hey! All good. What's up?' (if they're casual)\n"
+        "  ✓ 'Sure, I can help with that.' (not 'I shall assist you')\n"
+        "  ✓ 'Got it - let me create that for you.' (not 'Acknowledged')\n"
+        "\n"
+        "MEMORY & LEARNING:\n"
+        "• Remember what the user tells you (education, projects, preferences)\n"
+        "• Don't ask for the same information twice\n"
+        "• Build on previous context naturally\n"
+        "• If they mention they're a student, remember their field/university\n"
+        "• If they share project details, reference them in future conversations\n"
+    )
+    
     return base
 
 
@@ -347,11 +383,53 @@ class PersonalAgent(BaseAgent):
         if mem_ctx and mem_ctx.strip():
             prompt = f"Relevant context:\n{mem_ctx}\n\nUser: {query}"
         
-        prompt += "\n\n[Format: Start with 1-2 sentence context, use bullets for lists/steps, add section emojis where helpful. Be natural but organized.]"
+        # Add tone matching based on user's message
+        user_is_casual = any(word in query.lower() for word in ['hey', 'yo', 'sup', "what's up", 'wassup', 'hi', 'hello'])
+        user_is_urgent = any(word in query.lower() for word in ['urgent', 'asap', 'quick', 'emergency', 'help!', 'now'])
+        user_is_multilingual = any(ord(c) > 127 for c in query)  # Non-ASCII chars = another language
+
+        tone_guidance = ""
+        if user_is_casual:
+            tone_guidance = "\n[User is being casual/friendly - match their relaxed tone. No corporate speak.]"
+        elif user_is_urgent:
+            tone_guidance = "\n[User needs quick help - be direct and concise.]"
+        elif user_is_multilingual:
+            tone_guidance = "\n[User may be speaking another language - acknowledge it naturally if relevant.]"
+
+        prompt += tone_guidance
+        prompt += "\n[Format: Natural paragraphs + strategic bullets. Emojis for sections only, not every line. Use '__' for emphasis.]"
+
         if context:
             prompt = f"Context:\n{context[:1500]}\n\n{prompt}"
             
         answer = generate_response(prompt, provider="auto", system_prompt=base_sys)
+
+        # ANTI-REPETITION CHECK
+        # If this response is too similar to last response, regenerate with variation
+        if hasattr(self, '_last_response') and self._last_response:
+            from lirox.quality.similarity import calculate_similarity
+            
+            similarity = calculate_similarity(answer, self._last_response)
+            
+            if similarity > 0.75 and len(answer) > 300:
+                # Too similar, regenerate with anti-repetition instruction
+                varied_prompt = prompt + "\n\n[IMPORTANT: Your last response was similar to this. Vary your approach - try a different structure, different examples, or different angle.]"
+                
+                answer = generate_response(
+                    varied_prompt,
+                    provider="auto",
+                    system_prompt=base_sys,
+                )
+
+        # Store this response for next comparison
+        self._last_response = answer
+
+        # Extract and store facts automatically
+        try:
+            self._extract_and_store_facts(query, answer)
+        except Exception:
+            pass  # Don't break chat if extraction fails
+
         answer = _STREAMER.clean_formatting(answer)
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
@@ -1097,3 +1175,99 @@ class PersonalAgent(BaseAgent):
         for chunk in _STREAMER.stream_words(answer, delay=0.025):
             yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
+
+    def _extract_and_store_facts(self, query: str, response: str):
+        """
+        Automatically extract facts from conversation and store in memory.
+        
+        Examples:
+        - "I'm in BCA at Punjab University" → store education info
+        - "I'm working on Lirox" → store project info
+        - "I prefer dark theme" → store preference
+        """
+        from lirox.utils.llm import generate_response
+        
+        # Quick heuristic check - only extract if user is sharing info about themselves
+        personal_indicators = [
+            "i'm", "i am", "my", "i study", "i work", "i prefer",
+            "i like", "i'm building", "i'm working on", "i'm in"
+        ]
+        
+        query_lower = query.lower()
+        if not any(ind in query_lower for ind in personal_indicators):
+            return  # No personal info to extract
+        
+        # Use LLM to extract facts
+        extract_prompt = f"""
+Extract factual information about the user from this conversation:
+
+User said: {query}
+Assistant response: {response[:200]}
+
+Extract any facts about:
+- Education (university, degree, year, subjects)
+- Projects (what they're building, technologies used)
+- Preferences (favorite tools, work style, interests)
+- Background (role, company, experience)
+
+Format as JSON:
+{{
+  "education": "...",
+  "projects": ["...", "..."],
+  "preferences": "...",
+  "background": "..."
+}}
+
+If no relevant facts, return empty object {{}}.
+Output ONLY JSON, no explanation.
+"""
+        
+        try:
+            facts_json = generate_response(
+                extract_prompt,
+                provider="auto",
+                system_prompt="Extract user facts precisely. Output only JSON."
+            )
+            
+            # Clean and parse
+            facts_json = facts_json.replace("```json", "").replace("```", "").strip()
+            import json
+            facts = json.loads(facts_json)
+            
+            # Store each fact type
+            if facts.get("education"):
+                self.memory.add_exchange(
+                    "user", 
+                    f"FACT: Education - {facts['education']}", 
+                    "system",
+                    "Stored"
+                )
+            
+            if facts.get("projects"):
+                for project in facts["projects"]:
+                    self.memory.add_exchange(
+                        "user",
+                        f"FACT: Project - {project}",
+                        "system",
+                        "Stored"
+                    )
+            
+            if facts.get("preferences"):
+                self.memory.add_exchange(
+                    "user",
+                    f"FACT: Preference - {facts['preferences']}",
+                    "system",
+                    "Stored"
+                )
+            
+            if facts.get("background"):
+                self.memory.add_exchange(
+                    "user",
+                    f"FACT: Background - {facts['background']}",
+                    "system",
+                    "Stored"
+                )
+        
+        except Exception as e:
+            # Silent fail - fact extraction is optional
+            pass
