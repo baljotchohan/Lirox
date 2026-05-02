@@ -8,7 +8,7 @@ from typing import Any, Dict, Optional
 
 from lirox.execution.generator import CodeGenerator, GeneratedCode
 from lirox.execution.runner import CodeRunner, RunResult
-from lirox.learning.manager import LearningManager
+
 from lirox.safety.audit import log_audit_event
 from lirox.tools.document_creators import create_docx, create_pdf
 
@@ -95,12 +95,7 @@ def execute_vertical_slice(req: VerticalSliceRequest) -> VerticalSliceResult:
 
     learning_stats: Dict[str, Any] = {}
     if req.train_learning:
-        try:
-            lm = LearningManager(provider=req.provider, use_db=True)
-            convo = f"User: {req.description}\nAssistant: {summary[:3000]}"
-            learning_stats = lm.train_from_text(convo)
-        except Exception:
-            learning_stats = {}
+        learning_stats = {}
 
     return VerticalSliceResult(
         ok=True,

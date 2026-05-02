@@ -46,7 +46,6 @@ DEFAULT_SYSTEM = (
     "CRITICAL: Do not explain your actions. Simply perform the requested task."
 )
 
-_LLM_TIMEOUT  = 90
 
 class _LRUCache(OrderedDict):
     """Simple LRU cache with max size (FIX-17)."""
@@ -85,7 +84,7 @@ def _hash_prompt(text: str) -> str:
     return hashlib.md5(text.strip().lower().encode()).hexdigest()[:16]
 
 
-def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "gpt-4o") -> str:
+def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "gpt-4o", timeout: int = 90) -> str:
     api_key = _get_api_key("openai")
     if not api_key:
         return "OpenAI API key missing."
@@ -96,7 +95,7 @@ def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "
             json={"model": model, "messages": [
                 {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
                 {"role": "user",   "content": prompt}]},
-            timeout=_LLM_TIMEOUT)
+            timeout=timeout)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except requests.exceptions.HTTPError as e:
@@ -108,7 +107,7 @@ def openai_call(prompt: str, system_prompt: Optional[str] = None, model: str = "
         return f"OpenAI Error: {e}"
 
 
-def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
+def gemini_call(prompt: str, system_prompt: Optional[str] = None, timeout: int = 90) -> str:
     api_key = _get_api_key("gemini")
     if not api_key:
         return "Gemini API key missing."
@@ -134,7 +133,7 @@ def gemini_call(prompt: str, system_prompt: Optional[str] = None) -> str:
 
 
 def groq_call(prompt: str, system_prompt: Optional[str] = None,
-              model: str = "llama-3.3-70b-versatile") -> str:
+               model: str = "llama-3.3-70b-versatile", timeout: int = 90) -> str:
     api_key = _get_api_key("groq")
     if not api_key:
         return "Groq API key missing."
@@ -145,7 +144,7 @@ def groq_call(prompt: str, system_prompt: Optional[str] = None,
             json={"model": model, "messages": [
                 {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
                 {"role": "user",   "content": prompt}]},
-            timeout=_LLM_TIMEOUT)
+            timeout=timeout)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except requests.exceptions.HTTPError as e:
@@ -158,7 +157,7 @@ def groq_call(prompt: str, system_prompt: Optional[str] = None,
 
 
 def openrouter_call(prompt: str, system_prompt: Optional[str] = None,
-                    model: str = "mistralai/mistral-7b-instruct:free") -> str:
+                    model: str = "mistralai/mistral-7b-instruct:free", timeout: int = 90) -> str:
     api_key = _get_api_key("openrouter")
     if not api_key:
         return "OpenRouter API key missing."
@@ -170,7 +169,7 @@ def openrouter_call(prompt: str, system_prompt: Optional[str] = None,
             json={"model": model, "messages": [
                 {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
                 {"role": "user",   "content": prompt}]},
-            timeout=_LLM_TIMEOUT)
+            timeout=timeout)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except requests.exceptions.HTTPError as e:
@@ -183,7 +182,7 @@ def openrouter_call(prompt: str, system_prompt: Optional[str] = None,
 
 
 def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
-                  model: str = "deepseek-chat") -> str:
+                  model: str = "deepseek-chat", timeout: int = 90) -> str:
     api_key = _get_api_key("deepseek")
     if not api_key:
         return "DeepSeek API key missing."
@@ -194,7 +193,7 @@ def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
             json={"model": model, "messages": [
                 {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
                 {"role": "user",   "content": prompt}]},
-            timeout=_LLM_TIMEOUT)
+            timeout=timeout)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except requests.exceptions.HTTPError as e:
@@ -207,7 +206,7 @@ def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
 
 
 def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
-                model: str = "meta/llama-3.1-405b-instruct") -> str:
+                model: str = "meta/llama-3.1-405b-instruct", timeout: int = 90) -> str:
     api_key = _get_api_key("nvidia")
     if not api_key:
         return "NVIDIA API key missing."
@@ -218,7 +217,7 @@ def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
             json={"model": model, "messages": [
                 {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
                 {"role": "user",   "content": prompt}]},
-            timeout=_LLM_TIMEOUT)
+            timeout=timeout)
         res.raise_for_status()
         return res.json()["choices"][0]["message"]["content"]
     except requests.exceptions.HTTPError as e:
@@ -230,7 +229,7 @@ def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
         return f"NVIDIA Error: {e}"
 
 
-def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = None) -> str:
+def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = None, timeout: int = 120) -> str:
     import gc
     endpoint = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
     model    = model or os.getenv("OLLAMA_MODEL", "llama3")
@@ -250,7 +249,7 @@ def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
                 "stream": False,
                 "options": _OLLAMA_OPTIONS
             },
-            timeout=120)
+            timeout=timeout)
         res.raise_for_status()
         return res.json().get("message", {}).get("content", "Ollama Error: empty response")
     except requests.exceptions.ConnectionError:
@@ -266,7 +265,7 @@ def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
         gc.collect()
 
 
-def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = None) -> str:
+def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = None, timeout: int = 120) -> str:
     import gc
     endpoint    = os.getenv("HF_BNB_ENDPOINT", "http://localhost:11435")
     full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
@@ -274,7 +273,7 @@ def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
         res = requests.post(
             f"{endpoint}/api/generate",
             json={"prompt": full_prompt, "options": _OLLAMA_OPTIONS},
-            timeout=120)
+            timeout=timeout)
         res.raise_for_status()
         return res.json().get("response", "HF BNB Error: empty response")
     except requests.exceptions.ConnectionError:
@@ -286,7 +285,7 @@ def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
 
 
 def anthropic_call(prompt: str, system_prompt: Optional[str] = None,
-                   model: str = "claude-3-5-haiku-20241022") -> str:
+                   model: str = "claude-3-5-haiku-20241022", timeout: int = 90) -> str:
     api_key = _get_api_key("anthropic")
     if not api_key:
         return "Anthropic API key missing."
@@ -310,7 +309,7 @@ def anthropic_call(prompt: str, system_prompt: Optional[str] = None,
             json={"model": model, "max_tokens": 4096,
                   "system": system_prompt or DEFAULT_SYSTEM,
                   "messages": [{"role": "user", "content": prompt}]},
-            timeout=_LLM_TIMEOUT)
+            timeout=timeout)
         res.raise_for_status()
         return res.json()["content"][0]["text"]
     except requests.exceptions.HTTPError as e:
@@ -468,7 +467,7 @@ def is_task_request(user_input: str, provider: str = "auto") -> bool:
 
 
 def generate_response(prompt: str, provider: str = "auto",
-                      system_prompt: str = None,
+                      system_prompt: Optional[str] = None,
                       timeout: Optional[int] = None) -> str:
     # 🚨 ZERO ASTERISK ENFORCEMENT 🚨
     # Inject policy into system prompt
@@ -498,7 +497,7 @@ def generate_response(prompt: str, provider: str = "auto",
             checker = _is_ollama_available if local == "ollama" else _is_hf_bnb_available
             if checker():
                 try:
-                    future = _get_pool().submit(_call_provider, local, prompt, system_prompt)
+                    future = _get_pool().submit(_call_provider, local, prompt, system_prompt, timeout)
                     resp   = future.result(timeout=timeout)
                     if not is_error_response(resp):
                         return resp
@@ -527,7 +526,7 @@ def generate_response(prompt: str, provider: str = "auto",
 
     response = None
     try:
-        future   = _get_pool().submit(_call_provider, provider, prompt, system_prompt)
+        future   = _get_pool().submit(_call_provider, provider, prompt, system_prompt, timeout)
         response = future.result(timeout=timeout)
     except concurrent.futures.TimeoutError:
         return f"Error: LLM API timed out after {timeout}s"
@@ -561,7 +560,7 @@ def generate_response(prompt: str, provider: str = "auto",
                 from lirox.utils.rate_limiter import api_limiter
                 if not api_limiter.is_allowed(fb):
                     continue  # skip rate-limited provider WITHOUT incrementing attempt
-                future = _get_pool().submit(_call_provider, fb, prompt, system_prompt)
+                future = _get_pool().submit(_call_provider, fb, prompt, system_prompt, timeout)
                 retry = future.result(timeout=timeout)
                 attempt += 1  # increment only after an actual call attempt
                 if not is_error_response(retry):
@@ -575,7 +574,7 @@ def generate_response(prompt: str, provider: str = "auto",
     return response or "Error: All providers failed."
 
 
-def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> str:
+def _call_provider(provider: str, prompt: str, system_prompt: Optional[str], timeout: int = 90) -> str:
     from lirox.utils.rate_limiter import api_limiter, sys_monitor
     if not api_limiter.is_allowed(provider):
         return f"Rate limit exceeded: {provider}"
@@ -591,4 +590,6 @@ def _call_provider(provider: str, prompt: str, system_prompt: Optional[str]) -> 
         "ollama": ollama_call, "hf_bnb": hf_bnb_call,
     }
     fn = dispatch.get(provider)
-    return fn(prompt, system_prompt) if fn else f"Unknown provider: {provider}"
+    return fn(prompt, system_prompt, timeout=timeout) if fn else f"Unknown provider: {provider}"
+
+# EOF

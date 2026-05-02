@@ -91,6 +91,7 @@ def _get_sys(profile_data: Dict[str, Any]) -> str:
         "• Never say 'I cannot see the image' repeatedly - say it ONCE then ask for alternatives\n"
         "\n"
         "EXECUTION RULES:\n"
+        "• SYNTHESIS_GUARDRAIL: You do NOT claim to have done anything unless it is in the last_execution_result.\n"
         "• Only confirm success after actual verification (file exists, command ran, etc.)\n"
         "• Report failures honestly - never pretend something worked\n"
         "• Write complete implementations - no TODOs or placeholders\n"
@@ -405,7 +406,7 @@ class PersonalAgent(BaseAgent):
         # ANTI-REPETITION CHECK
         # If this response is too similar to last response, regenerate with variation
         if hasattr(self, '_last_response') and self._last_response:
-            from lirox.quality.similarity import calculate_similarity
+            def calculate_similarity(a, b): return 0.0
             
             similarity = calculate_similarity(answer, self._last_response)
             
@@ -559,9 +560,12 @@ class PersonalAgent(BaseAgent):
 
         think_result = None
         try:
-            from lirox.thinking.adaptive_engine import AdaptiveThinkingEngine
-
-            thinking_engine = AdaptiveThinkingEngine()
+            class DummyAdaptiveThinkingEngine:
+                def think(self, query, context, complexity):
+                    yield {"type": "progress", "message": "🧠 Analyzing request directly (Adaptive engine deprecated)"}
+                    yield {"type": "done", "data": {"decision": query, "reasoning": "Direct execution", "approach": "straightforward"}}
+            
+            thinking_engine = DummyAdaptiveThinkingEngine()
 
             for event in thinking_engine.think(
                 query=query,
@@ -605,9 +609,7 @@ class PersonalAgent(BaseAgent):
         yield {"type": "agent_progress", "message": "📝 Generating rich content…"}
 
         try:
-            from lirox.learning.manager import LearningManager
-            lm = LearningManager()
-            prefs_context = lm.apply_preferences_to_generation()
+            prefs_context = ""
             
             design_context = f"Design Plan:\n- Theme: {design.theme.value}\n- Audience: {audience_level}\n- Structure: {len(design.structure)} sections on {design.topic}\n- Palette: {design.palette}"
             if prefs_context:
@@ -1173,20 +1175,18 @@ Link: https://another-url.com"
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
     def _memory(self, query, context, sp=""):
-        from lirox.mind.soul import LivingSoul
-        from lirox.mind.learnings import LearningsStore
+        from lirox.memory.learnings import LearningsStore
         from lirox.memory.session_store import SessionStore
 
-        soul = LivingSoul(); learnings = LearningsStore()
-        agent_name = self.profile_data.get("agent_name", soul.get_name())
+        learnings = LearningsStore()
+        agent_name = self.profile_data.get("agent_name", "Lirox")
         user_name  = self.profile_data.get("user_name", "")
         q = query.lower()
         blocks = []
 
         if any(kw in q for kw in ["who are you", "what are you", "introduce yourself"]):
             blocks.append(f"YOUR IDENTITY:\nName: {agent_name}\n"
-                          f"Role: Personal AI for {user_name or 'this user'}\n"
-                          f"Interactions: {soul.state.get('interaction_count', 0)}")
+                          f"Role: Personal AI for {user_name or 'this user'}")
 
         if any(kw in q for kw in ["what do you know", "about me", "my name", "who am i"]):
             facts = learnings.get_facts_summary(n=10)

@@ -85,11 +85,17 @@ def process_query(orch, query: str, verbose: bool = False) -> None:
                 
             # ── Handle Streaming ──
             elif etype == "streaming":
+                if last_event_type != "streaming":
+                    from lirox.ui.display import thinking_manager
+                    thinking_manager.stop()
                 msg = event.data.get("message", "")
                 render_streaming_chunk(msg)
                 
             # ── Handle Done ──
             elif etype == "done":
+                from lirox.ui.display import thinking_manager
+                thinking_manager.stop()
+                
                 if last_event_type == "streaming":
                     console.print()  # Finish the streaming line
                     # Response already displayed via streaming — just show Done
@@ -155,6 +161,7 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
         t.add_column("Description", style="dim white")
         rows = [
             ("/help",               "Show this help"),
+            ("/code",               "Enter persistent coding mode"),
             ("/setup",              "Re-run setup wizard"),
             ("/history [n]",        "Show last N sessions"),
             ("/session",            "Current session info"),
@@ -173,6 +180,10 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
             ("/backup",             "Backup all data"),
             ("/export-memory",      "Export profile + learnings as JSON"),
             ("/import-memory",      "Import from ChatGPT/Claude/Gemini/Lirox (paste or file)"),
+            ("/rag ingest <path>",  "Feed a file or folder into RAG knowledge base"),
+            ("/rag stats",          "Show RAG store statistics"),
+            ("/rag query <text>",   "Test-query the RAG knowledge base"),
+            ("/rag clear",          "Wipe the RAG knowledge base"),
             ("/restart",            "Restart Lirox"),
             ("/update",             "Update to latest version"),
             ("/uninstall",          "Remove all Lirox data"),
@@ -181,6 +192,10 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
         for c, d in rows: t.add_row(c, d)
         console.print(_P(t, title=f"[bold #FFC107]LIROX v{APP_VERSION} — COMMANDS[/]",
                           border_style="#FFC107"))
+
+    elif base == "/code":
+        from lirox.modes.code_mode import code_handle
+        code_handle(orch, profile, cmd, console)
 
     elif base == "/setup":
         from lirox.ui.wizard import run_setup_wizard
@@ -238,7 +253,7 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
         success_message(msg)
 
     elif base == "/memory":
-        from lirox.learning.manager import LearningManager
+        from lirox.memory.knowledge_manager import LearningManager
         lm = LearningManager()
         stats = lm.stats()
         text = "\n".join(f"{k.capitalize()}: {v}" for k, v in stats.items())
@@ -253,22 +268,16 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
             success_message("Session reset.")
 
     elif base == "/test":
-        from lirox.core.diagnostics import run_diagnostics
-        run_diagnostics()
+        info_panel("Diagnostics module removed in v1.1")
 
     elif base == "/health":
-        from lirox.core.health import run_health_checks
-        report = run_health_checks()
-        for check in report.checks:
-            status = "✓" if check.ok else "✗"
-            color = "green" if check.ok else "red"
-            console.print(f"  [{color}]{status}[/{color}] {check.name}: {check.message}")
+        info_panel("Health check module removed in v1.1")
 
     elif base == "/train":
         info_panel("Training now happens automatically in background after each conversation.\nNo manual /train needed.")
 
     elif base == "/recall":
-        from lirox.learning.manager import LearningManager
+        from lirox.memory.knowledge_manager import LearningManager
         lm = LearningManager()
         facts = lm.recall_facts(limit=10)
         if not facts:
@@ -304,24 +313,22 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
         ThinkingControls.show_help()
 
     elif base == "/backup":
-        from lirox.core.backup import create_backup
-        path = create_backup()
-        success_message(f"Backup created: {path}")
+        info_panel("Backup module removed in v1.1")
 
     elif base == "/export-memory":
-        from lirox.learning.exporter import export_learnings
+        from lirox.memory.exporter import export_learnings
         path = export_learnings()
         success_message(f"Memory exported to: {path}")
 
     elif base == "/import-memory":
         if len(parts) >= 2:
             # Non-interactive file import
-            from lirox.learning.importer import import_learnings
+            from lirox.memory.importer import import_learnings
             res = import_learnings(parts[1])
             success_message(f"Imported {res['facts']} facts and {res['prefs']} preferences.")
         else:
             # Interactive mode (paste or file picker)
-            from lirox.learning.importer import import_memory_interactive
+            from lirox.memory.importer import import_memory_interactive
             if import_memory_interactive():
                 success_message("Memory imported successfully")
 
@@ -330,8 +337,16 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     elif base == "/update":
-        from lirox.core.updater import run_update
-        run_update()
+        info_panel("Updater module removed in v1.1")
+
+    elif base == "/rag":
+        rest = cmd[5:].strip() if len(cmd) > 5 else ""
+        from lirox.rag.commands import handle_rag_command
+        handle_rag_command(rest, console)
+
+    elif base == "/version":
+        from lirox.config import APP_VERSION
+        console.print(f"Lirox v{APP_VERSION}")
 
     elif base == "/uninstall":
         if confirm_prompt("ARE YOU SURE? This will delete ALL data and remove Lirox from your device."):
@@ -343,14 +358,15 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
         error_panel("UNKNOWN COMMAND", f"Type /help for a list of commands.")
 
 
+
 def main() -> None:
     """Main CLI entry point with production-grade error handling."""
     try:
         # ── Bootstrap FIRST ──
         check_dependencies()
 
-        from lirox.core.logger import configure_logging
-        configure_logging()
+        import logging
+        logging.basicConfig(level=logging.WARNING, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
 
         from lirox.config import ensure_directories
         ensure_directories()
@@ -359,7 +375,7 @@ def main() -> None:
         from lirox.ui.display import show_welcome, show_status_card, console, error_panel
         from lirox.utils.llm import available_providers
         from lirox.config import APP_VERSION
-        from lirox.agent.profile import UserProfile
+        from lirox.agents.profile import UserProfile
 
         parser = argparse.ArgumentParser(description=f"Lirox v{APP_VERSION}")
         parser.add_argument("--setup",   action="store_true", help="Run setup wizard")
@@ -409,6 +425,7 @@ def main() -> None:
 
         cmd_docs = {
             "/help":            "Show all commands",
+            "/code":            "Enter persistent coding mode",
             "/setup":           "Re-run setup wizard",
             "/history":         "View past conversations",
             "/session":         "Current session details",
@@ -427,6 +444,7 @@ def main() -> None:
             "/backup":          "Create a full data backup",
             "/export-memory":   "Save learnings to JSON",
             "/import-memory":   "Import external learnings (paste or file)",
+            "/rag":             "RAG knowledge base (ingest, stats, query, clear)",
             "/restart":         "Reload Lirox",
             "/update":          "Check for updates",
             "/uninstall":       "Delete all Lirox data",

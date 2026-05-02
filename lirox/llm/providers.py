@@ -4,7 +4,11 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Dict, Generator, List, Optional
 
-from lirox.core.errors import ProviderError
+class ProviderError(Exception):
+    def __init__(self, provider: str, message: str, retryable: bool = False):
+        super().__init__(f"[{provider}] {message}")
+        self.provider = provider
+        self.retryable = retryable
 
 
 @dataclass

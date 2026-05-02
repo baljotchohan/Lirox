@@ -22,6 +22,15 @@ class OrchestratorEvent:
     timestamp: float = field(default_factory=time.time)
 
 
+CONTINUATION_TOKENS = {"ok", "yes", "continue", "proceed", "do it", "go ahead", "sure", "ok continue"}
+
+@dataclass
+class PendingAction:
+    agent: str
+    action_type: str
+    context: Dict[str, Any]
+    timestamp: float = field(default_factory=time.time)
+
 class MasterOrchestrator:
     def __init__(self, profile_data: Dict[str, Any] = None):
         self.profile_data    = profile_data or {}
@@ -29,7 +38,9 @@ class MasterOrchestrator:
         self.global_memory   = MemoryManager()
         self.session_store   = SessionStore()
         self._agent:         Optional[Any] = None
+        self._rag_retriever: Optional[Any] = None
         self._interaction_count: int = 0
+        self.pending_action: Optional[PendingAction] = None
 
     def _get_agent(self):
         if self._agent is None:
@@ -38,6 +49,17 @@ class MasterOrchestrator:
                 memory=self.global_memory,
                 profile_data=self.profile_data)
         return self._agent
+
+    def _get_rag_retriever(self):
+        """Lazy-init RAG retriever so import cost is paid only when needed."""
+        if self._rag_retriever is None:
+            try:
+                from lirox.rag.retriever import RAGRetriever
+                self._rag_retriever = RAGRetriever()
+            except Exception as e:
+                _logger.warning("RAG retriever unavailable: %s", e)
+                self._rag_retriever = False  # sentinel: don't retry
+        return self._rag_retriever if self._rag_retriever is not False else None
 
     def _get_recent_context(self, limit: int = 3) -> str:
         try:
@@ -87,6 +109,23 @@ class MasterOrchestrator:
     def run(self, query: str) -> Generator[OrchestratorEvent, None, None]:
         start = time.time()
         self._interaction_count += 1
+
+        # ── Pending action handling ─────────────────────────────────────────
+        # If the previous response promised an action and the user just said
+        # "ok"/"continue"/"yes", execute the previously promised action instead
+        # of running classification again from scratch.
+        q_norm = query.strip().lower().rstrip("!.?")
+        if self.pending_action and q_norm in CONTINUATION_TOKENS:
+            original = self.pending_action.context.get("original_query", query)
+            self.pending_action = None  # one-shot; consume it
+            yield OrchestratorEvent(
+                type="info", message=f"Continuing previous task: {original[:60]}…"
+            )
+            # Re-enter run() with the original promised query
+            yield from self.run(original)
+            return
+        # ────────────────────────────────────────────────────────────────────
+
         session = self.session_store.current()
         session.add("user", query, agent="personal")
 
@@ -100,6 +139,16 @@ class MasterOrchestrator:
 
         # ── Agent execution ───────────────────────────────────────────────────
         full_context = context
+
+        # Inject RAG context if available
+        try:
+            rag = self._get_rag_retriever()
+            if rag and not rag.is_empty:
+                rag_ctx = rag.retrieve(query, n_results=5)
+                if rag_ctx:
+                    full_context = f"{full_context}\n\n{rag_ctx}" if full_context else rag_ctx
+        except Exception as e:
+            _logger.debug("RAG retrieval skipped: %s", e)
         agent = self._get_agent()
         result_text = ""
         last_thinking_result = None
@@ -145,6 +194,26 @@ class MasterOrchestrator:
         done_data = {"total_time": time.time() - start}
         if last_thinking_result:
             done_data["thinking_result"] = last_thinking_result
+
+        # ── Capture promised future action so "ok continue" works ──────────────
+        import re as _re
+        PROMISE_RE = _re.compile(
+            r"\b(I'?ll|I will|let me|I can|I'?m going to|I will go ahead and)\s+"
+            r"(create|generate|build|write|make|set up|put together|draft|prepare)\b",
+            _re.IGNORECASE,
+        )
+        if result_text and PROMISE_RE.search(result_text):
+            self.pending_action = PendingAction(
+                agent="personal",
+                action_type="execute_promise",
+                context={"original_query": query, "promise_text": result_text[:500]},
+            )
+        else:
+            # Clear stale pending action if a new turn produced a real result
+            if self.pending_action and result_text:
+                self.pending_action = None
+        # ───────────────────────────────────────────────────────────────────────
+
         yield OrchestratorEvent(
             type="done", agent="personal", message=result_text,
             data=done_data)
@@ -162,8 +231,8 @@ class MasterOrchestrator:
         import threading
         def _worker():
             try:
-                from lirox.mind.trainer import TrainingEngine
-                from lirox.mind.learnings import LearningsStore
+                from lirox.memory.trainer import TrainingEngine
+                from lirox.memory.learnings import LearningsStore
                 learnings = LearningsStore()
                 TrainingEngine(learnings).train(self.global_memory, self.session_store)
             except Exception:

@@ -292,7 +292,7 @@ class DesignSystem:
                       user_expertise: str = "intermediate",
                       user_preferences: Dict[str, Any] = None) -> DesignDecision:
         """
-        Make a design decision using multi-agent debate.
+        Make a design decision.
         
         Args:
             topic: Document topic (e.g., "history of artificial intelligence")

@@ -23,7 +23,6 @@ class LiveThinkingDisplay:
     Interactive thinking display with:
     - Click-to-expand functionality
     - Live LLM streaming
-    - Real-time multi-agent debate
     - Beautiful terminal UI
     """
     
