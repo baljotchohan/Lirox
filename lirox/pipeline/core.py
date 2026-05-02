@@ -51,8 +51,11 @@ class ExecutionPipeline:
     @property
     def thinker(self):
         if self._thinker is None:
-            from lirox.thinking.adaptive_engine import AdaptiveThinkingEngine
-            self._thinker = AdaptiveThinkingEngine()
+            class DummyThinker:
+                def think(self, query, context, complexity):
+                    yield {"type": "progress", "message": "🧠 Analyzing request directly (Adaptive engine deprecated)"}
+                    yield {"type": "done", "data": {"decision": query, "reasoning": "Direct execution", "approach": "straightforward"}}
+            self._thinker = DummyThinker()
         return self._thinker
 
     @property
@@ -79,14 +82,14 @@ class ExecutionPipeline:
     @property
     def context_filter(self):
         if self._context_filter is None:
-            from lirox.quality.context_filter import ContextFilter
+            from lirox.pipeline.filter import ContextFilter
             self._context_filter = ContextFilter()
         return self._context_filter
-
+    
     @property
     def format_enforcer(self):
         if self._format_enforcer is None:
-            from lirox.quality.format_enforcer import FormatEnforcer
+            from lirox.pipeline.format import FormatEnforcer
             self._format_enforcer = FormatEnforcer()
         return self._format_enforcer
 

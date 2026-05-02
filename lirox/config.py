@@ -11,7 +11,7 @@ except ImportError:
     def load_dotenv(*a, **kw):
         pass
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 
 _REPO_ROOT   = Path(__file__).resolve().parent.parent
 PROJECT_ROOT = str(_REPO_ROOT)
@@ -124,7 +124,7 @@ def ensure_directories():
     if _dirs_initialized:
         return
     for d in [OUTPUTS_DIR, DATA_DIR, MEMORY_DIR, SESSIONS_DIR,
-              str(Path(MEMORY_DIR) / "daily"), MIND_DIR]:
+              str(Path(MEMORY_DIR) / "daily"), MIND_DIR, str(Path(DATA_DIR) / "rag")]:
         try:
             os.makedirs(d, mode=0o700, exist_ok=True)
         except OSError as exc:
@@ -199,7 +199,7 @@ def delete_all_data():
 
     # 2. Core Data Directories
     # We use a list of paths to ensure we cover all configured storage locations
-    targets = [DATA_DIR, OUTPUTS_DIR, MEMORY_DIR, SESSIONS_DIR, MIND_DIR]
+    targets = [DATA_DIR, OUTPUTS_DIR, MEMORY_DIR, SESSIONS_DIR, MIND_DIR, str(Path(DATA_DIR) / "rag")]
     for d in targets:
         p = Path(d)
         if p.exists():

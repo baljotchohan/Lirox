@@ -105,7 +105,7 @@ def run_setup_wizard(profile) -> None:
 
     # Step 6 — Seed learnings from what we just captured
     try:
-        from lirox.mind.learnings import LearningsStore
+        from lirox.memory.learnings import LearningsStore
         store = LearningsStore()
         seeded = 0
         if user_name and user_name != "Boss":
@@ -163,13 +163,8 @@ def _pick_agent_name(profile) -> str:
 
 
 def _sync_agent_name_to_soul(name: str) -> None:
-    try:
-        from lirox.mind.agent import get_soul
-        soul = get_soul()
-        if soul.get_name() != name:
-            soul.set_name(name)
-    except Exception:
-        pass
+    """v1.1: Soul concept removed. Agent name is stored in profile only."""
+    pass
 
 
 _NICHE_OPTIONS = [
@@ -354,8 +349,8 @@ def _run_one_paste_import() -> None:
         return
 
     from lirox.memory.import_handler import MemoryImporter
-    from lirox.mind.agent import get_learnings
-    importer = MemoryImporter(get_learnings())
+    from lirox.memory.learnings import LearningsStore
+    importer = MemoryImporter(LearningsStore())
 
     # Is it a file path?
     candidate = buffer.strip().strip("'").strip('"')

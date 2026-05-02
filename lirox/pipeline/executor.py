@@ -86,8 +86,8 @@ class StepExecutor:
         CRITICAL FIX: section-by-section generation prevents the
         "same paragraph 20x" repetition bug.
         """
-        from lirox.designer.content_writer import ContentWriter
-        from lirox.quality.content_validator import ContentValidator
+        from lirox.pipeline.writer import ContentWriter
+        from lirox.pipeline.validator import ContentValidator
 
         section = params["section"]
         intent = params["intent"]

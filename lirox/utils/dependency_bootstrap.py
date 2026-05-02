@@ -23,6 +23,7 @@ def required_package_map() -> Dict[str, str]:
         "requests": "requests",
         "duckduckgo-search": "duckduckgo_search",
         "google-genai": "google.genai",
+        "chromadb": "chromadb",
         # File-generation libraries: pip name differs from importable module name
         "reportlab": "reportlab",
         "python-pptx": "pptx",

@@ -131,7 +131,7 @@ thinking_manager = ThinkingDisplayManager()
 def show_welcome():
     console.print(LOGO)
     console.print(f"  [{CLR_DIM}]Type /help for commands · /setup to configure[/]\n")
-    from lirox.agent.profile import UserProfile
+    from lirox.agents.profile import UserProfile
     p = UserProfile()
     if p.is_setup():
         user  = p.data.get("user_name", "").strip().replace("\\n", "").rstrip("\r\n")
@@ -145,8 +145,6 @@ def show_status_card(profile_data: dict, providers: list):
     user  = profile_data.get("user_name", "").strip().replace("\\n", "").rstrip("\r\n")
     prov  = ", ".join(providers[:3]) if providers else "None (run /setup)"
     console.print(f"  [{CLR_DIM}]Agent: {agent}  ·  User: {user or '?'}  ·  Providers: {prov}[/]")
-
-
 def show_thinking_phase(event: dict):
     """Render thinking phase progress as clean inline text (no Live layout).
     
@@ -160,7 +158,6 @@ def show_thinking_phase(event: dict):
     icon = event.get("phase_icon", "🧠")
     total = event.get("phase_total", 3)
     tagline = event.get("phase_tagline", "")
-    confidence = event.get("confidence", 0)
     
     # Show clean inline phase indicator
     console.print(f"    [{CLR_THINK}]├─ {icon} {name} [{idx+1}/{total}][/] [dim]{tagline}[/]")

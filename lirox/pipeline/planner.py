@@ -11,6 +11,12 @@ from typing import Any, Callable, Dict, List, Optional
 
 _logger = logging.getLogger("lirox.pipeline.planner")
 
+COMPOUND_TRIGGERS = {"portfolio site", "project structure", "website", "scaffold", "app"}
+
+def detect_compound_files(query: str) -> bool:
+    q = query.lower()
+    return any(t in q for t in COMPOUND_TRIGGERS)
+
 
 @dataclass
 class PipelineStep:
@@ -80,13 +86,18 @@ class ExecutionPlanner:
         if not isinstance(context, dict):
             context = {"raw": str(context)} if context else {}
 
-        from lirox.designer.intent_analyzer import IntentAnalyzer
-        from lirox.designer.ux_strategist import UXStrategist
-        from lirox.quality.format_enforcer import FormatEnforcer
+        from lirox.pipeline.intent import IntentAnalyzer
+        from lirox.pipeline.ux import UXStrategist
+        from lirox.pipeline.format import FormatEnforcer
 
         intent = IntentAnalyzer().analyze(query, context)
         file_format = FormatEnforcer().determine_format(query)
         structure = UXStrategist().design_structure(intent, file_format)
+
+        # Honour length override — clamp section count to 1 when user asked for one-pager.
+        if getattr(intent, "length_override", False):
+            structure.sections = structure.sections[:1]
+
         output_path = self._determine_output_path(query, file_format)
         output_dir = os.path.dirname(output_path)
 

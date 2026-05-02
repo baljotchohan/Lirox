@@ -16,7 +16,7 @@ import re
 from pathlib import Path
 from typing import List, Dict, Any, Optional
 
-from lirox.mind.learnings import LearningsStore
+from lirox.memory.learnings import LearningsStore
 from lirox.utils.llm import generate_response
 
 
@@ -212,7 +212,7 @@ class MemoryImporter:
         prof_block = data.get("profile") or {}
         if isinstance(prof_block, dict) and prof_block:
             try:
-                from lirox.agent.profile import UserProfile
+                from lirox.agents.profile import UserProfile
                 up = UserProfile()
                 for k in ("niche", "current_project", "profession"):
                     v = prof_block.get(k, "")
