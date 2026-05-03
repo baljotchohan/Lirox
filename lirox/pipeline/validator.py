@@ -5,15 +5,7 @@ Detects repetition and context contamination in generated content.
 import logging
 from typing import List
 
-# Import from current package (we'll move similarity.py too)
-try:
-    from lirox.pipeline.similarity import calculate_similarity
-except ImportError:
-    # Fallback to absolute if move hasn't happened
-    try:
-        from lirox.quality.similarity import calculate_similarity
-    except ImportError:
-        def calculate_similarity(a, b): return 0.0
+from lirox.pipeline.similarity import calculate_similarity
 
 _logger = logging.getLogger("lirox.pipeline.validator")
 

@@ -287,5 +287,9 @@ def _skeleton_tests(code: str, filename: str) -> str:
     lines = [f"import pytest", f"# from {module} import ...", ""]
     for fn in fns[:10]:
         if not fn.startswith("_"):
-            lines += [f"def test_{fn}():", f"    # TODO: test {fn}", "    pass", ""]
+            lines += [
+                f"def test_{fn}():",
+                f"    pytest.skip('Implement test for {fn}')",
+                "",
+            ]
     return "\n".join(lines)

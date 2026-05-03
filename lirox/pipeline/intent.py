@@ -27,7 +27,13 @@ class IntentProfile:
 
 import re
 LENGTH_OVERRIDE_PATTERNS = re.compile(
-    r"\b(one[ -]?page|single[ -]?page|1[ -]?page)\b", re.IGNORECASE
+    r"\b("
+    r"one[ -]?page|single[ -]?page|1[ -]?page"
+    r"|brief|short|concise|quick|summary|summarize|summarise"
+    r"|one[ -]?slide|single[ -]?slide|snapshot|overview only"
+    r"|keep it short|keep it brief|just a summary"
+    r")\b",
+    re.IGNORECASE,
 )
 
 def detect_length_override(query: str) -> bool:

@@ -11,12 +11,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 _logger = logging.getLogger("lirox.pipeline.planner")
 
-COMPOUND_TRIGGERS = {"portfolio site", "project structure", "website", "scaffold", "app"}
-
-def detect_compound_files(query: str) -> bool:
-    q = query.lower()
-    return any(t in q for t in COMPOUND_TRIGGERS)
-
 
 @dataclass
 class PipelineStep:

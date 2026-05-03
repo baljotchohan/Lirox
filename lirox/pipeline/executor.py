@@ -4,7 +4,6 @@ Executes plan steps and returns receipts with actual results.
 """
 import logging
 import os
-import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
@@ -294,15 +293,17 @@ class StepExecutor:
         return {"directory": directory, "files": files, "count": len(files)}
 
     def _execute_shell(self, params: Dict) -> Dict:
+        from lirox.tools.shell_verified import shell_run_verified
+
         command = params["command"]
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=30
-        )
+        receipt = shell_run_verified(command)
+        if not receipt.ok:
+            raise RuntimeError(receipt.error or f"Command failed: {command}")
         return {
             "command": command,
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "returncode": receipt.exit_code,
+            "stdout": receipt.stdout,
+            "stderr": receipt.stderr,
         }
 
     def _execute_web_search(self, params: Dict) -> Dict:

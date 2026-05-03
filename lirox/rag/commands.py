@@ -9,26 +9,22 @@ Wire into main.py's slash dispatcher:
         from lirox.rag.commands import handle_rag_command
         handle_rag_command(rest, console)
 
-NOTE: This module assumes the following methods exist on your RAG classes.
-If your method names differ, adjust the calls below — there are only ~6 of them.
+Actual method contracts (as implemented):
 
     RAGIngestor()
-        .ingest_folder(path: str) -> dict      # walk + chunk + embed + store
-        .ingest_file(path: str) -> int         # single file, returns chunks added
-        .reindex_all() -> dict                 # walk every registered folder
+        .ingest_folder(path: str) -> dict  {"ok", "files", "chunks", "errors", "skipped"}
+        .ingest_file(path: str) -> dict    {"ok", "chunks", "file", "error"}
+        .reindex_all() -> dict             {"files_indexed", "chunks", "elapsed"}
 
     RAGStore()
         .add_folder(path: str) -> None
         .remove_folder(path: str) -> None
         .list_folders() -> list[str]
-        .stats() -> dict {files, chunks, size_bytes, db_path}
+        .stats() -> dict  {"backend", "documents", "persist_dir", "folders"}
 
     RAGRetriever()
-        .query(text: str, k: int = 5) -> list[{path, text, score}]
-
-If your classes use different names (e.g., `add_path` instead of `add_folder`),
-just rename the calls. The 6 grep-ables are: add_folder, remove_folder,
-list_folders, stats, ingest_folder, query.
+        .retrieve_structured(text: str, n_results: int = 5)
+            -> list[{"text", "source", "distance", "chunk_index"}]
 """
 from __future__ import annotations
 
@@ -146,14 +142,12 @@ def _status(console) -> None:
     for f in folders:
         console.print(f"  • {f}")
     if s:
-        files = s.get("files", "?")
-        chunks = s.get("chunks", "?")
-        size = _human_size(s.get("size_bytes", 0)) if "size_bytes" in s else "?"
-        db = s.get("db_path", "?")
-        console.print(f"[bold]Files indexed:[/bold]  {files}")
-        console.print(f"[bold]Chunks:[/bold]         {chunks}")
-        console.print(f"[bold]Index size:[/bold]     {size}")
-        console.print(f"[bold]Database:[/bold]       {db}")
+        backend  = s.get("backend", "?")
+        docs     = s.get("documents", "?")
+        persist  = s.get("persist_dir", "?")
+        console.print(f"[bold]Backend:[/bold]        {backend}")
+        console.print(f"[bold]Documents:[/bold]      {docs}")
+        console.print(f"[bold]Storage path:[/bold]   {persist}")
     console.print()
 
 
@@ -169,7 +163,7 @@ def _reindex(console) -> None:
         for folder in folders:
             r = ing.ingest_folder(folder)
             if isinstance(r, dict):
-                result["files_indexed"] += r.get("files_indexed", 0)
+                result["files_indexed"] += r.get("files", 0)
                 result["chunks"] += r.get("chunks", 0)
     files = result.get("files_indexed", "?")
     chunks = result.get("chunks", "?")
@@ -186,24 +180,17 @@ def _query(arg: str, console) -> None:
         console.print("[red]Usage: /rag query <text>[/red]")
         return
     r = _get_retriever()
-    hits = r.query(arg, k=5) if hasattr(r, "query") else []
+    hits = r.retrieve_structured(arg, n_results=5)
     if not hits:
         console.print("[yellow]No matches.[/yellow]")
         return
     console.print(f"[bold]Top {len(hits)} matches:[/bold]\n")
     seen = set()
     for h in hits:
-        path = h.get("path") or h.get("source") or "?"
-        if path in seen:
+        source = h.get("source", "?")
+        if source in seen:
             continue
-        seen.add(path)
-        console.print(f"  • {path}")
-
-
-def _human_size(n: int) -> str:
-    n = float(n)
-    for unit in ("B", "KB", "MB", "GB", "TB"):
-        if n < 1024:
-            return f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} PB"
+        seen.add(source)
+        distance = h.get("distance", "?")
+        dist_str = f" (distance: {distance:.3f})" if isinstance(distance, float) else ""
+        console.print(f"  • {source}{dist_str}")

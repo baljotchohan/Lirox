@@ -266,16 +266,28 @@ def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
 
 
 def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = None, timeout: int = 120) -> str:
+    """Call a local HuggingFace BnB (or Ollama-compatible) server via /api/chat."""
     import gc
-    endpoint    = os.getenv("HF_BNB_ENDPOINT", "http://localhost:11435")
-    full_prompt = f"{system_prompt}\n\n{prompt}" if system_prompt else prompt
+    endpoint = os.getenv("HF_BNB_ENDPOINT", "http://localhost:11435")
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": prompt})
     try:
         res = requests.post(
-            f"{endpoint}/api/generate",
-            json={"prompt": full_prompt, "options": _OLLAMA_OPTIONS},
+            f"{endpoint}/api/chat",
+            json={"messages": messages, "options": _OLLAMA_OPTIONS, "stream": False},
             timeout=timeout)
         res.raise_for_status()
-        return res.json().get("response", "HF BNB Error: empty response")
+        # Support both Ollama-style {"message": {"content": ...}} and
+        # OpenAI-style {"choices": [{"message": {"content": ...}}]}
+        data = res.json()
+        if "message" in data:
+            return data["message"].get("content", "HF BNB Error: empty response")
+        choices = data.get("choices", [])
+        if choices:
+            return choices[0].get("message", {}).get("content", "HF BNB Error: empty response")
+        return "HF BNB Error: empty response"
     except requests.exceptions.ConnectionError:
         return "HF BNB Error: server not running."
     except Exception as e:

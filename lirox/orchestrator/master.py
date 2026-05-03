@@ -140,10 +140,21 @@ class MasterOrchestrator:
         # ── Agent execution ───────────────────────────────────────────────────
         full_context = context
 
-        # Inject RAG context if available
+        # Inject RAG context only for queries that are document/knowledge-related.
+        # Unconditional injection bloats every prompt and misleads the LLM for
+        # pure conversational queries.
+        _RAG_TRIGGERS = (
+            "my files", "my docs", "my documents", "in my folder",
+            "in my knowledge", "from my notes", "uploaded", "indexed",
+            "what does", "what did", "what is in", "summarise", "summarize",
+            "find in", "search my", "according to", "based on my",
+        )
+        q_lower_rag = query.lower()
+        _should_inject_rag = any(t in q_lower_rag for t in _RAG_TRIGGERS)
+
         try:
             rag = self._get_rag_retriever()
-            if rag and not rag.is_empty:
+            if rag and not rag.is_empty and _should_inject_rag:
                 rag_ctx = rag.retrieve(query, n_results=5)
                 if rag_ctx:
                     full_context = f"{full_context}\n\n{rag_ctx}" if full_context else rag_ctx
@@ -196,9 +207,12 @@ class MasterOrchestrator:
             done_data["thinking_result"] = last_thinking_result
 
         # ── Capture promised future action so "ok continue" works ──────────────
+        # Only match explicit first-person action promises, NOT generic phrases
+        # like "I can help you create X" or "Let me build on that" which would
+        # mis-trigger re-execution on the next short acknowledgement.
         import re as _re
         PROMISE_RE = _re.compile(
-            r"\b(I'?ll|I will|let me|I can|I'?m going to|I will go ahead and)\s+"
+            r"\b(I'?ll|I will go ahead and|I'?m going to)\s+"
             r"(create|generate|build|write|make|set up|put together|draft|prepare)\b",
             _re.IGNORECASE,
         )
@@ -218,12 +232,6 @@ class MasterOrchestrator:
             type="done", agent="personal", message=result_text,
             data=done_data)
 
-        if self._interaction_count % 5 == 0:
-            self._auto_train()
-
-    def record_interaction(self) -> None:
-        """Increment interaction counter and trigger auto-training if threshold reached."""
-        self._interaction_count += 1
         if self._interaction_count % 5 == 0:
             self._auto_train()
 

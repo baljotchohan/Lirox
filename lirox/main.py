@@ -121,13 +121,6 @@ def process_query(orch, query: str, verbose: bool = False) -> None:
         error_panel("PROCESS ERROR", str(e))
         import logging
         logging.error(f"Error in process_query: {e}", exc_info=True)
-    finally:
-        # Auto-train after every successful query to update LearningsStore
-        try:
-            orch.record_interaction()
-        except Exception as e:
-            import logging
-            logging.warning(f"Failed to record interaction: {e}")
 
 
 def handle_command(orch, profile, cmd: str, verbose: bool = False) -> None:
@@ -170,22 +163,17 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
             ("/memory",             "Memory stats"),
             ("/profile",            "Show your profile"),
             ("/reset",              "Reset session memory"),
-            ("/test",               "Run diagnostics"),
-            ("/health",             "Run subsystem health checks"),
-            ("/train",              "Auto-trains after each conversation (no action needed)"),
             ("/recall",             "Show everything Lirox knows about you"),
             ("/workspace [path]",   "Show or change workspace directory"),
             ("/expand thinking",    "Show detailed reasoning from last query"),
             ("/thinking-help",      "Thinking display controls and legend"),
-            ("/backup",             "Backup all data"),
             ("/export-memory",      "Export profile + learnings as JSON"),
             ("/import-memory",      "Import from ChatGPT/Claude/Gemini/Lirox (paste or file)"),
-            ("/rag ingest <path>",  "Feed a file or folder into RAG knowledge base"),
-            ("/rag stats",          "Show RAG store statistics"),
+            ("/rag add <path>",     "Feed a folder into the RAG knowledge base"),
+            ("/rag status",         "Show RAG store statistics"),
+            ("/rag reindex",        "Rebuild the RAG index"),
             ("/rag query <text>",   "Test-query the RAG knowledge base"),
-            ("/rag clear",          "Wipe the RAG knowledge base"),
             ("/restart",            "Restart Lirox"),
-            ("/update",             "Update to latest version"),
             ("/uninstall",          "Remove all Lirox data"),
             ("/exit",               "Shutdown"),
         ]
@@ -267,15 +255,6 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
             orch.session_store.reset()
             success_message("Session reset.")
 
-    elif base == "/test":
-        info_panel("Diagnostics module removed in v1.1")
-
-    elif base == "/health":
-        info_panel("Health check module removed in v1.1")
-
-    elif base == "/train":
-        info_panel("Training now happens automatically in background after each conversation.\nNo manual /train needed.")
-
     elif base == "/recall":
         from lirox.memory.knowledge_manager import LearningManager
         lm = LearningManager()
@@ -312,9 +291,6 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
         from lirox.ui.thinking_controls import ThinkingControls
         ThinkingControls.show_help()
 
-    elif base == "/backup":
-        info_panel("Backup module removed in v1.1")
-
     elif base == "/export-memory":
         from lirox.memory.exporter import export_learnings
         path = export_learnings()
@@ -335,9 +311,6 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
     elif base == "/restart":
         success_message("Restarting Lirox...")
         os.execv(sys.executable, [sys.executable] + sys.argv)
-
-    elif base == "/update":
-        info_panel("Updater module removed in v1.1")
 
     elif base == "/rag":
         rest = cmd[5:].strip() if len(cmd) > 5 else ""
@@ -434,19 +407,17 @@ def main() -> None:
             "/memory":          "Show learning statistics",
             "/profile":         "View user profile",
             "/reset":           "Clear current session",
-            "/test":            "Run quick diagnostics",
-            "/health":          "Deep subsystem health checks",
-            "/train":           "Auto-trains in background (no action needed)",
             "/recall":          "Show learned facts about you",
             "/workspace":       "Set active directory",
             "/expand thinking": "View last reasoning trace",
-            "/thinking-help":  "Thinking display controls and legend",
-            "/backup":          "Create a full data backup",
+            "/thinking-help":   "Thinking display controls and legend",
             "/export-memory":   "Save learnings to JSON",
             "/import-memory":   "Import external learnings (paste or file)",
-            "/rag":             "RAG knowledge base (ingest, stats, query, clear)",
+            "/rag add":         "Add folder to RAG knowledge base",
+            "/rag status":      "Show RAG store statistics",
+            "/rag reindex":     "Rebuild RAG index",
+            "/rag query":       "Test-query the RAG knowledge base",
             "/restart":         "Reload Lirox",
-            "/update":          "Check for updates",
             "/uninstall":       "Delete all Lirox data",
             "/exit":            "Shutdown",
         }

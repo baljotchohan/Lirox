@@ -97,5 +97,20 @@ def _read_docx(path: Path) -> Optional[str]:
     except Exception as exc:
         _logger.warning("DOCX open failed for %s: %s", path, exc)
         return None
-    text = "\n".join(p.text for p in doc.paragraphs).strip()
+
+    parts = []
+
+    # Extract paragraph text
+    para_text = "\n".join(p.text for p in doc.paragraphs if p.text.strip())
+    if para_text.strip():
+        parts.append(para_text)
+
+    # Extract table content so tabular data (resumes, reports) is indexed
+    for table in doc.tables:
+        for row in table.rows:
+            row_cells = [cell.text.strip() for cell in row.cells if cell.text.strip()]
+            if row_cells:
+                parts.append(" | ".join(row_cells))
+
+    text = "\n".join(parts).strip()
     return text or None
