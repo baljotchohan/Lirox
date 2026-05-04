@@ -4,12 +4,15 @@ Executes plan steps and returns receipts with actual results.
 """
 import logging
 import os
-import subprocess
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional
 
 _logger = logging.getLogger("lirox.pipeline.executor")
+
+# Max characters of a shell command shown in error messages to avoid leaking
+# long or sensitive command strings into exception messages / logs.
+_MAX_CMD_DISPLAY_LENGTH = 80
 
 
 @dataclass
@@ -294,15 +297,20 @@ class StepExecutor:
         return {"directory": directory, "files": files, "count": len(files)}
 
     def _execute_shell(self, params: Dict) -> Dict:
+        from lirox.tools.shell_verified import shell_run_verified
+
         command = params["command"]
-        result = subprocess.run(
-            command, shell=True, capture_output=True, text=True, timeout=30
-        )
+        receipt = shell_run_verified(command)
+        if not receipt.ok:
+            # Truncate command to avoid exposing long or sensitive strings in logs
+            is_truncated = len(command) > _MAX_CMD_DISPLAY_LENGTH
+            _safe_cmd = command[:_MAX_CMD_DISPLAY_LENGTH] + ("…" if is_truncated else "")
+            raise RuntimeError(receipt.error or f"Command failed: {_safe_cmd}")
         return {
             "command": command,
-            "returncode": result.returncode,
-            "stdout": result.stdout,
-            "stderr": result.stderr,
+            "returncode": receipt.exit_code,
+            "stdout": receipt.stdout,
+            "stderr": receipt.stderr,
         }
 
     def _execute_web_search(self, params: Dict) -> Dict:

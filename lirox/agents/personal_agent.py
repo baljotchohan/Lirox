@@ -313,6 +313,10 @@ class PersonalAgent(BaseAgent):
     @property
     def name(self) -> str: return "personal"
 
+    def __init__(self, memory=None, profile_data=None):
+        super().__init__(memory=memory, profile_data=profile_data)
+        self._last_response: str = ""  # per-instance anti-repetition tracker
+
     def run(self, query: str, system_prompt: str = "",
             context: str = "", mode: str = "auto") -> Generator[AgentEvent, None, None]:
         from lirox.utils.input_sanitizer import sanitize
@@ -405,11 +409,10 @@ class PersonalAgent(BaseAgent):
 
         # ANTI-REPETITION CHECK
         # If this response is too similar to last response, regenerate with variation
-        if hasattr(self, '_last_response') and self._last_response:
-            def calculate_similarity(a, b): return 0.0
-            
+        if self._last_response:
+            from lirox.pipeline.similarity import calculate_similarity
             similarity = calculate_similarity(answer, self._last_response)
-            
+
             if similarity > 0.75 and len(answer) > 300:
                 # Too similar, regenerate with anti-repetition instruction
                 varied_prompt = prompt + "\n\n[IMPORTANT: Your last response was similar to this. Vary your approach - try a different structure, different examples, or different angle.]"
@@ -1298,41 +1301,25 @@ Output ONLY JSON, no explanation.
             facts_json = facts_json.replace("```json", "").replace("```", "").strip()
             import json
             facts = json.loads(facts_json)
-            
-            # Store each fact type
-            if facts.get("education"):
-                self.memory.add_exchange(
-                    "user", 
-                    f"FACT: Education - {facts['education']}", 
-                    "system",
-                    "Stored"
-                )
-            
+
+            # Store each fact type using the correct MemoryManager API
+            education = facts.get("education")
+            if isinstance(education, str) and education.strip():
+                self.memory.add_fact(f"Education: {education.strip()}")
+
             if facts.get("projects"):
                 for project in facts["projects"]:
-                    self.memory.add_exchange(
-                        "user",
-                        f"FACT: Project - {project}",
-                        "system",
-                        "Stored"
-                    )
-            
-            if facts.get("preferences"):
-                self.memory.add_exchange(
-                    "user",
-                    f"FACT: Preference - {facts['preferences']}",
-                    "system",
-                    "Stored"
-                )
-            
-            if facts.get("background"):
-                self.memory.add_exchange(
-                    "user",
-                    f"FACT: Background - {facts['background']}",
-                    "system",
-                    "Stored"
-                )
-        
+                    if isinstance(project, str) and project.strip():
+                        self.memory.add_fact(f"Project: {project.strip()}")
+
+            preference = facts.get("preferences")
+            if isinstance(preference, str) and preference.strip():
+                self.memory.add_fact(f"Preference: {preference.strip()}")
+
+            background = facts.get("background")
+            if isinstance(background, str) and background.strip():
+                self.memory.add_fact(f"Background: {background.strip()}")
+
         except Exception as e:
             # Silent fail - fact extraction is optional
-            pass
+            _logger.debug("Fact extraction failed: %s", e)

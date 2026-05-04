@@ -140,10 +140,21 @@ class MasterOrchestrator:
         # ── Agent execution ───────────────────────────────────────────────────
         full_context = context
 
-        # Inject RAG context if available
+        # Inject RAG context only for queries that are document/knowledge-related.
+        # Unconditional injection bloats every prompt and misleads the LLM for
+        # pure conversational queries.
+        _RAG_TRIGGERS = (
+            "my files", "my docs", "my documents", "in my folder",
+            "in my knowledge", "from my notes", "uploaded", "indexed",
+            "what does", "what did", "what is in", "summarise", "summarize",
+            "find in", "search my", "according to", "based on my",
+        )
+        q_lower_rag = query.lower()
+        _should_inject_rag = any(t in q_lower_rag for t in _RAG_TRIGGERS)
+
         try:
             rag = self._get_rag_retriever()
-            if rag and not rag.is_empty:
+            if rag and not rag.is_empty and _should_inject_rag:
                 rag_ctx = rag.retrieve(query, n_results=5)
                 if rag_ctx:
                     full_context = f"{full_context}\n\n{rag_ctx}" if full_context else rag_ctx
@@ -196,10 +207,18 @@ class MasterOrchestrator:
             done_data["thinking_result"] = last_thinking_result
 
         # ── Capture promised future action so "ok continue" works ──────────────
+        # Match explicit first-person action promises (including "let me <verb>")
+        # but NOT passive phrases like "I can help" or "let me know" that would
+        # mis-trigger re-execution on the next short acknowledgement.
         import re as _re
+        _ACTION_VERBS = (
+            r"create|generate|build|write|make|set up|put together|draft|prepare"
+        )
         PROMISE_RE = _re.compile(
-            r"\b(I'?ll|I will|let me|I can|I'?m going to|I will go ahead and)\s+"
-            r"(create|generate|build|write|make|set up|put together|draft|prepare)\b",
+            r"\b(I'?ll|I will go ahead and|I'?m going to"
+            r"|let me go ahead and"
+            rf"|let me (?:{_ACTION_VERBS}))\s*"
+            rf"(?:{_ACTION_VERBS})?\b",
             _re.IGNORECASE,
         )
         if result_text and PROMISE_RE.search(result_text):
@@ -218,12 +237,6 @@ class MasterOrchestrator:
             type="done", agent="personal", message=result_text,
             data=done_data)
 
-        if self._interaction_count % 5 == 0:
-            self._auto_train()
-
-    def record_interaction(self) -> None:
-        """Increment interaction counter and trigger auto-training if threshold reached."""
-        self._interaction_count += 1
         if self._interaction_count % 5 == 0:
             self._auto_train()
 
