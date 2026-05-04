@@ -266,7 +266,13 @@ def ollama_call(prompt: str, system_prompt: Optional[str] = None, model: str = N
 
 
 def hf_bnb_call(prompt: str, system_prompt: Optional[str] = None, model: str = None, timeout: int = 120) -> str:
-    """Call a local HuggingFace BnB (or Ollama-compatible) server via /api/chat."""
+    """Call a local chat-compatible LLM server via /api/chat.
+
+    The endpoint is configurable via ``HF_BNB_ENDPOINT`` (default
+    ``http://localhost:11435``).  The response format supports both
+    Ollama-style ``{"message": {"content": ...}}`` and OpenAI-style
+    ``{"choices": [{"message": {"content": ...}}]}`` payloads.
+    """
     import gc
     endpoint = os.getenv("HF_BNB_ENDPOINT", "http://localhost:11435")
     messages = []

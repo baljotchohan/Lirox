@@ -211,11 +211,14 @@ class MasterOrchestrator:
         # but NOT passive phrases like "I can help" or "let me know" that would
         # mis-trigger re-execution on the next short acknowledgement.
         import re as _re
+        _ACTION_VERBS = (
+            r"create|generate|build|write|make|set up|put together|draft|prepare"
+        )
         PROMISE_RE = _re.compile(
             r"\b(I'?ll|I will go ahead and|I'?m going to"
             r"|let me go ahead and"
-            r"|let me (?:create|generate|build|write|make|set up|put together|draft|prepare))\s*"
-            r"(create|generate|build|write|make|set up|put together|draft|prepare)?\b",
+            rf"|let me (?:{_ACTION_VERBS}))\s*"
+            rf"(?:{_ACTION_VERBS})?\b",
             _re.IGNORECASE,
         )
         if result_text and PROMISE_RE.search(result_text):

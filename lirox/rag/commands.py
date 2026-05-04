@@ -192,5 +192,5 @@ def _query(arg: str, console) -> None:
             continue
         seen.add(source)
         distance = h.get("distance", "?")
-        dist_str = f" (distance: {float(distance):.3f})" if isinstance(distance, (int, float)) else ""
+        dist_str = f" (distance: {distance:.3f})" if isinstance(distance, (int, float)) else ""
         console.print(f"  • {source}{dist_str}")

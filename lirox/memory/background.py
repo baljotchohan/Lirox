@@ -63,11 +63,11 @@ class PatternDetector:
         patterns = []
         # Guard against malformed entries (must be dicts)
         safe_history = [m for m in conversation_history if isinstance(m, dict)]
-        recent_queries = [
-            m.get("user", "") for m in safe_history[-10:]
-            if isinstance(m.get("user", ""), str)
-        ]
-        recent_queries = [q.lower() for q in recent_queries]
+        recent_queries = []
+        for m in safe_history[-10:]:
+            user_val = m.get("user", "")
+            if isinstance(user_val, str):
+                recent_queries.append(user_val.lower())
 
         for topic in ["machine learning", "python", "design", "pdf", "document"]:
             count = sum(1 for q in recent_queries if topic in q)

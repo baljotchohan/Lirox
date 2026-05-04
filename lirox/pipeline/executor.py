@@ -302,8 +302,9 @@ class StepExecutor:
         command = params["command"]
         receipt = shell_run_verified(command)
         if not receipt.ok:
-            # Truncate the command to avoid exposing long or sensitive strings in logs
-            _safe_cmd = command[:_MAX_CMD_DISPLAY_LENGTH] + ("…" if len(command) > _MAX_CMD_DISPLAY_LENGTH else "")
+            # Truncate command to avoid exposing long or sensitive strings in logs
+            is_truncated = len(command) > _MAX_CMD_DISPLAY_LENGTH
+            _safe_cmd = command[:_MAX_CMD_DISPLAY_LENGTH] + ("…" if is_truncated else "")
             raise RuntimeError(receipt.error or f"Command failed: {_safe_cmd}")
         return {
             "command": command,
