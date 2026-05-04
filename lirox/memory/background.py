@@ -61,7 +61,13 @@ class PatternDetector:
     def detect(conversation_history: List[Dict], query: str, response: str) -> List[str]:
         """Detect patterns from conversation history."""
         patterns = []
-        recent_queries = [m.get("user", "").lower() for m in conversation_history[-10:]]
+        # Guard against malformed entries (must be dicts)
+        safe_history = [m for m in conversation_history if isinstance(m, dict)]
+        recent_queries = [
+            m.get("user", "") for m in safe_history[-10:]
+            if isinstance(m.get("user", ""), str)
+        ]
+        recent_queries = [q.lower() for q in recent_queries]
 
         for topic in ["machine learning", "python", "design", "pdf", "document"]:
             count = sum(1 for q in recent_queries if topic in q)
@@ -69,10 +75,13 @@ class PatternDetector:
                 patterns.append(f"[PATTERN] User frequently asks about {topic}")
 
         tools_used = []
-        for msg in conversation_history[-5:]:
-            if "file" in msg.get("agent", "").lower():
+        for msg in safe_history[-5:]:
+            agent_val = msg.get("agent", "")
+            if not isinstance(agent_val, str):
+                continue
+            if "file" in agent_val.lower():
                 tools_used.append("file")
-            if "pdf" in msg.get("agent", "").lower():
+            if "pdf" in agent_val.lower():
                 tools_used.append("pdf")
 
         if len(tools_used) >= 2:

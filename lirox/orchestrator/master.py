@@ -207,13 +207,15 @@ class MasterOrchestrator:
             done_data["thinking_result"] = last_thinking_result
 
         # ── Capture promised future action so "ok continue" works ──────────────
-        # Only match explicit first-person action promises, NOT generic phrases
-        # like "I can help you create X" or "Let me build on that" which would
+        # Match explicit first-person action promises (including "let me <verb>")
+        # but NOT passive phrases like "I can help" or "let me know" that would
         # mis-trigger re-execution on the next short acknowledgement.
         import re as _re
         PROMISE_RE = _re.compile(
-            r"\b(I'?ll|I will go ahead and|I'?m going to)\s+"
-            r"(create|generate|build|write|make|set up|put together|draft|prepare)\b",
+            r"\b(I'?ll|I will go ahead and|I'?m going to"
+            r"|let me go ahead and"
+            r"|let me (?:create|generate|build|write|make|set up|put together|draft|prepare))\s*"
+            r"(create|generate|build|write|make|set up|put together|draft|prepare)?\b",
             _re.IGNORECASE,
         )
         if result_text and PROMISE_RE.search(result_text):

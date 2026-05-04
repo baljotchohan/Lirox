@@ -10,6 +10,10 @@ from typing import Any, Dict, List, Optional
 
 _logger = logging.getLogger("lirox.pipeline.executor")
 
+# Max characters of a shell command shown in error messages to avoid leaking
+# long or sensitive command strings into exception messages / logs.
+_MAX_CMD_DISPLAY_LENGTH = 80
+
 
 @dataclass
 class ExecutionReceipt:
@@ -298,7 +302,9 @@ class StepExecutor:
         command = params["command"]
         receipt = shell_run_verified(command)
         if not receipt.ok:
-            raise RuntimeError(receipt.error or f"Command failed: {command}")
+            # Truncate the command to avoid exposing long or sensitive strings in logs
+            _safe_cmd = command[:_MAX_CMD_DISPLAY_LENGTH] + ("…" if len(command) > _MAX_CMD_DISPLAY_LENGTH else "")
+            raise RuntimeError(receipt.error or f"Command failed: {_safe_cmd}")
         return {
             "command": command,
             "returncode": receipt.exit_code,

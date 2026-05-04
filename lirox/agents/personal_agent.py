@@ -310,10 +310,12 @@ def _classify(query: str) -> str:
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 class PersonalAgent(BaseAgent):
-    _last_response: str = ""   # instance anti-repetition tracker
-
     @property
     def name(self) -> str: return "personal"
+
+    def __init__(self, memory=None, profile_data=None):
+        super().__init__(memory=memory, profile_data=profile_data)
+        self._last_response: str = ""  # per-instance anti-repetition tracker
 
     def run(self, query: str, system_prompt: str = "",
             context: str = "", mode: str = "auto") -> Generator[AgentEvent, None, None]:
@@ -1301,19 +1303,22 @@ Output ONLY JSON, no explanation.
             facts = json.loads(facts_json)
 
             # Store each fact type using the correct MemoryManager API
-            if facts.get("education"):
-                self.memory.add_fact(f"Education: {facts['education']}")
+            education = facts.get("education")
+            if isinstance(education, str) and education.strip():
+                self.memory.add_fact(f"Education: {education.strip()}")
 
             if facts.get("projects"):
                 for project in facts["projects"]:
                     if isinstance(project, str) and project.strip():
                         self.memory.add_fact(f"Project: {project.strip()}")
 
-            if facts.get("preferences"):
-                self.memory.add_fact(f"Preference: {facts['preferences']}")
+            preference = facts.get("preferences")
+            if isinstance(preference, str) and preference.strip():
+                self.memory.add_fact(f"Preference: {preference.strip()}")
 
-            if facts.get("background"):
-                self.memory.add_fact(f"Background: {facts['background']}")
+            background = facts.get("background")
+            if isinstance(background, str) and background.strip():
+                self.memory.add_fact(f"Background: {background.strip()}")
 
         except Exception as e:
             # Silent fail - fact extraction is optional
