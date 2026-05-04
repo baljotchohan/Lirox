@@ -125,7 +125,5 @@ class CodeMode:
         from lirox.utils.streaming import StreamingResponse
         streamer = StreamingResponse()
         clean = streamer.clean_formatting(response)
-        for chunk in streamer.stream_words(clean, delay=0.02):
-            yield {"type": "streaming", "message": chunk}
 
         yield {"type": "done", "answer": clean}

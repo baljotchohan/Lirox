@@ -374,8 +374,6 @@ class PersonalAgent(BaseAgent):
             # Use the full enriched system prompt so it knows who it is (Lirox) and who the user is (boss)
             answer = generate_response(greeting_prompt, provider="auto", system_prompt=base_sys)
             answer = _STREAMER.clean_formatting(answer)
-            for chunk in _STREAMER.stream_words(answer, delay=0.025):
-                yield {"type": "streaming", "message": chunk}
             yield {"type": "done", "answer": answer}
             return
 
@@ -433,8 +431,6 @@ class PersonalAgent(BaseAgent):
             pass  # Don't break chat if extraction fails
 
         answer = _STREAMER.clean_formatting(answer)
-        for chunk in _STREAMER.stream_words(answer, delay=0.025):
-            yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -464,8 +460,6 @@ class PersonalAgent(BaseAgent):
                 if event.type == "done":
                     answer = event.message
                     answer = _STREAMER.clean_formatting(answer)
-                    for chunk in _STREAMER.stream_words(answer, delay=0.025):
-                        yield {"type": "streaming", "message": chunk}
                     yield {"type": "done", "answer": answer}
                     return
                 elif event.type == "error":
@@ -789,8 +783,6 @@ class PersonalAgent(BaseAgent):
 
                 answer = _STREAMER.clean_formatting(answer)
 
-                for chunk in _STREAMER.stream_words(answer, delay=0.025):
-                    yield {"type": "streaming", "message": chunk}
                 done_event = {"type": "done", "answer": answer}
                 if think_result:
                     done_event["thinking_result"] = think_result
@@ -947,8 +939,6 @@ class PersonalAgent(BaseAgent):
                     if receipt.details.get("truncated"):
                         answer += "\n\n(truncated — file is larger)"
                     answer = _STREAMER.clean_formatting(answer)
-                    for chunk in _STREAMER.stream_words(answer, delay=0.025):
-                        yield {"type": "streaming", "message": chunk}
                     yield {"type": "done", "answer": answer}
                     return
 
@@ -1106,9 +1096,6 @@ Link: https://another-url.com"
             )
             
             answer = _STREAMER.clean_formatting(answer)
-            for chunk in _STREAMER.stream_words(answer, delay=0.025):
-                yield {"type": "streaming", "message": chunk}
-                
             yield {"type": "done", "answer": answer}
         
         except Exception as e:
@@ -1146,9 +1133,6 @@ Link: https://another-url.com"
                 answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
             
             answer = _STREAMER.clean_formatting(answer)
-            
-            for chunk in _STREAMER.stream_words(answer, delay=0.025):
-                yield {"type": "streaming", "message": chunk}
             yield {"type": "done", "answer": answer}
             return
 
@@ -1169,8 +1153,6 @@ Link: https://another-url.com"
             f"Query: {query}\n\nMy own source code:\n{summary}\n\nAnswer from actual code.",
             provider="auto", system_prompt=_get_sys(self.profile_data))
         answer = _STREAMER.clean_formatting(answer)
-        for chunk in _STREAMER.stream_words(answer, delay=0.025):
-            yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1214,8 +1196,6 @@ Link: https://another-url.com"
             "Answer using ONLY the data above. If missing, say so honestly.",
             provider="auto", system_prompt=_get_sys(self.profile_data))
         answer = _STREAMER.clean_formatting(answer)
-        for chunk in _STREAMER.stream_words(answer, delay=0.025):
-            yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -1232,16 +1212,12 @@ Link: https://another-url.com"
                       "Operation FAILED. Tell user what failed and suggest a fix. Max 3 sentences.")
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
         answer = _STREAMER.clean_formatting(answer)
-        for chunk in _STREAMER.stream_words(answer, delay=0.025):
-            yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
     def _synth_text(self, query, text_result):
         prompt = f"Task: {query}\nTool output:\n{text_result}\n\nSummarize concisely."
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
         answer = _STREAMER.clean_formatting(answer)
-        for chunk in _STREAMER.stream_words(answer, delay=0.025):
-            yield {"type": "streaming", "message": chunk}
         yield {"type": "done", "answer": answer}
 
     def _extract_and_store_facts(self, query: str, response: str):
