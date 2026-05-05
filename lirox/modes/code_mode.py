@@ -57,7 +57,8 @@ class CodeMode:
             ...
     """
 
-    _sessions: Dict[str, CodeSession] = {}
+    def __init__(self):
+        self._sessions: Dict[str, CodeSession] = {}
 
     # ── Session management ───────────────────────────────────────────────────
 
@@ -116,11 +117,14 @@ class CodeMode:
         for filename, content in file_blocks:
             filename = filename.strip()
             path = os.path.join(session.working_dir, filename)
-            os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-            with open(path, "w", encoding="utf-8") as fh:
-                fh.write(content.strip())
-            session.add_file(filename, content.strip())
-            yield {"type": "tool_result", "message": f"📄 Saved: {path}"}
+            # BUG-FIX: validate path before writing
+            from lirox.tools.file_tools import file_write_verified
+            receipt = file_write_verified(path, content.strip())
+            if receipt.ok:
+                session.add_file(filename, content.strip())
+                yield {"type": "tool_result", "message": f"📄 Saved: {path}"}
+            else:
+                yield {"type": "warning", "message": f"⚠️ Could not save {path}: {receipt.error}"}
 
         from lirox.utils.streaming import StreamingResponse
         streamer = StreamingResponse()

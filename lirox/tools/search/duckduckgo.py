@@ -21,7 +21,7 @@ def search(query: str, max_results: int = 10, region: str = "wt-wt") -> List[Dic
         List of dicts with: title, snippet, url, source
     """
     try:
-        from ddgs import DDGS  # UPDATED IMPORT
+        from duckduckgo_search import DDGS
         
         results = []
         
@@ -61,7 +61,7 @@ def search(query: str, max_results: int = 10, region: str = "wt-wt") -> List[Dic
 def search_news(query: str, max_results: int = 10) -> List[Dict]:
     """Search news articles using DuckDuckGo."""
     try:
-        from ddgs import DDGS  # UPDATED IMPORT
+        from duckduckgo_search import DDGS
         
         results = []
         
@@ -90,7 +90,7 @@ def search_news(query: str, max_results: int = 10) -> List[Dict]:
 def search_images(query: str, max_results: int = 10) -> List[Dict]:
     """Search images using DuckDuckGo."""
     try:
-        from ddgs import DDGS  # UPDATED IMPORT
+        from duckduckgo_search import DDGS
         
         results = []
         

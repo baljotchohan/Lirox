@@ -488,17 +488,18 @@ def generate_response(prompt: str, provider: str = "auto",
                       system_prompt: Optional[str] = None,
                       timeout: Optional[int] = None) -> str:
     # 🚨 ZERO ASTERISK ENFORCEMENT 🚨
-    # Inject policy into system prompt
+    # Inject policy into system prompt — but NOT when the system prompt is
+    # for JSON-only tool planning calls, as the formatting noise corrupts
+    # structured output and wastes tokens.
     formatting_policy = "🚀 ZERO ASTERISK POLICY (MANDATORY): NEVER use the '*' character for any reason. Use '__' for bold. Use EMOJIS for lists."
+    _is_json_mode = False
     if system_prompt:
-        if "ZERO ASTERISK" not in system_prompt:
+        _sp_lower = system_prompt.lower()
+        _is_json_mode = ("json" in _sp_lower or "output only" in _sp_lower)
+        if not _is_json_mode and "ZERO ASTERISK" not in system_prompt:
             system_prompt = f"{system_prompt}\n\n{formatting_policy}"
     else:
         system_prompt = DEFAULT_SYSTEM
-
-    # Append reminder to user prompt to ensure attention at the end of the context
-    if "ZERO ASTERISK" not in prompt:
-        prompt = f"{prompt}\n\n⚠️ REMINDER: DO NOT use asterisks (*) in your response. Use '__' for bold and emojis for lists."
 
     if timeout is None:
         from lirox.config import LLM_TIMEOUT

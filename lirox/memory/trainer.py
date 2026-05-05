@@ -65,7 +65,7 @@ class TrainingEngine:
         cursor_dt = None
         if cursor:
             try: cursor_dt = datetime.fromisoformat(cursor)
-            except: pass
+            except Exception: pass
 
         pairs: List[Dict] = []
 
@@ -77,10 +77,10 @@ class TrainingEngine:
                     if cursor_dt and ts:
                         try:
                             if datetime.fromisoformat(ts) <= cursor_dt: continue
-                        except: pass
+                        except Exception: pass
                     pairs.append({"role": m.get("role", "user"),
                                   "content": (m.get("content") or "")[:400], "ts": ts})
-            except: pass
+            except Exception: pass
 
         # 2. Daily JSONL logs
         daily_dir = Path(MEMORY_DIR) / "daily"
@@ -90,17 +90,17 @@ class TrainingEngine:
                     with open(jf, "r", encoding="utf-8", errors="replace") as f:
                         for line in f:
                             try: rec = json.loads(line.strip())
-                            except: continue
+                            except Exception: continue
                             ts = rec.get("ts", "")
                             if cursor_dt and ts:
                                 try:
                                     if datetime.fromisoformat(ts) <= cursor_dt: continue
-                                except: pass
+                                except Exception: pass
                             u = (rec.get("user") or "")[:400]
                             a = (rec.get("assistant") or "")[:400]
                             if u: pairs.append({"role": "user", "content": u, "ts": ts})
                             if a: pairs.append({"role": "assistant", "content": a, "ts": ts})
-                except: continue
+                except Exception: continue
 
         # 3. Session store
         if session_store:
@@ -112,9 +112,9 @@ class TrainingEngine:
                         if cursor_dt and ts:
                             try:
                                 if datetime.fromisoformat(ts) <= cursor_dt: continue
-                            except: pass
+                            except Exception: pass
                         pairs.append({"role": e.role, "content": (e.content or "")[:400], "ts": ts})
-            except: pass
+            except Exception: pass
 
         # Dedup
         seen = set(); unique = []
@@ -138,11 +138,11 @@ class TrainingEngine:
         m = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
         if m:
             try: return json.loads(m.group(1))
-            except: pass
+            except Exception: pass
         m2 = re.search(r"(\{.*\})", text, re.DOTALL)
         if m2:
             try: return json.loads(m2.group())
-            except: pass
+            except Exception: pass
         return {}
 
     def train(self, memory_manager, session_store=None) -> Dict[str, Any]:

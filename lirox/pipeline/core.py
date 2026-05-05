@@ -51,11 +51,11 @@ class ExecutionPipeline:
     @property
     def thinker(self):
         if self._thinker is None:
-            class DummyThinker:
+            class _PassthroughThinker:
+                """No-op thinker — reasoning is handled directly by the agent."""
                 def think(self, query, context, complexity):
-                    yield {"type": "progress", "message": "🧠 Analyzing request directly (Adaptive engine deprecated)"}
                     yield {"type": "done", "data": {"decision": query, "reasoning": "Direct execution", "approach": "straightforward"}}
-            self._thinker = DummyThinker()
+            self._thinker = _PassthroughThinker()
         return self._thinker
 
     @property

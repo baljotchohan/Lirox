@@ -85,10 +85,12 @@ def _get_sys(profile_data: Dict[str, Any]) -> str:
         "• Generate documents (PDF, DOCX, XLSX, PPTX)\n"
         "• Write complete code implementations\n"
         "\n"
-        "CRITICAL LIMITATIONS:\n"
-        "• You CANNOT view images (JPEG, PNG, etc.) - you can only read text files\n"
-        "• If user shares an image path, tell them clearly: 'I can't view images yet. Can you describe what's in it or share it as text/PDF?'\n"
-        "• Never say 'I cannot see the image' repeatedly - say it ONCE then ask for alternatives\n"
+        "CRITICAL LIMITATIONS — READ CAREFULLY:\n"
+        "• You CANNOT view images (JPEG, PNG, GIF, screenshots, etc.) — you have NO vision capability\n"
+        "• You CANNOT view .png, .jpg, .jpeg, .gif, .bmp, .webp, .tiff files\n"
+        "• If user provides an image path: say 'I cannot view image files. Could you describe what is in the image, or share it as a text/PDF file?'\n"
+        "• NEVER pretend to see image content — NEVER say 'I can see...' or 'Looking at your image...' about image files\n"
+        "• NEVER guess or fabricate what is in an image — this is a HARD RULE\n"
         "\n"
         "EXECUTION RULES:\n"
         "• SYNTHESIS_GUARDRAIL: You do NOT claim to have done anything unless it is in the last_execution_result.\n"
@@ -251,8 +253,9 @@ WEB_SIGNALS = [
     "nifty", "nifty 50", "sensex", "dow jones", "nasdaq", "s&p 500",
     "bitcoin price", "crypto price", "gold price", "silver price",
     "today's", "right now", "currently",
-    "what is the", "who is", "when did", "where is",
-    "latest", "recent", "news",
+    "what is the price", "what is the current", "what is the latest",
+    "who is the current", "who is the president", "who is the ceo",
+    "latest news", "recent news",
 ]
 
 # File OPERATIONS — reading/writing/listing existing files
@@ -316,6 +319,7 @@ class PersonalAgent(BaseAgent):
     def __init__(self, memory=None, profile_data=None):
         super().__init__(memory=memory, profile_data=profile_data)
         self._last_response: str = ""  # per-instance anti-repetition tracker
+        self._code_session_store: dict = {}  # per-instance session registry
 
     def run(self, query: str, system_prompt: str = "",
             context: str = "", mode: str = "auto") -> Generator[AgentEvent, None, None]:
@@ -411,7 +415,7 @@ class PersonalAgent(BaseAgent):
             from lirox.pipeline.similarity import calculate_similarity
             similarity = calculate_similarity(answer, self._last_response)
 
-            if similarity > 0.75 and len(answer) > 300:
+            if similarity > 0.85 and len(answer) > 500:
                 # Too similar, regenerate with anti-repetition instruction
                 varied_prompt = prompt + "\n\n[IMPORTANT: Your last response was similar to this. Vary your approach - try a different structure, different examples, or different angle.]"
                 
@@ -424,9 +428,13 @@ class PersonalAgent(BaseAgent):
         # Store this response for next comparison
         self._last_response = answer
 
-        # Extract and store facts automatically
+        # Extract and store facts automatically (rate-limited to every 5 interactions)
         try:
-            self._extract_and_store_facts(query, answer)
+            if not hasattr(self, '_fact_extract_count'):
+                self._fact_extract_count = 0
+            self._fact_extract_count += 1
+            if self._fact_extract_count % 5 == 0:
+                self._extract_and_store_facts(query, answer)
         except Exception:
             pass  # Don't break chat if extraction fails
 
@@ -482,13 +490,15 @@ class PersonalAgent(BaseAgent):
     # /code PERSISTENT SESSION
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-    _code_session_store: dict = {}  # class-level session registry
+    # NOTE: _code_session_store moved to __init__ — see above
 
     def _code_session(self, query: str, context: str, sp: str = ""):
         """Handle /code <language> or subsequent queries within a session."""
         from lirox.modes.code_mode import CodeMode
 
-        mode = CodeMode()
+        if not hasattr(self, '_code_mode'):
+            self._code_mode = CodeMode()
+        mode = self._code_mode
 
         # Parse language from /code invocation
         parts = query.strip().split(maxsplit=2)
@@ -551,39 +561,10 @@ class PersonalAgent(BaseAgent):
             user_name = ""
 
         # ──────────────────────────────────────────────────────────────────
-        # PHASE 1 — ADAPTIVE THINKING
+        # PHASE 1 — DESIGN ANALYSIS
         # ──────────────────────────────────────────────────────────────────
-        yield {"type": "agent_progress", "message": "🧠 Initiating Adaptive Thinking Engine..."}
-
+        yield {"type": "agent_progress", "message": "🧠 Analyzing request..."}
         think_result = None
-        try:
-            class DummyAdaptiveThinkingEngine:
-                def think(self, query, context, complexity):
-                    yield {"type": "progress", "message": "🧠 Analyzing request directly (Adaptive engine deprecated)"}
-                    yield {"type": "done", "data": {"decision": query, "reasoning": "Direct execution", "approach": "straightforward"}}
-            
-            thinking_engine = DummyAdaptiveThinkingEngine()
-
-            for event in thinking_engine.think(
-                query=query,
-                context={"query": query, "raw_context": context},
-                complexity="high",
-            ):
-                if event.get("type") == "done":
-                    think_result = event.get("data", {})
-                else:
-                    yield {"type": "agent_progress", "message": event.get("message", "")}
-
-            if think_result:
-                decision = think_result.get("decision", query)[:100]
-                yield {
-                    "type": "agent_progress",
-                    "message": f"✓ Approach decided: {decision}",
-                }
-
-        except Exception as e:
-            _logger.error("Thinking engine error: %s", e, exc_info=True)
-            yield {"type": "agent_progress", "message": "⚠️ Thinking engine failed, using direct reasoning."}
 
 
             
@@ -783,10 +764,7 @@ class PersonalAgent(BaseAgent):
 
                 answer = _STREAMER.clean_formatting(answer)
 
-                done_event = {"type": "done", "answer": answer}
-                if think_result:
-                    done_event["thinking_result"] = think_result
-                yield done_event
+                yield {"type": "done", "answer": answer}
                 return
 
             else:
@@ -1176,7 +1154,7 @@ Link: https://another-url.com"
         if any(kw in q for kw in ["what do you know", "about me", "my name", "who am i"]):
             facts = learnings.get_facts_summary(n=10)
             topics = learnings.get_top_topics(5)
-            topic_str = ", ".join(t["topic"] for t in topics) if topics else "none"
+            topic_str = ", ".join(t.get("topic", "unknown") for t in topics) if topics else "none"
             blocks.append(f"WHAT I KNOW:\n{facts}\nTopics: {topic_str}")
 
         if any(kw in q for kw in ["last conversation", "previous", "our history"]):

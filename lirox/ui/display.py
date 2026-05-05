@@ -191,9 +191,9 @@ def show_answer(text: str, agent: str = "personal"):
                 chunk_count += 1
                 if chunk_count % _MARKDOWN_WORD_BATCH == 0:
                     try: live.update(Markdown(full_text))
-                    except: live.update(full_text)
+                    except Exception: live.update(full_text)
             try: live.update(Markdown(full_text))
-            except: live.update(full_text)
+            except Exception: live.update(full_text)
     except Exception:
         console.print(text)
 

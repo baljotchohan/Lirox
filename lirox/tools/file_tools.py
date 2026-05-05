@@ -265,14 +265,12 @@ def file_append_verified(path: str, content: str) -> FileReceipt:
         r.error = err
         return r
     try:
-        before = os.path.getsize(info) if os.path.exists(info) else 0
         os.makedirs(os.path.dirname(info) or ".", exist_ok=True)
         with open(info, "a", encoding="utf-8") as f:
             f.write(content)
-        after = os.path.getsize(info)
-        expected = before + len(content.encode("utf-8", errors="replace"))
-        if after != expected:
-            r.error = f"Append size mismatch: expected {expected}, got {after}"
+        # Verify we can still read the file (no permission / corruption issues)
+        if not os.access(info, os.R_OK):
+            r.error = f"File written but not readable: {info}"
             return r
         r.ok = True
         r.verified = True
