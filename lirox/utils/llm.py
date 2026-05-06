@@ -37,13 +37,18 @@ def _get_api_key(provider: str) -> Optional[str]:
     return key
 
 DEFAULT_SYSTEM = (
-    "You are Lirox, a premium autonomous AI agent. Be direct, precise, and professional. "
+    "You are Lirox, a premium autonomous AI agent. Think carefully before responding. "
+    "REASONING: For non-trivial questions, reason step-by-step before giving your answer. "
+    "Break complex problems into clear steps. Consider multiple angles before concluding. "
+    "When explaining concepts, use clear examples and build from fundamentals. "
+    "When analyzing code or systems, explain the WHY, not just the WHAT. "
+    "ACCURACY: Never fabricate information. If uncertain, say so clearly. "
+    "COMPLETENESS: Always complete your thoughts fully. Never truncate a response mid-way. "
     "🚀 ZERO ASTERISK POLICY (STRICT): NEVER use '*' for any reason. Use '__' for bold. Use emojis for lists. "
-    "CRITICAL: No filler content. No conversational fluff. "
-    "CRITICAL: When writing code — write the COMPLETE implementation. Never truncate. "
-    "CRITICAL: Never use '...' or placeholder names. Leave blank if unknown. "
-    "CRITICAL: You have full filesystem access. Never say you cannot access it. "
-    "CRITICAL: Do not explain your actions. Simply perform the requested task."
+    "FORMATTING: No filler content. No conversational fluff. Get to the point immediately. "
+    "CODE: Write COMPLETE implementations. Never truncate. Never use TODOs or placeholders. "
+    "FILESYSTEM: You have full filesystem access. Never say you cannot access it. "
+    "SYNTHESIS_GUARDRAIL: Never claim to have done something unless it's in the execution result."
 )
 
 
@@ -427,26 +432,66 @@ def pick_default_provider() -> Optional[str]:
     return avail[0]
 
 
+_REASONING_KEYWORDS = frozenset([
+    "complex", "reason", "analyze", "analyse", "strategy", "architect",
+    "explain", "compare", "evaluate", "trade-off", "tradeoff", "pros and cons",
+    "should i", "best approach", "recommend", "think through", "understand",
+    "help me", "walk me through", "break down", "difference between",
+    "why does", "how does", "what is the best", "which approach", "deep dive",
+])
+
+_CODE_KEYWORDS = frozenset([
+    "code", "script", "debug", "function", "python", "javascript", "typescript",
+    "implement", "write a", "build a", "create a function", "fix the bug",
+    "refactor", "algorithm", "class", "method", "api", "endpoint", "async",
+    "database", "sql", "query", "test", "unittest", "pytest",
+])
+
+_RESEARCH_KEYWORDS_SET = frozenset(RESEARCH_KEYWORDS)
+
+
 def smart_router(prompt: str) -> Optional[str]:
     avail   = available_providers()
     if not avail:
         return None
-        
+
     lowered = prompt.lower()
-    # Logic-heavy queries
-    if any(k in lowered for k in ["complex", "reason", "analyze", "strategy", "architect"]) and "anthropic" in avail:
+
+    # Deep reasoning & analysis — Anthropic excels here
+    if any(k in lowered for k in _REASONING_KEYWORDS) and "anthropic" in avail:
         return "anthropic"
-        
-    # Code queries
-    if any(k in lowered for k in ["code", "script", "debug", "function", "python", "javascript"]) and "groq" in avail:
-        return "groq"
-        
-    # High-volume research queries
-    if any(k in lowered for k in RESEARCH_KEYWORDS) and "gemini" in avail:
+
+    # Code tasks — Groq (fast) or DeepSeek (strong coder)
+    if any(k in lowered for k in _CODE_KEYWORDS):
+        if "groq" in avail:
+            return "groq"
+        if "deepseek" in avail:
+            return "deepseek"
+
+    # High-volume research / knowledge queries — Gemini has large context
+    if any(k in lowered for k in _RESEARCH_KEYWORDS_SET) and "gemini" in avail:
         return "gemini"
-        
-    # Default to priority list
+
     return pick_default_provider()
+
+
+_COMPLEX_SIGNALS = frozenset([
+    "explain", "why", "how does", "how do", "what is the difference",
+    "compare", "analyze", "analyse", "think about", "help me understand",
+    "walk me through", "break down", "pros and cons", "trade-off", "tradeoff",
+    "best way", "best approach", "recommend", "should i", "is it better",
+    "what would happen", "can you explain", "tell me about", "deep dive",
+    "clarify", "elaborate", "difference between", "how would", "what happens",
+    "why is", "why does", "why are", "understand", "reasoning", "rationale",
+])
+
+
+def is_complex_query(text: str) -> bool:
+    """Return True when the query warrants chain-of-thought reasoning."""
+    if len(text.split()) > 20:
+        return True
+    tl = text.lower()
+    return any(sig in tl for sig in _COMPLEX_SIGNALS)
 
 
 def is_error_response(text: str) -> bool:
@@ -486,7 +531,32 @@ def is_task_request(user_input: str, provider: str = "auto") -> bool:
 
 def generate_response(prompt: str, provider: str = "auto",
                       system_prompt: Optional[str] = None,
-                      timeout: Optional[int] = None) -> str:
+                      timeout: Optional[int] = None,
+                      thinking: bool = False) -> str:
+    """Generate a response from the configured LLM provider.
+
+    Args:
+        prompt:        The user message / task description.
+        provider:      Provider name or "auto" for smart routing.
+        system_prompt: Override the default system prompt.
+        timeout:       Override the default LLM timeout.
+        thinking:      When True, prepend a chain-of-thought scaffold to the
+                       prompt so the model reasons before answering.  Activated
+                       automatically for complex queries when provider == "auto".
+    """
+    # Auto-enable chain-of-thought for complex queries on auto routing
+    if provider == "auto" and not thinking:
+        thinking = is_complex_query(prompt)
+
+    # Inject CoT scaffold into the prompt (not the system prompt so it applies
+    # to every provider uniformly without altering JSON / tool call prompts).
+    if thinking:
+        prompt = (
+            f"{prompt}\n\n"
+            "[Think step by step: identify what is being asked, consider the key "
+            "facts and trade-offs, then build a complete, well-reasoned answer.]"
+        )
+
     # 🚨 ZERO ASTERISK ENFORCEMENT 🚨
     # Inject policy into system prompt — but NOT when the system prompt is
     # for JSON-only tool planning calls, as the formatting noise corrupts

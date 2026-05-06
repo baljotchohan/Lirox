@@ -152,8 +152,16 @@ class MemoryManager:
                 return json.load(f)
         except FileNotFoundError:
             pass
-        except Exception:
-            pass
+        except json.JSONDecodeError as e:
+            import logging
+            logging.getLogger("lirox.memory").warning(
+                "Memory file corrupt (%s): %s — starting fresh", path, e
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger("lirox.memory").warning(
+                "Memory load error (%s): %s", path, e
+            )
         return None
 
     def _save(self, path: str, data: dict):

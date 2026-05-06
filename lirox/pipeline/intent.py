@@ -105,8 +105,9 @@ class IntentAnalyzer:
 
         try:
             raw = generate_response(prompt, provider="auto", system_prompt=_SYSTEM)
-            raw = raw.replace("```json", "").replace("```", "").strip()
-            data = json.loads(raw)
+            # Use the robust O(n) extractor instead of manual strip + json.loads
+            from lirox.utils.llm_json import extract_json
+            data = extract_json(raw)
 
             return IntentProfile(
                 domain=data.get("domain", "general"),
@@ -120,9 +121,8 @@ class IntentAnalyzer:
                 length_override=is_short,
             )
 
-        except (json.JSONDecodeError, Exception) as exc:
+        except Exception as exc:
             _logger.warning("IntentAnalyzer failed (%s) — using fallback", exc)
-            # Even on fallback, respect length override
             fallback = _FALLBACK_INTENT
             if is_short:
                 from dataclasses import replace

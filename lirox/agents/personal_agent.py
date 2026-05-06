@@ -139,8 +139,21 @@ def _get_sys(profile_data: Dict[str, Any]) -> str:
         "• Build on previous context naturally\n"
         "• If they mention they're a student, remember their field/university\n"
         "• If they share project details, reference them in future conversations\n"
+        "\n"
+        "THINKING & REASONING:\n"
+        "• For complex questions, reason through the problem before answering\n"
+        "• Break multi-part problems into clear, numbered steps\n"
+        "• When explaining technical concepts, build from fundamentals with examples\n"
+        "• When comparing options, give a clear recommendation with reasoning\n"
+        "• Never give a vague 'it depends' answer without explaining WHAT it depends on\n"
+        "\n"
+        "CODE GENERATION:\n"
+        "• Always write COMPLETE, runnable code — no truncation, no TODOs\n"
+        "• Include imports, error handling, and a working example\n"
+        "• Explain key decisions inline when they're non-obvious\n"
+        "• For scripts, include a main() entry point and if __name__ == '__main__' guard\n"
     )
-    
+
     return base
 
 
@@ -233,6 +246,21 @@ _FILEGEN_PATTERN_REV = re.compile(
     re.IGNORECASE,
 )
 
+# Code WRITING — "write me a function", "build an app in python", etc.
+# Checked BEFORE shell so these go to the code-capable chat path.
+_CODE_WRITE_PATTERN = re.compile(
+    r'\b(?:write|create|build|implement|code|make|develop|generate)\b'
+    r'.*\b(?:function|class|script|program|app|application|api|bot|'
+    r'algorithm|module|library|tool|utility|server|client|parser|'
+    r'scraper|crawler|cli|command.?line)\b',
+    re.IGNORECASE,
+)
+_CODE_WRITE_PATTERN_LANG = re.compile(
+    r'\b(?:write|create|build|implement|code|make|develop|generate)\b'
+    r'.*\b(?:python|javascript|typescript|java|c\+\+|golang|rust|ruby|php|swift)\b',
+    re.IGNORECASE,
+)
+
 SHELL_SIGNALS = [
     "run command", "execute command", "in the terminal", "in bash",
     "run python", "git status", "git commit", "git push", "git pull",
@@ -277,8 +305,9 @@ def _classify(query: str) -> str:
       2. web signals             — real-time / search queries  ← checked BEFORE shell
       3. file generation         — create pdf/docx/pptx/xlsx
       4. file operations         — read/list/open existing files
-      5. shell commands          — explicit terminal/run/install keywords
-      6. chat                    — everything else
+      5. code writing            — write/build/implement a function/script/app
+      6. shell commands          — explicit terminal/run/install keywords
+      7. chat                    — everything else (incl. explain/analyze/compare)
     """
     q = query.lower().strip()
 
@@ -300,11 +329,16 @@ def _classify(query: str) -> str:
     if any(sig in q for sig in _FILE_OP_SIGNALS):
         return "file"
 
-    # ── 5. SHELL COMMANDS ─────────────────────────────────────────────────
+    # ── 5. CODE WRITING (checked BEFORE shell) ───────────────────────────
+    # "write me a Python script", "build a REST API", "implement quicksort"
+    if _CODE_WRITE_PATTERN.search(query) or _CODE_WRITE_PATTERN_LANG.search(query):
+        return "chat"  # routed to chat with CoT so agent writes complete code
+
+    # ── 6. SHELL COMMANDS ─────────────────────────────────────────────────
     if any(sig in q for sig in SHELL_SIGNALS):
         return "shell"
 
-    # ── 6. DEFAULT: CHAT ──────────────────────────────────────────────────
+    # ── 7. DEFAULT: CHAT ──────────────────────────────────────────────────
     return "chat"
 
 
@@ -349,17 +383,38 @@ class PersonalAgent(BaseAgent):
     # CHAT — General conversation
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+    # Signals that indicate the user wants a deeply-reasoned answer
+    _COMPLEX_SIGNALS = frozenset([
+        "explain", "why", "how does", "how do", "what is the difference",
+        "compare", "analyze", "analyse", "help me understand",
+        "walk me through", "break down", "pros and cons", "trade-off", "tradeoff",
+        "best way", "best approach", "recommend", "should i", "is it better",
+        "what would happen", "can you explain", "tell me about", "deep dive",
+        "clarify", "elaborate", "difference between", "how would", "what happens",
+        "why is", "why does", "why are", "understand", "reasoning", "rationale",
+        "what are", "what's the", "when should", "how should",
+        "write a", "build a", "implement", "create a function", "create a class",
+        "write code", "write me", "give me code", "code for", "script for",
+    ])
+
+    @staticmethod
+    def _query_is_complex(query: str) -> bool:
+        """True when the query warrants deeper chain-of-thought reasoning."""
+        if len(query.split()) > 18:
+            return True
+        ql = query.lower()
+        return any(sig in ql for sig in PersonalAgent._COMPLEX_SIGNALS)
+
     def _chat(self, query, context, sp=""):
         # Show immediate progress to avoid "stuck" feeling
         yield {"type": "agent_progress", "message": "🔍 Analyzing request...", "agent": self.name}
-        
+
         base_sys = sp or _get_sys(self.profile_data)
         user_name = self.profile_data.get("user_name", "")
-        agent_name = self.profile_data.get("agent_name", "Lirox")
 
         # ── GREETING DETECTION ──
-        # Simple greetings should get a clean, direct response without injecting
-        # stale conversation history (which causes hallucination about old projects).
+        # Simple greetings get a clean, direct response without injecting
+        # stale conversation history (which causes hallucination).
         q_stripped = query.lower().strip().rstrip("!.?")
         _GREETINGS = {
             "hi", "hello", "hey", "yo", "sup", "hola", "howdy",
@@ -367,76 +422,96 @@ class PersonalAgent(BaseAgent):
             "what's up", "whats up", "wassup", "hii", "hiii",
             "hey there", "hello there", "hi there",
         }
-        if q_stripped in _GREETINGS or (len(query.split()) <= 3 and q_stripped.split()[0] in {"hi", "hello", "hey", "yo", "sup"}):
-            # Direct greeting — use enriched system prompt but force brevity
+        _first_word = q_stripped.split()[0] if q_stripped.split() else ""
+        if q_stripped in _GREETINGS or (len(query.split()) <= 3 and _first_word in {"hi", "hello", "hey", "yo", "sup"}):
             greeting_prompt = (
                 f"The user '{user_name or 'the user'}' just greeted you with: \"{query}\"\n\n"
                 "Respond with a brief, warm greeting. Be direct and natural.\n"
                 "Ask what they'd like to work on. Do NOT reference any past projects or topics.\n"
                 "Keep it to 2-3 sentences max."
             )
-            # Use the full enriched system prompt so it knows who it is (Lirox) and who the user is (boss)
             answer = generate_response(greeting_prompt, provider="auto", system_prompt=base_sys)
             answer = _STREAMER.clean_formatting(answer)
             yield {"type": "done", "answer": answer}
             return
 
-        # ── NORMAL CHAT (with context) ──
-        yield {"type": "agent_progress", "message": "🧠 Synthesizing response...", "agent": self.name}
+        # ── NORMAL CHAT ──
+        is_complex = self._query_is_complex(query)
+
+        if is_complex:
+            yield {"type": "agent_progress", "message": "🧠 Reasoning through the problem...", "agent": self.name}
+        else:
+            yield {"type": "agent_progress", "message": "🧠 Synthesizing response...", "agent": self.name}
+
         mem_ctx = self.memory.get_relevant_context(query)
-        prompt = query
-        if mem_ctx and mem_ctx.strip():
-            prompt = f"Relevant context:\n{mem_ctx}\n\nUser: {query}"
-        
-        # Add tone matching based on user's message
-        user_is_casual = any(word in query.lower() for word in ['hey', 'yo', 'sup', "what's up", 'wassup', 'hi', 'hello'])
-        user_is_urgent = any(word in query.lower() for word in ['urgent', 'asap', 'quick', 'emergency', 'help!', 'now'])
-        user_is_multilingual = any(ord(c) > 127 for c in query)  # Non-ASCII chars = another language
 
-        tone_guidance = ""
-        if user_is_casual:
-            tone_guidance = "\n[User is being casual/friendly - match their relaxed tone. No corporate speak.]"
-        elif user_is_urgent:
-            tone_guidance = "\n[User needs quick help - be direct and concise.]"
-        elif user_is_multilingual:
-            tone_guidance = "\n[User may be speaking another language - acknowledge it naturally if relevant.]"
-
-        prompt += tone_guidance
-        prompt += "\n[Format: Natural paragraphs + strategic bullets. Emojis for sections only, not every line. Use '__' for emphasis.]"
-
+        # Build the final prompt
+        parts: list[str] = []
         if context:
-            prompt = f"Context:\n{context[:1500]}\n\n{prompt}"
-            
-        answer = generate_response(prompt, provider="auto", system_prompt=base_sys)
+            parts.append(f"Context:\n{context[:1500]}")
+        if mem_ctx and mem_ctx.strip():
+            parts.append(f"Relevant memory:\n{mem_ctx}")
+        parts.append(f"User: {query}")
+
+        # Tone detection
+        ql = query.lower()
+        user_is_casual    = any(w in ql for w in ["hey", "yo", "sup", "what's up", "wassup"])
+        user_is_urgent    = any(w in ql for w in ["urgent", "asap", "quick", "emergency", "help!", "now"])
+        user_is_multilingual = any(ord(c) > 127 for c in query)
+
+        tone_note = ""
+        if user_is_casual:
+            tone_note = "[Tone: casual/friendly — match their relaxed style. No corporate speak.]"
+        elif user_is_urgent:
+            tone_note = "[Tone: urgent — be direct and concise. No preamble.]"
+        elif user_is_multilingual:
+            tone_note = "[Tone: user may prefer another language — acknowledge naturally if relevant.]"
+
+        # For complex queries: guide the model to reason before answering
+        if is_complex:
+            parts.append(
+                "\n[Think carefully: identify what is being asked, consider relevant facts "
+                "and trade-offs, then produce a complete and well-structured answer. "
+                "Use examples where they clarify. Show your reasoning where it adds value.]"
+            )
+
+        if tone_note:
+            parts.append(tone_note)
+
+        parts.append("[Format: natural prose + bullets where appropriate. Emojis for section headers only. '__text__' for emphasis.]")
+
+        prompt = "\n\n".join(parts)
+
+        answer = generate_response(
+            prompt, provider="auto", system_prompt=base_sys,
+            thinking=False,  # CoT already embedded in prompt above
+        )
 
         # ANTI-REPETITION CHECK
-        # If this response is too similar to last response, regenerate with variation
         if self._last_response:
-            from lirox.pipeline.similarity import calculate_similarity
-            similarity = calculate_similarity(answer, self._last_response)
+            try:
+                from lirox.pipeline.similarity import calculate_similarity
+                similarity = calculate_similarity(answer, self._last_response)
+                if similarity > 0.85 and len(answer) > 500:
+                    varied_prompt = (
+                        prompt + "\n\n[NOTE: Your last response was very similar. "
+                        "Try a different structure, fresh examples, or a different angle.]"
+                    )
+                    answer = generate_response(varied_prompt, provider="auto", system_prompt=base_sys)
+            except Exception:
+                pass
 
-            if similarity > 0.85 and len(answer) > 500:
-                # Too similar, regenerate with anti-repetition instruction
-                varied_prompt = prompt + "\n\n[IMPORTANT: Your last response was similar to this. Vary your approach - try a different structure, different examples, or different angle.]"
-                
-                answer = generate_response(
-                    varied_prompt,
-                    provider="auto",
-                    system_prompt=base_sys,
-                )
-
-        # Store this response for next comparison
         self._last_response = answer
 
-        # Extract and store facts automatically (rate-limited to every 5 interactions)
+        # Extract and store facts automatically (every 5 interactions)
         try:
-            if not hasattr(self, '_fact_extract_count'):
+            if not hasattr(self, "_fact_extract_count"):
                 self._fact_extract_count = 0
             self._fact_extract_count += 1
             if self._fact_extract_count % 5 == 0:
                 self._extract_and_store_facts(query, answer)
         except Exception:
-            pass  # Don't break chat if extraction fails
+            pass  # Fact extraction is optional — never break chat
 
         answer = _STREAMER.clean_formatting(answer)
         yield {"type": "done", "answer": answer}
@@ -1183,17 +1258,28 @@ Link: https://another-url.com"
     def _synth_receipt(self, query, receipt):
         ctx = receipt.as_llm_context()
         if receipt.verified and receipt.ok:
-            prompt = (f"User asked: {query}\n\nTool receipt:\n{ctx}\n\n"
-                      "Confirm briefly what was done. Include path if file was written. Max 3 sentences.")
+            prompt = (
+                f"User asked: {query}\n\nTool receipt:\n{ctx}\n\n"
+                "Confirm what was done in 1-3 sentences. Include the path if a file was written. "
+                "Be direct — no preamble like 'I have successfully…'. Just state the result."
+            )
         else:
-            prompt = (f"User asked: {query}\n\nTool receipt:\n{ctx}\n\n"
-                      "Operation FAILED. Tell user what failed and suggest a fix. Max 3 sentences.")
+            prompt = (
+                f"User asked: {query}\n\nTool receipt:\n{ctx}\n\n"
+                "The operation FAILED. Clearly explain what failed and give a concrete fix suggestion. "
+                "Be specific — not generic advice. Max 3 sentences."
+            )
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
         answer = _STREAMER.clean_formatting(answer)
         yield {"type": "done", "answer": answer}
 
     def _synth_text(self, query, text_result):
-        prompt = f"Task: {query}\nTool output:\n{text_result}\n\nSummarize concisely."
+        prompt = (
+            f"Task: {query}\n"
+            f"Tool output:\n{str(text_result)[:2000]}\n\n"
+            "Summarize the output concisely and clearly. "
+            "Highlight the most important parts. Do not repeat raw output unless it adds clarity."
+        )
         answer = generate_response(prompt, provider="auto", system_prompt=_get_sys(self.profile_data))
         answer = _STREAMER.clean_formatting(answer)
         yield {"type": "done", "answer": answer}
@@ -1245,26 +1331,22 @@ Output ONLY JSON, no explanation.
 """
         
         try:
-            facts_json = generate_response(
+            raw = generate_response(
                 extract_prompt,
                 provider="auto",
-                system_prompt="Extract user facts precisely. Output only JSON."
+                system_prompt="Extract user facts precisely. Output only JSON.",
             )
-            
-            # Clean and parse
-            facts_json = facts_json.replace("```json", "").replace("```", "").strip()
-            import json
-            facts = json.loads(facts_json)
 
-            # Store each fact type using the correct MemoryManager API
+            # Use the robust O(n) JSON extractor instead of manual string stripping
+            facts = _extract_json(raw)
+
             education = facts.get("education")
             if isinstance(education, str) and education.strip():
                 self.memory.add_fact(f"Education: {education.strip()}")
 
-            if facts.get("projects"):
-                for project in facts["projects"]:
-                    if isinstance(project, str) and project.strip():
-                        self.memory.add_fact(f"Project: {project.strip()}")
+            for project in facts.get("projects") or []:
+                if isinstance(project, str) and project.strip():
+                    self.memory.add_fact(f"Project: {project.strip()}")
 
             preference = facts.get("preferences")
             if isinstance(preference, str) and preference.strip():
@@ -1275,5 +1357,4 @@ Output ONLY JSON, no explanation.
                 self.memory.add_fact(f"Background: {background.strip()}")
 
         except Exception as e:
-            # Silent fail - fact extraction is optional
             _logger.debug("Fact extraction failed: %s", e)

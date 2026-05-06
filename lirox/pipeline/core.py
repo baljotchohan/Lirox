@@ -51,11 +51,50 @@ class ExecutionPipeline:
     @property
     def thinker(self):
         if self._thinker is None:
-            class _PassthroughThinker:
-                """No-op thinker — reasoning is handled directly by the agent."""
-                def think(self, query, context, complexity):
-                    yield {"type": "done", "data": {"decision": query, "reasoning": "Direct execution", "approach": "straightforward"}}
-            self._thinker = _PassthroughThinker()
+            class _LLMThinker:
+                """Real LLM-backed thinker — generates structured reasoning before execution."""
+
+                def think(self, query: str, context: dict, complexity: str):
+                    from lirox.utils.llm import generate_response
+                    yield {"type": "progress", "message": "🧠 Reasoning about approach..."}
+
+                    ctx_snippet = ""
+                    if context:
+                        try:
+                            import json as _j
+                            ctx_snippet = _j.dumps(context, ensure_ascii=False)[:400]
+                        except Exception:
+                            ctx_snippet = str(context)[:400]
+
+                    detail = "deeply" if complexity == "high" else "carefully"
+                    think_prompt = (
+                        f"Task: {query}\n"
+                        + (f"Context: {ctx_snippet}\n" if ctx_snippet else "")
+                        + f"\nThink {detail} about how to accomplish this:\n"
+                        "1. What exactly is being asked?\n"
+                        "2. What is the best approach and why?\n"
+                        "3. What concrete steps are needed?\n"
+                        "4. What could go wrong and how to avoid it?\n\n"
+                        "Be concise but thorough. Plain text only."
+                    )
+                    reasoning = generate_response(
+                        think_prompt,
+                        provider="auto",
+                        system_prompt=(
+                            "You are a systematic analyst. Think through tasks step by step. "
+                            "Be precise and actionable. Output plain text only — no markdown."
+                        ),
+                    )
+                    yield {
+                        "type": "done",
+                        "data": {
+                            "decision": query,
+                            "reasoning": (reasoning or "Direct execution")[:1000],
+                            "approach": complexity,
+                        },
+                    }
+
+            self._thinker = _LLMThinker()
         return self._thinker
 
     @property

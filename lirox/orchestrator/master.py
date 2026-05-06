@@ -248,6 +248,6 @@ class MasterOrchestrator:
                 from lirox.memory.learnings import LearningsStore
                 learnings = LearningsStore()
                 TrainingEngine(learnings).train(self.global_memory, self.session_store)
-            except Exception:
-                pass
+            except Exception as e:
+                _logger.debug("Auto-train failed: %s", e)
         threading.Thread(target=_worker, daemon=True, name="lirox-auto-train").start()
