@@ -87,7 +87,7 @@ def sanitize_user_name(user_name: str) -> str:
     name = user_name.strip().lower()
     
     # Replace Lirox branding with generic placeholder
-    if name in ("lirox", "lirox ai", "lirox-ai", "lirox compact"):
+    if name in ("lirox", "lirox ai", "lirox-ai", "lirox compact", "unknown"):
         return ""
     
     # Return original (unsanitized) user_name
