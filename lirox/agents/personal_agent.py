@@ -22,6 +22,7 @@ from lirox.agents.classifier import _classify, SELF_SIGNALS, MEMORY_SIGNALS
 from lirox.utils.llm import generate_response
 from lirox.utils.streaming import StreamingResponse
 from lirox.verify import FileReceipt, ShellReceipt
+from lirox.agents.registry import register_agent
 
 _STREAMER = StreamingResponse()
 _logger = logging.getLogger("lirox.personal_agent")
@@ -220,6 +221,7 @@ def _resolve_path(raw: str, query: str) -> str:
 # THE AGENT
 # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
+@register_agent("personal")
 class PersonalAgent(BaseAgent):
     @property
     def name(self) -> str: return "personal"
@@ -506,8 +508,6 @@ class PersonalAgent(BaseAgent):
         from lirox.utils.input_sanitizer import sanitize_user_name
 
         user_name = sanitize_user_name(self.profile_data.get("user_name", ""))
-        if user_name.lower() in ("lirox", "lirox ai", "unknown", ""):
-            user_name = ""
 
         # ──────────────────────────────────────────────────────────────────
         # PHASE 1 — DESIGN ANALYSIS

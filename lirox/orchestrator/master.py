@@ -55,10 +55,15 @@ class MasterOrchestrator:
         self._interaction_count: int = 0
         self.pending_action: Optional[PendingAction] = None
 
-    def _get_agent(self):
+    def _get_agent(self, name: str = "personal"):
         if self._agent is None:
-            from lirox.agents.personal_agent import PersonalAgent
-            self._agent = PersonalAgent(
+            from lirox.agents.registry import AgentRegistry
+            # Ensure personal agent is imported and registered
+            import lirox.agents.personal_agent  # noqa
+            agent_class = AgentRegistry.get_agent_class(name)
+            if not agent_class:
+                raise ValueError(f"Agent '{name}' not found in registry.")
+            self._agent = agent_class(
                 memory=self.global_memory,
                 profile_data=self.profile_data)
         return self._agent

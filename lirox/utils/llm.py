@@ -553,8 +553,9 @@ def generate_response(prompt: str, provider: str = "auto",
     if thinking:
         prompt = (
             f"{prompt}\n\n"
-            "[Think step by step: identify what is being asked, consider the key "
-            "facts and trade-offs, then build a complete, well-reasoned answer.]"
+            "Before providing your final response, you MUST think step-by-step. "
+            "Enclose your internal reasoning process entirely within <think>...</think> tags. "
+            "After the closing </think> tag, provide your final, formatted output."
         )
 
     # 🚨 ZERO ASTERISK ENFORCEMENT 🚨

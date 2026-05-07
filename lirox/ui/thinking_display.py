@@ -64,11 +64,13 @@ class LiveThinkingDisplay:
             except Exception as e:
                 result_text = f"Error: {e}"
                 
-            for char in result_text:
-                displayed_text += char
+            # Render in chunks to prevent UI blocking
+            chunk_size = 15
+            for i in range(0, len(result_text), chunk_size):
+                displayed_text += result_text[i:i+chunk_size]
                 agent_panel = Panel(displayed_text + " ▌", title=f"🤖 {agent_name}", border_style="cyan")
                 layout["agents"].update(agent_panel)
-                time.sleep(0.005)
+                time.sleep(0.02)
         else:
             # Fallback mock
             thinking_stream = ["Analyzing context...", "Evaluating parameters...", "Formulating plan..."]
@@ -89,11 +91,13 @@ class LiveThinkingDisplay:
     def _stream_synthesis(self, layout: Layout):
         synthesis_text = "Synthesizing agent views into a unified plan of action..."
         displayed_synthesis = ""
-        for char in synthesis_text:
-            displayed_synthesis += char
+        # Render synthesis in chunks
+        chunk_size = 5
+        for i in range(0, len(synthesis_text), chunk_size):
+            displayed_synthesis += synthesis_text[i:i+chunk_size]
             synthesis_panel = Panel(displayed_synthesis + " ▌", title="🎯 SYNTHESIS", border_style="green")
             layout["synthesis"].update(synthesis_panel)
-            time.sleep(0.01)
+            time.sleep(0.02)
         self.synthesis = displayed_synthesis
 
     def _show_decision(self, layout: Layout):

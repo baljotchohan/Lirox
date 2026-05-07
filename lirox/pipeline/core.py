@@ -173,23 +173,16 @@ class ExecutionPipeline:
                 filtered_context = {"data": filtered_context} if filtered_context else {}
 
             # ══════════════════════════════════════════════════════════
-            # STAGE 3: THINK (adaptive — skipped for simple tasks)
+            # STAGE 3: THINK (advanced reasoning for all tasks)
             # ══════════════════════════════════════════════════════════
             thinking_result: Optional[Dict] = None
 
-            if complexity in ("medium", "high"):
-                yield PipelineEvent("progress", "🧠 Thinking about approach...")
+            yield PipelineEvent("progress", "🧠 Thinking deeply about approach...")
 
-                for event in self.thinker.think(query, filtered_context, complexity):
-                    yield PipelineEvent("thinking", event.get("message", ""), event)
-                    if event.get("type") == "done":
-                        thinking_result = event.get("data")
-            else:
-                thinking_result = {
-                    "decision": query,
-                    "reasoning": "Direct execution",
-                    "approach": "straightforward",
-                }
+            for event in self.thinker.think(query, filtered_context, complexity):
+                yield PipelineEvent("thinking", event.get("message", ""), event)
+                if event.get("type") == "done":
+                    thinking_result = event.get("data")
 
             # ══════════════════════════════════════════════════════════
             # STAGE 4: PLAN

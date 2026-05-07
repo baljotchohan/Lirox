@@ -392,7 +392,7 @@ class DesignEngine:
         system_prompt = (
             "You are an expert document designer and architect. Your job is to create a complete design plan "
             "for a document based on the user's request. You must return your design plan as a pure JSON object "
-            "with exactly the following schema. Do not return any other text, markdown blocks, or explanation, ONLY JSON:\n\n"
+            "with exactly the following schema. If you use <think> tags, place them BEFORE the JSON object:\n\n"
             "{\n"
             '  "topic": "The exact subject or title of the document",\n'
             '  "audience": "One of: beginner, intermediate, advanced, expert",\n'
@@ -425,7 +425,8 @@ class DesignEngine:
             prompt += f"Title constraint: {title}\n"
             
         try:
-            resp = generate_response(prompt, system_prompt=system_prompt)
+            # Enable advanced thinking for design tasks
+            resp = generate_response(prompt, system_prompt=system_prompt, thinking=True)
             
             from lirox.utils.llm_json import extract_json
             data = extract_json(resp)
