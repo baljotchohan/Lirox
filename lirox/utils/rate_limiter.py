@@ -7,7 +7,10 @@ If a background monitor thread is ever needed, use threading.Event() stop flag.
 """
 
 import time
-import psutil
+try:
+    import psutil
+except ImportError:  # FIX M-01: psutil is optional; degrade gracefully
+    psutil = None
 from typing import Dict
 from datetime import datetime, timedelta
 
@@ -71,6 +74,8 @@ class ResourceMonitor:
         Always returns True (non-blocking). Logs a single warning if thresholds
         are exceeded, but does not pause or stall the agent.
         """
+        if psutil is None:
+            return True  # no monitoring without psutil
         import gc
         cpu = psutil.cpu_percent(interval=0.1)
         ram = psutil.virtual_memory().percent

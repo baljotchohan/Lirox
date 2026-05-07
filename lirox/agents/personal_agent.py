@@ -639,10 +639,7 @@ class PersonalAgent(BaseAgent):
         # PHASE 1 — DESIGN ANALYSIS
         # ──────────────────────────────────────────────────────────────────
         yield {"type": "agent_progress", "message": "🧠 Analyzing request..."}
-        think_result = None
 
-
-            
         file_type = DesignEngine.detect_file_type(query)
         try:
             design = DesignEngine.plan_document(query, query[:80], file_type=file_type)

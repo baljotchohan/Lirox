@@ -2,6 +2,7 @@
 from __future__ import annotations
 import logging
 import os
+import re
 import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, Generator, Optional
@@ -23,6 +24,18 @@ class OrchestratorEvent:
 
 
 CONTINUATION_TOKENS = {"ok", "yes", "continue", "proceed", "do it", "go ahead", "sure", "ok continue"}
+
+# FIX C-03: Hoisted to module level — compiled once, not per-query.
+_ACTION_VERBS = (
+    r"create|generate|build|write|make|set up|put together|draft|prepare"
+)
+PROMISE_RE = re.compile(
+    r"\b(I'?ll|I will go ahead and|I'?m going to"
+    r"|let me go ahead and"
+    rf"|let me (?:{_ACTION_VERBS}))\s*"
+    rf"(?:{_ACTION_VERBS})?\b",
+    re.IGNORECASE,
+)
 
 @dataclass
 class PendingAction:
@@ -207,20 +220,7 @@ class MasterOrchestrator:
             done_data["thinking_result"] = last_thinking_result
 
         # ── Capture promised future action so "ok continue" works ──────────────
-        # Match explicit first-person action promises (including "let me <verb>")
-        # but NOT passive phrases like "I can help" or "let me know" that would
-        # mis-trigger re-execution on the next short acknowledgement.
-        import re as _re
-        _ACTION_VERBS = (
-            r"create|generate|build|write|make|set up|put together|draft|prepare"
-        )
-        PROMISE_RE = _re.compile(
-            r"\b(I'?ll|I will go ahead and|I'?m going to"
-            r"|let me go ahead and"
-            rf"|let me (?:{_ACTION_VERBS}))\s*"
-            rf"(?:{_ACTION_VERBS})?\b",
-            _re.IGNORECASE,
-        )
+        # Uses module-level PROMISE_RE (FIX C-03: no per-call recompilation)
         if result_text and PROMISE_RE.search(result_text):
             self.pending_action = PendingAction(
                 agent="personal",

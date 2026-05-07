@@ -346,7 +346,19 @@ Output ONLY the JSON array, no other text."""
             if file_type == "pptx":
                 result["slides"] = self.generate_slides(topic, num_slides=section_count or 8, context=combined_context, structure_hints=structure_hints) or []
             elif file_type in ("pdf", "docx"):
-                result["sections"] = self.generate_sections(topic, num_sections=section_count or 5, context=combined_context, structure_hints=structure_hints) or []
+                # FIX C-01/C-02: generate_sections() is a Generator that yields
+                # both {"type": "progress"} and {"type": "section"} dicts.
+                # We must consume it and extract only section data into a list.
+                sections_list = []
+                for event in self.generate_sections(
+                    topic,
+                    num_sections=section_count or 5,
+                    context=combined_context,
+                    structure_hints=structure_hints,
+                ):
+                    if isinstance(event, dict) and event.get("type") == "section":
+                        sections_list.append(event.get("data", event))
+                result["sections"] = sections_list or []
             elif file_type == "xlsx":
                 result["sheets"] = self.generate_sheets(topic, num_sheets=2, context=combined_context) or []
         except Exception as e:
