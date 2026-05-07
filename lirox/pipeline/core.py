@@ -275,7 +275,7 @@ class ExecutionPipeline:
 
     def _classify(self, query: str):
         """Return (task_type, complexity)."""
-        from lirox.agents.personal_agent import _classify as classify_task
+        from lirox.agents.classifier import _classify as classify_task
 
         task_type = classify_task(query)
         q_lower = query.lower()
