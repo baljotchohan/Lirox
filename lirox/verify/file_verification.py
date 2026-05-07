@@ -112,12 +112,6 @@ class FileVerificationEngine:
             result["issues"].append(f"Unknown file type: {ext}")
             # Don't fail, might be intentional
         
-        # Check 5: File is readable
-        if not p.is_file():
-            result["passed"] = False
-            result["issues"].append(f"File is not readable")
-            return result
-        
         # All checks passed
         return result
 

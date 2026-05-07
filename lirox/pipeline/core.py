@@ -244,7 +244,7 @@ class ExecutionPipeline:
 
             verification = self.verifier.verify_all(plan.steps, receipts)
 
-            for i, detail in verification.details.items():
+            for step_idx, detail in verification.details.items():
                 yield PipelineEvent("verify", detail)
 
             # ══════════════════════════════════════════════════════════
