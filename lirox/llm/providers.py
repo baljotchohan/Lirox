@@ -35,10 +35,10 @@ class LLMRouter:
     """Provider abstraction with routing and fallback chains."""
 
     _TASK_PRIORITIES: Dict[str, List[str]] = {
-        "coding": ["groq", "anthropic", "deepseek", "openai", "openrouter", "gemini", "ollama"],
-        "reasoning": ["anthropic", "openai", "gemini", "openrouter", "groq", "deepseek", "ollama"],
-        "research": ["openrouter", "gemini", "openai", "anthropic", "groq", "deepseek", "ollama"],
-        "general": ["groq", "openrouter", "gemini", "openai", "anthropic", "deepseek", "ollama"],
+        "coding": ["aimlapi", "groq", "anthropic", "deepseek", "openai", "openrouter", "gemini", "ollama"],
+        "reasoning": ["aimlapi", "anthropic", "openai", "gemini", "openrouter", "groq", "deepseek", "ollama"],
+        "research": ["aimlapi", "openrouter", "gemini", "openai", "anthropic", "groq", "deepseek", "ollama"],
+        "general": ["aimlapi", "groq", "openrouter", "gemini", "openai", "anthropic", "deepseek", "ollama"],
     }
 
     def available(self) -> List[str]:
@@ -48,7 +48,7 @@ class LLMRouter:
     def health(self) -> Dict[str, Dict[str, Any]]:
         from lirox.utils.llm import provider_has_key
         available = set(self.available())
-        providers = ["groq", "openai", "gemini", "openrouter", "anthropic", "deepseek", "ollama"]
+        providers = ["groq", "openai", "gemini", "openrouter", "anthropic", "deepseek", "ollama", "aimlapi"]
         out: Dict[str, Dict[str, Any]] = {}
         for p in providers:
             if p == "ollama":

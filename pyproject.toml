@@ -47,9 +47,11 @@ Issues = "https://github.com/baljotsingh/lirox/issues"
 gemini = ["google-genai>=0.3.0"]
 full = ["openai>=1.0.0", "anthropic>=0.7.0", "google-genai>=0.3.0"]
 filegen = ["reportlab>=4.0.0", "python-docx>=1.0.0", "openpyxl>=3.1.0", "python-pptx>=0.6.21"]
+web = ["fastapi>=0.111.0", "uvicorn[standard]>=0.29.0", "websockets>=12.0", "python-multipart>=0.0.9"]
 
 [project.scripts]
 lirox = "lirox.main:main"
+lirox-web = "lirox.main_web:main_web"
 
 [tool.setuptools.packages.find]
 include = ["lirox*"]

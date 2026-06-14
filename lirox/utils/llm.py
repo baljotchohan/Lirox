@@ -210,6 +210,33 @@ def deepseek_call(prompt: str, system_prompt: Optional[str] = None,
         return f"DeepSeek Error: {e}"
 
 
+def aimlapi_call(prompt: str, system_prompt: Optional[str] = None,
+                 model: str = None, timeout: int = 90) -> str:
+    api_key = _get_api_key("aimlapi")
+    if not api_key:
+        return "AIMLAPI API key missing."
+    from lirox.config import AIMLAPI_MODEL
+    model = model or AIMLAPI_MODEL or "deepseek-chat"
+    try:
+        res = requests.post(
+            "https://api.aimlapi.com/v1/chat/completions",
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"model": model, "messages": [
+                {"role": "system", "content": system_prompt or DEFAULT_SYSTEM},
+                {"role": "user",   "content": prompt}]},
+            timeout=timeout)
+        res.raise_for_status()
+        return res.json()["choices"][0]["message"]["content"]
+    except requests.exceptions.HTTPError as e:
+        try:
+            return f"AIMLAPI Error: {e.response.json().get('error', {}).get('message', str(e))}"
+        except Exception:
+            return f"AIMLAPI Error: {e}"
+    except Exception as e:
+        return f"AIMLAPI Error: {e}"
+
+
+
 def nvidia_call(prompt: str, system_prompt: Optional[str] = None,
                 model: str = "meta/llama-3.1-405b-instruct", timeout: int = 90) -> str:
     api_key = _get_api_key("nvidia")
@@ -349,8 +376,9 @@ _PROVIDER_ENV_MAP = {
     "openrouter": "OPENROUTER_API_KEY", "openai": "OPENAI_API_KEY",
     "deepseek": "DEEPSEEK_API_KEY", "nvidia": "NVIDIA_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
+    "aimlapi": "AIMLAPI_KEY",
 }
-_PROVIDER_PRIORITY = ["ollama", "hf_bnb", "groq", "openrouter", "gemini", "anthropic", "nvidia", "openai", "deepseek"]
+_PROVIDER_PRIORITY = ["ollama", "hf_bnb", "aimlapi", "groq", "openrouter", "gemini", "anthropic", "nvidia", "openai", "deepseek"]
 
 TASK_KEYWORDS = [
     "create", "build", "run", "install", "download", "execute", "pip", "npm",
@@ -678,6 +706,7 @@ def _call_provider(provider: str, prompt: str, system_prompt: Optional[str], tim
         "openrouter": openrouter_call, "deepseek": deepseek_call,
         "nvidia": nvidia_call, "anthropic": anthropic_call,
         "ollama": ollama_call, "hf_bnb": hf_bnb_call,
+        "aimlapi": aimlapi_call,
     }
     fn = dispatch.get(provider)
     return fn(prompt, system_prompt, timeout=timeout) if fn else f"Unknown provider: {provider}"

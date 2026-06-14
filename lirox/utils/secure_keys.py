@@ -23,6 +23,7 @@ _KEY_ENV_MAP: dict[str, str] = {
     "nvidia":      "NVIDIA_API_KEY",
     "anthropic":   "ANTHROPIC_API_KEY",
     "tavily":      "TAVILY_API_KEY",
+    "aimlapi":     "AIMLAPI_KEY",
 }
 
 
@@ -79,6 +80,7 @@ def validate_key_format(provider: str, key: str) -> tuple[bool, str]:
         "deepseek":   30,
         "nvidia":     30,
         "tavily":     20,
+        "aimlapi":    30,
     }
     expected_prefixes = {
         "openai":    ("sk-",),

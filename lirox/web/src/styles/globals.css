@@ -1,0 +1,150 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Global Resets ────────────────────────────────────────────────────────── */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: #3A3A3A transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb {
+  background: #3A3A3A;
+  border-radius: 4px;
+}
+*::-webkit-scrollbar-thumb:hover {
+  background: #555;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  background: #1A1A1A;
+  color: #EBEBEB;
+  font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow: hidden;
+  height: 100vh;
+}
+
+#root {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Code blocks ──────────────────────────────────────────────────────────── */
+pre, code {
+  font-family: 'JetBrains Mono', monospace;
+}
+
+pre {
+  background: #2D2D2D !important;
+  border: 1px solid #3A3A3A;
+  border-radius: 6px;
+  padding: 16px;
+  overflow-x: auto;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+code:not(pre code) {
+  background: #2D2D2D;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  color: #EBEBEB;
+  border: 1px solid #3A3A3A;
+}
+
+/* ── Markdown styles ──────────────────────────────────────────────────────── */
+.markdown-content {
+  color: #EBEBEB;
+}
+
+.markdown-content h1,
+.markdown-content h2,
+.markdown-content h3 {
+  color: #FFFFFF;
+  margin-top: 1.5em;
+  margin-bottom: 0.75em;
+  font-family: 'ui-serif', Georgia, serif;
+  font-weight: 500;
+}
+.markdown-content h1 { font-size: 1.6em; }
+.markdown-content h2 { font-size: 1.4em; }
+.markdown-content h3 { font-size: 1.2em; }
+
+.markdown-content p {
+  margin: 0.75em 0;
+  line-height: 1.6;
+}
+
+.markdown-content ul, .markdown-content ol {
+  padding-left: 1.5em;
+  margin: 0.75em 0;
+}
+
+.markdown-content li {
+  margin: 0.3em 0;
+  line-height: 1.6;
+}
+
+.markdown-content a {
+  color: #D97757;
+  text-decoration: underline;
+  text-decoration-color: rgba(217, 119, 87, 0.4);
+  text-underline-offset: 2px;
+}
+.markdown-content a:hover {
+  text-decoration-color: #D97757;
+}
+
+.markdown-content blockquote {
+  border-left: 3px solid #3A3A3A;
+  padding-left: 1em;
+  margin: 1em 0;
+  color: #A0A0A0;
+  font-style: italic;
+}
+
+.markdown-content table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1.5em 0;
+}
+.markdown-content th, .markdown-content td {
+  border: 1px solid #3A3A3A;
+  padding: 10px 14px;
+  text-align: left;
+}
+.markdown-content th {
+  background: #2D2D2D;
+  color: #FFFFFF;
+  font-weight: 500;
+}
+
+/* ── Typing indicator ─────────────────────────────────────────────────────── */
+.typing-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #D97757;
+  animation: typingBounce 1.4s ease-in-out infinite;
+}
+.typing-dot:nth-child(2) { animation-delay: 0.2s; }
+.typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+@keyframes typingBounce {
+  0%, 60%, 100% { transform: translateY(0); opacity: 0.4; }
+  30% { transform: translateY(-4px); opacity: 1; }
+}

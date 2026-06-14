@@ -270,6 +270,9 @@ def _verify_api_key(provider: str, key: str) -> bool:
         elif provider == "DeepSeek":
             r = requests.get("https://api.deepseek.com/models",
                              headers={"Authorization": f"Bearer {key}"}, timeout=5)
+        elif provider == "AIMLAPI":
+            r = requests.get("https://api.aimlapi.com/v1/models",
+                             headers={"Authorization": f"Bearer {key}"}, timeout=5)
         else:
             return True
         if r.status_code == 401:
@@ -289,17 +292,18 @@ def _setup_cloud_keys(profile) -> None:
         "4": ("OpenAI",     "OPENAI_API_KEY",     "platform.openai.com",  "Paid"),
         "5": ("Anthropic",  "ANTHROPIC_API_KEY",  "console.anthropic.com","Paid"),
         "6": ("DeepSeek",   "DEEPSEEK_API_KEY",   "deepseek.com",         "Cheap"),
+        "7": ("AIMLAPI",    "AIMLAPI_KEY",        "aimlapi.com",          "Cheap & Fast"),
     }
     console.print("\n  [bold cyan]☁️ Cloud LLM Setup[/]")
     for k, (name, env, url, note) in providers.items():
         tick = "✅" if os.getenv(env) else "  "
         console.print(f"    [{k}] {tick} {name.ljust(11)} {url.ljust(25)} [dim]{note}[/]")
-    console.print("    [7]    Done / Skip")
+    console.print("    [8]    Done / Skip")
 
     while True:
-        choice = Prompt.ask("\n  Add a provider (1-7)",
-                            choices=["1","2","3","4","5","6","7"], default="7")
-        if choice == "7":
+        choice = Prompt.ask("\n  Add a provider (1-8)",
+                            choices=["1","2","3","4","5","6","7","8"], default="8")
+        if choice == "8":
             break
         name, env, _, _ = providers[choice]
         key = Prompt.ask(f"  Paste {name} API key", password=True).strip()

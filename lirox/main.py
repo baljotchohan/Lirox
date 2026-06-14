@@ -356,8 +356,12 @@ def main() -> None:
         parser.add_argument("--verbose", action="store_true", help="Show thinking traces")
         
         # Handle command line shortcuts
-        if len(sys.argv) > 1 and sys.argv[1] == "setup":
-            sys.argv[1] = "--setup"
+        if len(sys.argv) > 1:
+            if sys.argv[1] == "setup":
+                sys.argv[1] = "--setup"
+            elif sys.argv[1] == "web":
+                from lirox.main_web import main_web
+                sys.exit(main_web())
 
         args = parser.parse_args()
 

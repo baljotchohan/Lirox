@@ -7,6 +7,10 @@ dist/
 build/
 *.egg
 
+# Node
+node_modules/
+
+
 # Lirox data (user-specific, never commit)
 data/
 outputs/
@@ -23,3 +27,8 @@ Thumbs.db
 .idea/
 *.swp
 *.swo
+
+# Diagnostic dumps
+lirox_codebase_for_llm.txt
+generate_llm_dump.py
+

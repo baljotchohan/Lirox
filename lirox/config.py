@@ -36,6 +36,8 @@ DEEPSEEK_API_KEY   = os.getenv("DEEPSEEK_API_KEY")
 NVIDIA_API_KEY     = os.getenv("NVIDIA_API_KEY")
 ANTHROPIC_API_KEY  = os.getenv("ANTHROPIC_API_KEY")
 TAVILY_API_KEY     = os.getenv("TAVILY_API_KEY")
+AIMLAPI_KEY        = os.getenv("AIMLAPI_KEY")
+AIMLAPI_MODEL      = os.getenv("AIMLAPI_MODEL", "deepseek-chat")
 
 LOCAL_LLM_ENABLED = os.getenv("LOCAL_LLM_ENABLED", "false").lower() == "true"
 OLLAMA_ENDPOINT   = os.getenv("OLLAMA_ENDPOINT", "http://localhost:11434")
