@@ -187,6 +187,19 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
             ("/code",               "Enter persistent coding mode"),
             ("/agent <task>",       "Run the autonomous ReAct agent on a task"),
             ("/agent-mode <mode>",  "Set agent autonomy: plan/default/acceptEdits/auto/bypass"),
+            ("/git commit",         "AI writes semantic commit from staged diff"),
+            ("/git review",         "AI reviews staged changes before commit"),
+            ("/git pr",             "Draft a pull request description"),
+            ("/git explain [n]",    "Explain last N commits in plain English"),
+            ("/git fix-conflict",   "AI resolves merge conflicts"),
+            ("/git log-ai [n]",     "Summarized git log"),
+            ("/git status",         "Smart git status"),
+            ("/usage",              "Show token usage and estimated cost"),
+            ("/usage today",        "Today's aggregate usage"),
+            ("/budget <$>",         "Set spending budget (warns at 90%)"),
+            ("/init-context",       "Generate .liroxrc from your codebase"),
+            ("/show-context",       "Show active project context"),
+            ("/clear-context",      "Clear project context for this session"),
             ("/setup",              "Re-run setup wizard"),
             ("/history [n]",        "Show last N sessions"),
             ("/session",            "Current session info"),
@@ -216,6 +229,23 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
     elif base == "/code":
         from lirox.modes.code_mode import code_handle
         code_handle(orch, profile, cmd, console)
+
+    elif base == "/git":
+        from lirox.modes.git_mode import handle_git_command
+        handle_git_command(cmd, console)
+
+    elif base == "/usage":
+        from lirox.modes.usage_tracker import handle_usage_command
+        handle_usage_command(cmd, console)
+
+    elif base == "/budget":
+        from lirox.modes.usage_tracker import handle_budget_command
+        handle_budget_command(cmd, console)
+
+    elif base in ("/init-context", "/show-context", "/clear-context"):
+        from lirox.modes.project_context import handle_context_command
+        workspace = os.getenv("LIROX_WORKSPACE")
+        handle_context_command(cmd, console, workspace)
 
     elif base == "/agent":
         from lirox.modes.agent_mode import agent_handle
@@ -428,6 +458,14 @@ def main() -> None:
 
         show_welcome()
 
+        # Auto-load project context (.liroxrc / LIROX.md) silently
+        try:
+            from lirox.modes.project_context import load_context
+            _workspace = os.getenv("LIROX_WORKSPACE")
+            load_context(workspace=_workspace, silent=False)
+        except Exception:
+            pass
+
         if not profile.is_setup() or args.setup:
             from lirox.ui.wizard import run_setup_wizard
             try:
@@ -454,6 +492,18 @@ def main() -> None:
             "/code":            "Enter persistent coding mode",
             "/agent":           "Run the autonomous ReAct agent on a task",
             "/agent-mode":      "Set agent autonomy level",
+            "/git commit":      "AI semantic commit from staged diff",
+            "/git review":      "Review staged changes with AI",
+            "/git pr":          "Draft a pull request description",
+            "/git explain":     "Explain last N commits",
+            "/git fix-conflict": "Resolve merge conflicts with AI",
+            "/git log-ai":      "AI-summarized git log",
+            "/git status":      "Smart git status",
+            "/usage":           "Token usage and cost tracker",
+            "/budget":          "Set spending budget",
+            "/init-context":    "Generate .liroxrc from codebase",
+            "/show-context":    "Show active project context",
+            "/clear-context":   "Clear project context",
             "/setup":           "Re-run setup wizard",
             "/history":         "View past conversations",
             "/session":         "Current session details",
