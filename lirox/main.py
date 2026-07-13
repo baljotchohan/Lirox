@@ -155,6 +155,8 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
         rows = [
             ("/help",               "Show this help"),
             ("/code",               "Enter persistent coding mode"),
+            ("/agent <task>",       "Run the autonomous ReAct agent on a task"),
+            ("/agent-mode <mode>",  "Set agent autonomy: plan/default/acceptEdits/auto/bypass"),
             ("/setup",              "Re-run setup wizard"),
             ("/history [n]",        "Show last N sessions"),
             ("/session",            "Current session info"),
@@ -184,6 +186,20 @@ def _handle(orch, profile, cmd: str, base: str, parts: list, verbose: bool) -> N
     elif base == "/code":
         from lirox.modes.code_mode import code_handle
         code_handle(orch, profile, cmd, console)
+
+    elif base == "/agent":
+        from lirox.modes.agent_mode import agent_handle
+        provider = os.getenv("_LIROX_PINNED_MODEL", "auto")
+        agent_handle(cmd, console, provider=provider)
+
+    elif base == "/agent-mode":
+        from lirox.modes.agent_mode import set_agent_mode, get_agent_mode
+        if len(parts) < 2:
+            info_panel(f"Current agent mode: {get_agent_mode()}\n"
+                       "Options: plan, default, acceptEdits, auto, bypass")
+        else:
+            new_mode = set_agent_mode(parts[1])
+            success_message(f"Agent mode set to: {new_mode}")
 
     elif base == "/setup":
         from lirox.ui.wizard import run_setup_wizard
@@ -362,6 +378,9 @@ def main() -> None:
             elif sys.argv[1] == "web":
                 from lirox.main_web import main_web
                 sys.exit(main_web())
+            elif sys.argv[1] == "bridge" and len(sys.argv) > 2 and sys.argv[2] == "telegram":
+                from lirox.agentic.bridges.telegram import run_telegram_bridge
+                sys.exit(run_telegram_bridge())
 
         args = parser.parse_args()
 
@@ -403,6 +422,8 @@ def main() -> None:
         cmd_docs = {
             "/help":            "Show all commands",
             "/code":            "Enter persistent coding mode",
+            "/agent":           "Run the autonomous ReAct agent on a task",
+            "/agent-mode":      "Set agent autonomy level",
             "/setup":           "Re-run setup wizard",
             "/history":         "View past conversations",
             "/session":         "Current session details",
