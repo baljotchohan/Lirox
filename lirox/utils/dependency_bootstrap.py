@@ -29,6 +29,7 @@ def required_package_map() -> Dict[str, str]:
         "python-pptx": "pptx",
         "python-docx": "docx",
         "openpyxl": "openpyxl",
+        "python-multipart": "multipart",
     }
 
     req_path = _repo_root / "requirements.txt"
