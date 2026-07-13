@@ -2,9 +2,18 @@
 import os
 import sys
 import time
+import logging
 import argparse
 import re
 from pathlib import Path
+
+# ── Silence noisy third-party loggers before any imports ──────────────────
+logging.getLogger("chromadb").setLevel(logging.CRITICAL)
+logging.getLogger("chromadb.telemetry").setLevel(logging.CRITICAL)
+logging.getLogger("chromadb.telemetry.product.posthog").setLevel(logging.CRITICAL)
+logging.getLogger("lirox.rag.store").setLevel(logging.WARNING)
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 from lirox.utils.dependency_bootstrap import (
     required_package_map, missing_packages,
@@ -48,79 +57,100 @@ def process_query(orch, query: str, verbose: bool = False) -> None:
     Unified entry point for query processing.
     Uses MasterOrchestrator to ensure consistency.
     """
+    from rich.console import Console
+    from rich.status import Status
     from lirox.ui.display import (
         render_streaming_chunk, console, show_agent_event,
         show_thinking_phase, show_answer
     )
-    
+
     _last_thinking["query"] = query
     _last_thinking["steps"] = []
-    
+
+    # Real spinner — animates during the actual blocking LLM call
+    spinner = Status(
+        "[dim #a78bfa]Thinking…[/]",
+        spinner="dots",
+        spinner_style="#a78bfa",
+        console=console,
+    )
+    spinner.start()
+    spinner_active = True
+
+    def _stop_spinner():
+        nonlocal spinner_active
+        if spinner_active:
+            spinner.stop()
+            spinner_active = False
+
     # Run through orchestrator
     try:
         last_event_type = None
         for event in orch.run(query):
             etype = event.type
-            
+
             # ── Handle Thinking Phases ──
             if etype == "thinking_phase":
-                show_thinking_phase(event.data)
-            
+                pass  # spinner already running
+
             # ── Handle Agent Progress ──
             elif etype == "agent_progress":
-                show_agent_event(event.message, agent=event.agent, etype=etype)
                 _last_thinking["steps"].append(event.message)
+                # suppress inline print — spinner covers this
 
             # ── Handle Tool Calls ──
             elif etype == "tool_call":
+                _stop_spinner()
                 show_agent_event(event.message, agent=event.agent, etype="tool_call")
 
             # ── Handle Tool Results ──
             elif etype == "tool_result":
-                show_agent_event(event.message, agent=event.agent, etype="agent_progress")
+                _last_thinking["steps"].append(event.message)
 
             # ── Handle Warnings ──
             elif etype == "warning":
+                _stop_spinner()
                 console.print(f"  [bold #FFC107]⚠ {event.message}[/]")
-                
+
             # ── Handle Streaming ──
             elif etype == "streaming":
                 if last_event_type != "streaming":
+                    _stop_spinner()
                     from lirox.ui.display import thinking_manager
                     thinking_manager.stop()
                 msg = event.data.get("message", "")
                 render_streaming_chunk(msg)
-                
+
             # ── Handle Done ──
             elif etype == "done":
+                _stop_spinner()
                 from lirox.ui.display import thinking_manager
                 thinking_manager.stop()
-                
+
                 if last_event_type == "streaming":
-                    console.print()  # Finish the streaming line
-                    # Response already displayed via streaming — just show Done
-                    console.print(f"  [bold #10b981]✓ Done[/]")
+                    console.print()  # finish streaming line
                 else:
-                    # Non-streamed response (e.g. filegen results) — render normally
+                    # Non-streamed response — render with Markdown
                     show_answer(event.message)
-                # Check if this is a thinking-done event with full data
+
                 thinking_data = event.data.get("thinking_result")
                 if thinking_data:
                     _last_thinking["full_result"] = thinking_data
                 _last_thinking["elapsed"] = event.data.get("total_time", 0.0)
-                
+
             # ── Handle Errors ──
             elif etype == "error":
+                _stop_spinner()
                 from lirox.ui.display import error_panel
                 error_panel("ORCHESTRATOR ERROR", event.message)
-                
+
             last_event_type = etype
-            
+
     except Exception as e:
+        _stop_spinner()
         from lirox.ui.display import error_panel
         error_panel("PROCESS ERROR", str(e))
-        import logging
-        logging.error(f"Error in process_query: {e}", exc_info=True)
+        logging.error("Error in process_query: %s", e, exc_info=True)
 
 
 def handle_command(orch, profile, cmd: str, verbose: bool = False) -> None:

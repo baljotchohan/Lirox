@@ -146,58 +146,58 @@ def show_status_card(profile_data: dict, providers: list):
     prov  = ", ".join(providers[:3]) if providers else "None (run /setup)"
     console.print(f"  [{CLR_DIM}]Agent: {agent}  ·  User: {user or '?'}  ·  Providers: {prov}[/]")
 def show_thinking_phase(event: dict):
-    """Render thinking phase progress as clean inline text (no Live layout).
-    
-    The Live layout approach was causing empty box rendering because:
-    1. LLM calls block for 10-60s each, preventing progress bar updates
-    2. The transient=True setting clears the display, leaving artifact borders
-    Instead we show clean inline text that accumulates naturally.
-    """
-    idx = event.get("phase_index", 0)
-    name = event.get("phase_name", "PHASE")
-    icon = event.get("phase_icon", "🧠")
-    total = event.get("phase_total", 3)
-    tagline = event.get("phase_tagline", "")
-    
-    # Show clean inline phase indicator
-    console.print(f"    [{CLR_THINK}]├─ {icon} {name} [{idx+1}/{total}][/] [dim]{tagline}[/]")
+    """No-op: thinking phases are now handled by the spinner context in show_answer."""
+    pass  # Suppressed — replaced by real spinner in show_answer
+
 
 def show_agent_event(message: str, agent: str = "personal", etype: str = "agent_progress"):
-    """Show agent events as clean inline text."""
+    """Show agent events as clean inline text (tool calls only; progress suppressed)."""
     if etype == "tool_call":
         console.print(f"  [{CLR_DIM}]  ├─ 🔧 {escape(message)}[/]")
-    elif etype == "agent_progress":
-        console.print(f"  [{CLR_DIM}]  ├─ {escape(message)}[/]")
+    # agent_progress events are intentionally suppressed — spinner handles this
+
 
 
 def show_answer(text: str, agent: str = "personal"):
+    """Render the final answer with clean Markdown formatting."""
     # Always stop the thinking display before showing final answer
     thinking_manager.stop()
-    
-    icon = "⚡" if agent == "personal" else "🧠"
-    console.print(f"{icon} [bold #FFD700]Response:[/]")
+
     from rich.markdown import Markdown
-    from rich.live import Live
+    from rich.rule import Rule
     from lirox.utils.streaming import StreamingResponse
 
     streamer = StreamingResponse()
+
+    # Clean separator — no emoji icon clutter
+    console.print()
+    console.print(Rule(style="#FFC107 dim"))
+    console.print()
+
     full_text = ""
     chunk_count = 0
-    _MARKDOWN_WORD_BATCH = 6 
+    _MARKDOWN_WORD_BATCH = 6
     try:
-        with Live(Markdown(""), console=console, refresh_per_second=12) as live:
-            for chunk in streamer.stream_words(text, delay=0.015):
+        with Live(Markdown(""), console=console, refresh_per_second=15) as live:
+            for chunk in streamer.stream_words(text, delay=0.012):
                 full_text += chunk
                 chunk_count += 1
                 if chunk_count % _MARKDOWN_WORD_BATCH == 0:
-                    try: live.update(Markdown(full_text))
-                    except Exception: live.update(full_text)
-            try: live.update(Markdown(full_text))
-            except Exception: live.update(full_text)
+                    try:
+                        live.update(Markdown(full_text))
+                    except Exception:
+                        live.update(full_text)
+            try:
+                live.update(Markdown(full_text))
+            except Exception:
+                live.update(full_text)
     except Exception:
         console.print(text)
 
-    console.print(f"  [{CLR_SUCCESS}]✓ Done[/]")
+    console.print()
+    console.print(Rule(style="#2d2d2d"))
+    console.print()
+
 
 def show_thinking(query: str, steps: list, elapsed: float, full_result: Optional[Dict] = None):
     """Show full, expanded thinking results (for /expand thinking).
