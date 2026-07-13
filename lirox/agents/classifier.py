@@ -88,6 +88,28 @@ _FILE_OP_SIGNALS = [
     "tree", "structure", "folder", "directory",
 ]
 
+# AGENTIC — multi-step autonomous work: build/fix/refactor *and* verify.
+# Deliberately narrow: only phrasing that implies a plan → act → verify loop,
+# not a single-shot code snippet or one-off shell command. Checked before
+# filegen/file/code/shell so these route to the full ReAct agent
+# (lirox.agentic.loop.AgentLoop) instead of a single tool call.
+_AGENTIC_PATTERNS = [
+    re.compile(r'\b(fix|debug|resolve|solve)\b.{0,40}\b(bug|error|issue|crash|exception|'
+               r'failing|broken|fail(?:s|ing)?|traceback)\b', re.IGNORECASE),
+    re.compile(r'\brefactor\b', re.IGNORECASE),
+    re.compile(r'\b(set ?up|scaffold|initialize|bootstrap)\b.{0,40}'
+               r'\b(project|repo|repository|app|application|environment|codebase)\b', re.IGNORECASE),
+    re.compile(r'\b(build|create|make|write|implement)\b.{0,60}\band\b.{0,30}'
+               r'\b(test|verify|run it|make sure it works|check it works|deploy)\b', re.IGNORECASE),
+    re.compile(r'\buntil it works\b', re.IGNORECASE),
+    re.compile(r'\b(autonomously|agent mode|use the agent|use agent mode)\b', re.IGNORECASE),
+    re.compile(r'\bclone\b.{0,40}\b(and|then)\b.{0,20}\brun\b', re.IGNORECASE),
+]
+
+
+def _is_agentic(query: str) -> bool:
+    return any(p.search(query) for p in _AGENTIC_PATTERNS)
+
 
 def _classify(query: str) -> str:
     """
@@ -95,12 +117,18 @@ def _classify(query: str) -> str:
 
     Priority order (highest → lowest):
       1. self / memory signals   — introspection queries
-      2. web signals             — real-time / search queries  ← checked BEFORE shell
-      3. file generation         — create pdf/docx/pptx/xlsx
-      4. file operations         — read/list/open existing files
-      5. code writing            — write/build/implement a function/script/app
-      6. shell commands          — explicit terminal/run/install keywords
-      7. chat                    — everything else (incl. explain/analyze/compare)
+      2. agentic signals         — multi-step build/fix/refactor-and-verify work
+                                    (checked BEFORE web: these are narrow, specific
+                                    multi-word regexes, so they win over the loose
+                                    single-keyword WEB_SIGNALS list — e.g. the bare
+                                    word "currently" would otherwise steal a query
+                                    like "fix the bug ... currently returns ...")
+      3. web signals             — real-time / search queries  ← checked BEFORE shell
+      4. file generation         — create pdf/docx/pptx/xlsx
+      5. file operations         — read/list/open existing files
+      6. code writing            — write/build/implement a function/script/app
+      7. shell commands          — explicit terminal/run/install keywords
+      8. chat                    — everything else (incl. explain/analyze/compare)
     """
     q = query.lower().strip()
 
@@ -110,26 +138,30 @@ def _classify(query: str) -> str:
     if any(sig in q for sig in MEMORY_SIGNALS):
         return "memory"
 
-    # ── 2. WEB SEARCH (checked BEFORE shell so "check price" never hits shell) ──
+    # ── 2. AGENTIC (multi-step build/fix/refactor-and-verify) ─────────────
+    if _is_agentic(query):
+        return "agentic"
+
+    # ── 3. WEB SEARCH (checked BEFORE shell so "check price" never hits shell) ──
     if any(sig in q for sig in WEB_SIGNALS):
         return "web"
 
-    # ── 3. FILE GENERATION ────────────────────────────────────────────────
+    # ── 4. FILE GENERATION ────────────────────────────────────────────────
     if _FILEGEN_PATTERN.search(query) or _FILEGEN_PATTERN_REV.search(query):
         return "filegen"
 
-    # ── 4. FILE OPERATIONS ────────────────────────────────────────────────
+    # ── 5. FILE OPERATIONS ────────────────────────────────────────────────
     if any(sig in q for sig in _FILE_OP_SIGNALS):
         return "file"
 
-    # ── 5. CODE WRITING (checked BEFORE shell) ───────────────────────────
+    # ── 6. CODE WRITING (checked BEFORE shell) ───────────────────────────
     # "write me a Python script", "build a REST API", "implement quicksort"
     if _CODE_WRITE_PATTERN.search(query) or _CODE_WRITE_PATTERN_LANG.search(query):
         return "chat"  # routed to chat with CoT so agent writes complete code
 
-    # ── 6. SHELL COMMANDS ─────────────────────────────────────────────────
+    # ── 7. SHELL COMMANDS ─────────────────────────────────────────────────
     if any(sig in q for sig in SHELL_SIGNALS):
         return "shell"
 
-    # ── 7. DEFAULT: CHAT ──────────────────────────────────────────────────
+    # ── 8. DEFAULT: CHAT ──────────────────────────────────────────────────
     return "chat"
