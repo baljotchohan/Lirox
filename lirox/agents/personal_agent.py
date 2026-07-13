@@ -251,6 +251,7 @@ class PersonalAgent(BaseAgent):
             "web":     self._web,
             "file":    self._file,
             "chat":    self._chat,
+            "agentic": self._agentic,
         }
         handler = dispatch.get(task, self._chat)
         yield from handler(query, context, system_prompt)
@@ -941,6 +942,53 @@ class PersonalAgent(BaseAgent):
             receipt = ShellReceipt(tool="shell", error=f"Shell error: {e}")
         yield {"type": "tool_result", "message": receipt.as_user_summary()}
         yield from self._synth_receipt(query, receipt)
+
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    # AGENTIC — Multi-step autonomous ReAct loop
+    # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    def _agentic(self, query, context, sp=""):
+        """Route multi-step build/fix/refactor-and-verify requests through the
+        full ReAct agent (lirox.agentic.loop.AgentLoop) instead of a single
+        tool call. Shares the graduated permission mode set via /agent-mode;
+        with no interactive approver available here, ASK-tier actions
+        conservatively deny until the user raises the mode."""
+        from lirox.agentic.loop import AgentLoop
+        from lirox.agentic.tools import default_registry
+        from lirox.modes.agent_mode import _get_perms
+
+        yield {"type": "agent_progress", "message": "🤖 Entering autonomous agent mode…", "agent": self.name}
+
+        perms = _get_perms()
+        loop = AgentLoop(registry=default_registry(), permissions=perms, agent_name="Lirox")
+
+        final_summary = ""
+        try:
+            for step in loop.run(query, context=context):
+                if step.kind == "thought":
+                    yield {"type": "agent_progress", "message": f"💭 {step.text}", "agent": self.name}
+                elif step.kind == "action":
+                    args_preview = ", ".join(f"{k}={str(v)[:50]}" for k, v in (step.args or {}).items())
+                    yield {"type": "tool_call", "message": f"🔧 {step.tool}({args_preview})", "agent": self.name}
+                elif step.kind == "observation":
+                    yield {"type": "tool_result", "message": step.text, "agent": self.name}
+                elif step.kind == "denied":
+                    yield {"type": "warning", "message": step.text, "agent": self.name}
+                elif step.kind == "critique":
+                    yield {"type": "agent_progress", "message": f"⚖ {step.text}", "agent": self.name}
+                elif step.kind == "status":
+                    yield {"type": "agent_progress", "message": step.text, "agent": self.name}
+                elif step.kind == "learned":
+                    yield {"type": "agent_progress", "message": f"✨ {step.text}", "agent": self.name}
+                elif step.kind == "final":
+                    final_summary = step.text
+                elif step.kind == "error":
+                    yield {"type": "warning", "message": step.text, "agent": self.name}
+        except Exception as e:  # noqa: BLE001
+            yield {"type": "error", "message": f"Agent loop error: {e}", "agent": self.name}
+            return
+
+        yield {"type": "done", "message": final_summary or "Agent stopped without an explicit finish.",
+               "agent": self.name}
 
     # ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
     # WEB — Search the internet
