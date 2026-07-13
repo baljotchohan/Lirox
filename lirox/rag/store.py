@@ -85,7 +85,9 @@ class RAGStore:
             self._fallback_store = _TFIDFFallback(self._persist_dir)
             self._using_chromadb = False
         except Exception as e:
-            _logger.error("ChromaDB init failed (%s) — using TF-IDF fallback", e)
+            # ChromaDB init failure is expected in many envs (telemetry bug, etc.)
+            # TF-IDF fallback is fully functional — log at DEBUG only.
+            _logger.debug("ChromaDB init failed (%s) — using TF-IDF fallback", e)
             self._fallback_store = _TFIDFFallback(self._persist_dir)
             self._using_chromadb = False
 
